@@ -871,19 +871,6 @@ td.row-head {
   overflow: hidden;
 }
 
-.safari-lite thead {
-  position: static;
-}
-
-.safari-lite th.row-head,
-.safari-lite td.row-head {
-  position: static;
-}
-
-.safari-lite tbody tr:hover td {
-  background: transparent;
-}
-
 thead th.row-head {
   background: var(--surface);
   font-weight: 600;
