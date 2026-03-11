@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="pl" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Lokalne przeglądanie, filtrowanie i analiza arkuszy Excel" />
+    <title>Excel Workbench</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- ============ HERO ============ -->
+      <header class="hero">
+        <div class="hero-left">
+          <div class="hero-logo">
+            <svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="38" height="38" rx="11" fill="var(--accent)" />
+              <rect x="9" y="9" width="20" height="20" rx="3" stroke="white" stroke-width="1.5" fill="none" />
+              <line x1="9" y1="16" x2="29" y2="16" stroke="white" stroke-width="1.5" />
+              <line x1="9" y1="23" x2="29" y2="23" stroke="white" stroke-width="1.5" />
+              <line x1="17" y1="9" x2="17" y2="29" stroke="white" stroke-width="1.5" />
+            </svg>
+          </div>
+          <div class="hero-info">
+            <div class="hero-title">Excel Workbench</div>
+            <div class="hero-sub">Lokalne przeglądanie, filtrowanie i analiza arkuszy</div>
+          </div>
+        </div>
+        <div class="hero-right">
+          <span class="hero-badge">PWA</span>
+          <button class="theme-toggle" id="themeToggle" title="Zmień motyw (jasny / ciemny)" aria-label="Zmień motyw"></button>
+        </div>
+      </header>
+
+      <!-- ============ WORKSPACE ============ -->
+      <div class="workspace">
+        <!-- ====== SIDEBAR ====== -->
+        <aside class="sidebar">
+          <section class="panel compact">
+            <div class="panel-header">
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <span class="panel-title">Plik i arkusz</span>
+            </div>
+            <div class="stack">
+              <label class="drop-zone" id="dropZone">
+                <div class="drop-icon">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </div>
+                <p class="drop-text">Przeciągnij plik <strong>.xlsx</strong></p>
+                <p class="drop-or">lub</p>
+                <span class="drop-btn">Wybierz plik</span>
+                <input id="fileInput" type="file" accept=".xlsx,.xlsm" aria-label="Wybierz plik Excel" />
+              </label>
+
+              <div class="file-name hidden" id="fileName">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                <span id="fileNameText">Brak pliku</span>
+              </div>
+
+              <div class="row">
+                <label class="field">
+                  Arkusz
+                  <select id="sheetSelect"></select>
+                </label>
+                <label class="field">
+                  Wiersz nagłówka
+                  <input id="headerRow" type="number" min="1" value="1" />
+                </label>
+              </div>
+
+              <div class="row">
+                <label class="field">
+                  Tryb wyświetlania
+                  <select id="displayMode">
+                    <option>Wartosci</option>
+                    <option>Formuly</option>
+                  </select>
+                </label>
+                <label class="field">
+                  Limit wierszy
+                  <input id="maxRows" type="number" min="1" value="200" />
+                </label>
+              </div>
+
+              <button class="btn full" id="loadBtn">Wczytaj arkusz</button>
+            </div>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-header">
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span class="panel-title">Filtr tekstowy 1</span>
+            </div>
+            <div class="stack">
+              <label class="field">
+                Szukaj
+                <input id="searchQuery" type="text" placeholder="np. faktura" />
+              </label>
+              <div class="row">
+                <label class="field">
+                  Tryb
+                  <select id="filterMode">
+                    <option>Zawiera</option>
+                    <option>Zaczyna sie</option>
+                    <option>Rowna sie</option>
+                  </select>
+                </label>
+                <label class="field">
+                  Kolumny
+                  <div class="picker-row">
+                    <input id="filter1Columns" type="text" readonly value="Wszystkie kolumny" />
+                    <button class="btn ghost btn-sm" id="filter1Pick" type="button">Wybierz</button>
+                  </div>
+                </label>
+              </div>
+              <label class="field checkbox">
+                <input id="onlyNonEmpty" type="checkbox" />
+                Tylko wiersze z danymi
+              </label>
+            </div>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-header">
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span class="panel-title">Filtr tekstowy 2</span>
+            </div>
+            <div class="stack">
+              <label class="field">
+                Szukaj
+                <input id="searchQuery2" type="text" placeholder="np. klient" />
+              </label>
+              <div class="row">
+                <label class="field">
+                  Tryb
+                  <select id="filterMode2">
+                    <option>Zawiera</option>
+                    <option>Zaczyna sie</option>
+                    <option>Rowna sie</option>
+                  </select>
+                </label>
+                <label class="field">
+                  Kolumny
+                  <div class="picker-row">
+                    <input id="filter2Columns" type="text" readonly value="Wszystkie kolumny" />
+                    <button class="btn ghost btn-sm" id="filter2Pick" type="button">Wybierz</button>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-header">
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <span class="panel-title">Filtr dat</span>
+            </div>
+            <div class="stack">
+              <div class="row">
+                <label class="field">
+                  Tryb
+                  <select id="dateMode">
+                    <option value="between">Pomiedzy</option>
+                    <option value="before">Przed</option>
+                    <option value="after">Po</option>
+                    <option value="last_n_days">Ostatnie N dni</option>
+                  </select>
+                </label>
+                <label class="field">
+                  Ostatnie dni
+                  <input id="lastDays" type="number" min="1" value="30" />
+                </label>
+              </div>
+
+              <div class="row">
+                <label class="field">
+                  Od
+                  <input id="dateFrom" type="text" placeholder="dd-mm-rrrr / yyyy-mm-dd" />
+                </label>
+                <label class="field">
+                  Do
+                  <input id="dateTo" type="text" placeholder="dd-mm-rrrr / yyyy-mm-dd" />
+                </label>
+              </div>
+
+              <label class="field">
+                Kolumny dat
+                <div class="picker-row">
+                  <input id="dateColumns" type="text" readonly value="Wszystkie kolumny" />
+                  <button class="btn ghost btn-sm" id="datePick" type="button">Wybierz</button>
+                </div>
+              </label>
+
+              <div class="quick-row">
+                <button class="chip" data-range="7" type="button">7 dni</button>
+                <button class="chip" data-range="30" type="button">30 dni</button>
+                <button class="chip" data-range="90" type="button">90 dni</button>
+                <button class="chip" data-range="180" type="button">180 dni</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-header">
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18" />
+                <path d="M7 12h10" />
+                <path d="M10 18h4" />
+              </svg>
+              <span class="panel-title">Sortowanie</span>
+            </div>
+            <div class="stack">
+              <div class="row">
+                <label class="field">
+                  Kolumna
+                  <select id="sortCol"></select>
+                </label>
+                <label class="field">
+                  Kierunek
+                  <select id="sortDir">
+                    <option value="asc">Rosnaco</option>
+                    <option value="desc">Malejaco</option>
+                  </select>
+                </label>
+              </div>
+              <div class="row">
+                <button class="btn" id="sortBtn" type="button">Sortuj</button>
+                <button class="btn ghost" id="resetFiltersBtn" type="button">Reset</button>
+              </div>
+              <button class="btn full" id="applyFilterBtn" type="button">
+                Filtruj
+                <span class="filter-badge hidden" id="filterBadge">0</span>
+              </button>
+              <button class="btn ghost full" id="resetWidthsBtn" type="button">Reset szerokosci</button>
+              <button class="btn ghost full" id="saveBtn" type="button">Zapisz</button>
+              <button class="btn ghost full" id="saveAsBtn" type="button">Zapisz jako...</button>
+            </div>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-header mb-0">
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19h16" />
+                <path d="M4 5h16" />
+                <path d="M8 9h8" />
+                <path d="M8 15h8" />
+              </svg>
+              <span class="panel-title">Log</span>
+            </div>
+            <div class="log" id="log"></div>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-header mb-0">
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <line x1="7" y1="8" x2="17" y2="8" />
+                <line x1="7" y1="12" x2="13" y2="12" />
+                <line x1="7" y1="16" x2="15" y2="16" />
+              </svg>
+              <span class="panel-title">Skróty</span>
+            </div>
+            <div class="shortcut-hint">
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Enter</kbd> <span>Filtruj</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>E</kbd> <span>Eksport CSV</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>K</kbd> <span>Kolumny</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>/</kbd> <span>Motyw</span></div>
+              <div class="shortcut-row"><kbd>Esc</kbd> <span>Zamknij modal</span></div>
+            </div>
+          </section>
+        </aside>
+
+        <!-- ====== MAIN ====== -->
+        <main class="main">
+          <section class="panel table-panel">
+            <div class="table-toolbar">
+              <div class="status-badge" id="status">Brak danych</div>
+              <div class="table-actions">
+                <button class="btn btn-sm ghost" id="exportCsvBtn" type="button">Eksport CSV</button>
+              </div>
+            </div>
+
+            <div class="empty-state" id="emptyState">
+              <div class="empty-icon">XLS</div>
+              <div class="empty-title" id="emptyTitle">Wczytaj plik Excel</div>
+              <div class="empty-sub" id="emptySub">Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.</div>
+            </div>
+
+            <div class="table-wrap hidden" id="tableWrap">
+              <table id="dataTable">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <!-- Column picker modal -->
+    <div class="modal hidden" id="columnPicker" role="dialog" aria-modal="true" aria-labelledby="columnPickerTitle">
+      <div class="modal-content">
+        <div class="modal-head">
+          <div class="modal-title" id="columnPickerTitle">Wybierz kolumny</div>
+          <button class="modal-close" id="closePicker" type="button" aria-label="Zamknij">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-search-wrap">
+          <svg class="modal-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input class="modal-search" id="columnSearch" type="text" placeholder="Szukaj kolumn" />
+        </div>
+        <div class="modal-list" id="columnList"></div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="selectAllBtn" type="button">Zaznacz wszystko</button>
+          <button class="btn ghost" id="clearAllBtn" type="button">Wyczysc</button>
+          <button class="btn" id="applyPickBtn" type="button">Zastosuj</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay hidden" id="loadingOverlay">
+      <div class="loading-box">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">Wczytywanie...</div>
+      </div>
+    </div>
+
+    <!-- Toasts -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
