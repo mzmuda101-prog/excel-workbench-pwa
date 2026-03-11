@@ -56,6 +56,8 @@ const applyPickBtn = document.getElementById("applyPickBtn");
 const closePickerBtn = document.getElementById("closePicker");
 
 const themeToggle = document.getElementById("themeToggle");
+const panelToggle = document.getElementById("panelToggle");
+const panelHandle = document.getElementById("panelHandle");
 const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
@@ -259,9 +261,19 @@ function rowMatchesTextFilter(row, criteria, onlyNonEmpty) {
     for (const i of criterion.indexes) {
       if (i >= values.length) continue;
       const text = getDisplayValue(row, i).toLowerCase();
-      if (criterion.mode === "Rowna sie" && text === query) matched = true;
-      if (criterion.mode === "Zaczyna sie" && text.startsWith(query)) matched = true;
-      if (criterion.mode === "Zawiera" && text.includes(query)) matched = true;
+      const altDate = parseDateFlexible(values[i]);
+      const candidates = [text];
+      if (altDate instanceof Date) {
+        const dd = String(altDate.getDate()).padStart(2, "0");
+        const mm = String(altDate.getMonth() + 1).padStart(2, "0");
+        const yyyy = String(altDate.getFullYear());
+        const yy = yyyy.slice(-2);
+        candidates.push(`${dd}-${mm}-${yy}`);
+        candidates.push(`${dd}-${mm}-${yyyy}`);
+      }
+      if (criterion.mode === "Rowna sie" && candidates.some((c) => c === query)) matched = true;
+      if (criterion.mode === "Zaczyna sie" && candidates.some((c) => c.startsWith(query))) matched = true;
+      if (criterion.mode === "Zawiera" && candidates.some((c) => c.includes(query))) matched = true;
       if (matched) break;
     }
     if (!matched) return false;
@@ -508,18 +520,20 @@ function openColumnPicker(key) {
   columnSearchEl.value = "";
   const currentSet = columnSelections[key];
   const isAll = currentSet.size === 0;
-  currentHeaders.forEach((h) => {
-    const label = document.createElement("label");
-    label.className = "field checkbox";
+  currentHeaders.forEach((h, idx) => {
+    const row = document.createElement("div");
+    row.className = "field checkbox";
     const input = document.createElement("input");
     input.type = "checkbox";
+    input.id = `colpick-${key}-${idx}`;
     input.value = h;
     input.checked = isAll ? true : currentSet.has(h);
-    const span = document.createElement("span");
-    span.textContent = h;
-    label.appendChild(input);
-    label.appendChild(span);
-    columnListEl.appendChild(label);
+    const label = document.createElement("label");
+    label.htmlFor = input.id;
+    label.textContent = h;
+    row.appendChild(input);
+    row.appendChild(label);
+    columnListEl.appendChild(row);
   });
   columnPickerEl.classList.remove("hidden");
   columnSearchEl.focus();
@@ -531,11 +545,30 @@ function closeColumnPicker() {
 
 function filterColumnList() {
   const q = columnSearchEl.value.trim().toLowerCase();
-  columnListEl.querySelectorAll("label").forEach((label) => {
-    const text = label.textContent.toLowerCase();
-    label.classList.toggle("hidden", q && !text.includes(q));
+  columnListEl.querySelectorAll(".field.checkbox").forEach((row) => {
+    const text = row.textContent.toLowerCase();
+    row.classList.toggle("hidden", q && !text.includes(q));
   });
 }
+
+columnListEl.addEventListener("click", (e) => {
+  const row = e.target.closest(".field.checkbox");
+  if (!row) return;
+  const cb = row.querySelector("input[type=checkbox]");
+  if (!cb) return;
+  if (e.target !== cb) cb.checked = !cb.checked;
+});
+
+columnListEl.addEventListener("mousedown", (e) => {
+  const row = e.target.closest(".field.checkbox");
+  if (!row) return;
+  const cb = row.querySelector("input[type=checkbox]");
+  if (!cb) return;
+  if (e.target !== cb) {
+    e.preventDefault();
+    cb.checked = !cb.checked;
+  }
+});
 
 function syncSortControls() {
   sortColEl.value = sortState.col;
@@ -922,6 +955,16 @@ themeToggle.addEventListener("click", () => {
   setTheme(next);
 });
 
+function toggleSidebar() {
+  rootEl.classList.toggle("sidebar-collapsed");
+  const collapsed = rootEl.classList.contains("sidebar-collapsed");
+  if (panelHandle) panelHandle.textContent = collapsed ? "›" : "‹";
+}
+
+panelToggle.addEventListener("click", toggleSidebar);
+if (panelHandle) panelHandle.addEventListener("click", toggleSidebar);
+
+
 dropZone.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropZone.classList.add("dragover");
@@ -976,5 +1019,7 @@ document.addEventListener("keydown", (e) => {
 setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  navigator.serviceWorker.register("sw.js").then((registration) => {
+    registration.update().catch(() => {});
+  }).catch(() => {});
 }
