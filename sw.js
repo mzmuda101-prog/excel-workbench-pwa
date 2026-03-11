@@ -1,10 +1,9 @@
-const CACHE = "excel-wb-pwa-v3";
+const CACHE = "excel-wb-pwa-v6";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./vendor/xlsx.full.min.js",
+  "./styles.css?v=20260311-4",
+  "./app.js?v=20260311-4",
 ];
 
 self.addEventListener("install", (event) => {
