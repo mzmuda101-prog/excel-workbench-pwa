@@ -38,9 +38,6 @@ const lastDaysEl = document.getElementById("lastDays");
 const dateColumnsEl = document.getElementById("dateColumns");
 const datePickBtn = document.getElementById("datePick");
 
-const sortColEl = document.getElementById("sortCol");
-const sortDirEl = document.getElementById("sortDir");
-const sortBtn = document.getElementById("sortBtn");
 const resetFiltersBtn = document.getElementById("resetFiltersBtn");
 const exportCsvBtn = document.getElementById("exportCsvBtn");
 const saveBtn = document.getElementById("saveBtn");
@@ -80,6 +77,8 @@ let sortState = { col: "", dir: "asc" };
 let manualColumnWidths = {};
 
 const THEME_KEY = "excel-workbench-theme";
+const MAX_ROWS_KEY = "excel-workbench-max-rows";
+const INTRO_PLAYED_KEY = "introPlayed";
 
 function log(msg, type = "info") {
   const line = document.createElement("div");
@@ -116,6 +115,19 @@ function setLoading(isLoading, text) {
 
 function setStatus(msg) {
   statusEl.textContent = msg;
+}
+
+function loadMaxRowsPreference() {
+  const saved = localStorage.getItem(MAX_ROWS_KEY);
+  const value = saved ? parseInt(saved, 10) : null;
+  if (value && Number.isFinite(value) && value > 0) {
+    maxRowsEl.value = String(value);
+  }
+}
+
+function saveMaxRowsPreference() {
+  const value = Math.max(1, parseInt(maxRowsEl.value || "200", 10));
+  localStorage.setItem(MAX_ROWS_KEY, String(value));
 }
 
 function setEmptyState(title, subtitle) {
@@ -175,6 +187,35 @@ function parseDateFlexible(value) {
   v = v.replace(/\s+\d{1,2}:\d{2}(:\d{2})?.*$/, "");
   const normalized = v.replace(/[.\/]/g, "-");
 
+  const monthMap = {
+    // PL
+    "sty": 1, "stycz": 1, "stycznia": 1,
+    "lut": 2, "lutego": 2,
+    "mar": 3, "marca": 3,
+    "kwi": 4, "kwie": 4, "kwietnia": 4,
+    "maj": 5, "maja": 5,
+    "cze": 6, "czer": 6, "czerwca": 6,
+    "lip": 7, "lipca": 7,
+    "sie": 8, "sier": 8, "sierpnia": 8,
+    "wrz": 9, "wrzes": 9, "wrzesnia": 9,
+    "paź": 10, "paz": 10, "paźdz": 10, "pazdz": 10, "października": 10, "pazdziernika": 10,
+    "lis": 11, "list": 11, "listopada": 11,
+    "gru": 12, "grud": 12, "grudnia": 12,
+    // EN
+    "jan": 1, "january": 1,
+    "feb": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12,
+  };
+
   let m = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{2}|\d{4})$/);
   if (m) {
     const y = m[3].length === 2 ? Number(`20${m[3]}`) : Number(m[3]);
@@ -184,6 +225,27 @@ function parseDateFlexible(value) {
   m = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m) {
     return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+
+  const words = v.toLowerCase()
+    .replace(/,/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  let wm = words.match(/^(\d{1,2})\s+([a-ząćęłńóśźż\.]+)\s+(\d{4}|\d{2})$/i);
+  if (wm) {
+    const day = Number(wm[1]);
+    const monthKey = wm[2].replace(/\.$/, "");
+    const month = monthMap[monthKey];
+    const year = wm[3].length === 2 ? Number(`20${wm[3]}`) : Number(wm[3]);
+    if (month) return new Date(year, month - 1, day);
+  }
+  wm = words.match(/^([a-ząćęłńóśźż\.]+)\s+(\d{1,2})\s+(\d{4}|\d{2})$/i);
+  if (wm) {
+    const monthKey = wm[1].replace(/\.$/, "");
+    const month = monthMap[monthKey];
+    const day = Number(wm[2]);
+    const year = wm[3].length === 2 ? Number(`20${wm[3]}`) : Number(wm[3]);
+    if (month) return new Date(year, month - 1, day);
   }
 
   const parsed = Date.parse(value);
@@ -417,7 +479,6 @@ function renderTable(headers, rows) {
         sortState.col = h;
         sortState.dir = "asc";
       }
-      syncSortControls();
       sortRows();
       renderTable(currentHeaders, viewRows);
     });
@@ -570,10 +631,6 @@ columnListEl.addEventListener("mousedown", (e) => {
   }
 });
 
-function syncSortControls() {
-  sortColEl.value = sortState.col;
-  sortDirEl.value = sortState.dir;
-}
 
 function attachResizeHandlers() {
   let active = null;
@@ -620,6 +677,51 @@ function initTheme() {
   const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   const theme = saved || (prefersDark ? "dark" : "light");
   setTheme(theme, false);
+}
+
+function initIntroSplash() {
+  const splash = document.getElementById("heroSplash");
+  const vid = document.getElementById("introVideo");
+  if (!splash) return;
+
+  if (sessionStorage.getItem(INTRO_PLAYED_KEY)) {
+    splash.style.display = "none";
+    document.body.classList.remove("splashing");
+    return;
+  }
+
+  document.body.classList.add("splashing");
+
+  const hideSplash = () => {
+    if (!splash || splash.classList.contains("hide")) return;
+    splash.classList.add("hide");
+    sessionStorage.setItem(INTRO_PLAYED_KEY, "true");
+    setTimeout(() => {
+      splash.style.display = "none";
+      document.body.classList.remove("splashing");
+    }, 700);
+  };
+
+  if (vid) {
+    try {
+      vid.currentTime = 0;
+      vid.muted = true;
+      const playPromise = vid.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => hideSplash());
+      }
+    } catch {
+      hideSplash();
+    }
+
+    const fallback = setTimeout(hideSplash, 15000);
+    vid.addEventListener("ended", () => {
+      clearTimeout(fallback);
+      hideSplash();
+    });
+  } else {
+    setTimeout(hideSplash, 8000);
+  }
 }
 
 function setTheme(theme, persist = true) {
@@ -761,16 +863,8 @@ loadBtn.addEventListener("click", () => {
       currentHeaders = data.headers;
       baseRows = data.rows;
       viewRows = data.rows.slice();
-      sortColEl.innerHTML = "";
-      currentHeaders.forEach((h) => {
-        const opt = document.createElement("option");
-        opt.value = h;
-        opt.textContent = h;
-        sortColEl.appendChild(opt);
-      });
       sortState = { col: currentHeaders[0] || "", dir: "asc" };
       manualColumnWidths = {};
-      syncSortControls();
       columnSelections.filter1.clear();
       columnSelections.filter2.clear();
       columnSelections.date.clear();
@@ -794,14 +888,6 @@ applyFilterBtn.addEventListener("click", () => {
   toast("Zastosowano filtry", "info");
 });
 
-sortBtn.addEventListener("click", () => {
-  if (!currentHeaders.length) return;
-  sortState.col = sortColEl.value;
-  sortState.dir = sortDirEl.value;
-  sortRows();
-  renderTable(currentHeaders, viewRows);
-  toast("Posortowano dane", "info");
-});
 
 resetFiltersBtn.addEventListener("click", () => {
   searchQueryEl.value = "";
@@ -947,7 +1033,14 @@ tbodyEl.addEventListener("dblclick", (e) => {
   el.addEventListener("change", updateFilterBadge);
 });
 
+maxRowsEl.addEventListener("change", () => {
+  saveMaxRowsPreference();
+  renderTable(currentHeaders, viewRows);
+});
+
+initIntroSplash();
 initTheme();
+loadMaxRowsPreference();
 attachResizeHandlers();
 
 themeToggle.addEventListener("click", () => {
@@ -1019,7 +1112,7 @@ document.addEventListener("keydown", (e) => {
 setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260311").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }

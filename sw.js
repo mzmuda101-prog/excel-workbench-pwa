@@ -1,4 +1,4 @@
-const CACHE = "excel-wb-pwa-v2";
+const CACHE = "excel-wb-pwa-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,7 +24,18 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
-  );
+  const { request } = event;
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
 });
