@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260311" />
+    <link rel="stylesheet" href="styles.css?v=20260311-5" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -86,6 +86,10 @@
                   <input id="headerRow" type="number" min="1" value="1" />
                 </label>
               </div>
+              <label class="field checkbox">
+                <input id="autoHeaderRow" type="checkbox" />
+                <span>Auto wykryj wiersz nagłówka</span>
+              </label>
 
               <div class="row">
                 <label class="field">
@@ -277,6 +281,10 @@
             <div class="shortcut-hint">
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Enter</kbd> <span>Filtruj</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>E</kbd> <span>Eksport CSV</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>S</kbd> <span>Zapisz</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>S</kbd> <span>Zapisz jako</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>F</kbd> <span>Reset filtrów</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>W</kbd> <span>Reset szerokości</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>K</kbd> <span>Kolumny</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>/</kbd> <span>Motyw</span></div>
               <div class="shortcut-row"><kbd>Esc</kbd> <span>Zamknij modal</span></div>
@@ -292,7 +300,16 @@
           <section class="panel table-panel">
             <div class="table-toolbar">
               <div class="status-badge" id="status">Brak danych</div>
+              <div class="quick-search hidden" id="quickSearchWrap">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input id="quickSearch" type="text" placeholder="Szybkie szukanie..." />
+                <button class="btn btn-sm ghost" id="quickSearchBtn" type="button">Filtruj</button>
+              </div>
               <div class="table-actions">
+                <button class="btn btn-sm ghost" id="readingToggle" type="button">Tryb czytania</button>
                 <button class="btn btn-sm ghost" id="exportCsvBtn" type="button">Eksport CSV</button>
               </div>
             </div>
@@ -354,6 +371,6 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260311"></script>
+    <script src="app.js?v=20260311-5"></script>
   </body>
 </html>

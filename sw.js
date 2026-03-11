@@ -1,9 +1,9 @@
-const CACHE = "excel-wb-pwa-v3";
+const CACHE = "excel-wb-pwa-v8";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
+  "./styles.css?v=20260311-5",
+  "./app.js?v=20260311-5",
   "./vendor/xlsx.full.min.js",
 ];
 

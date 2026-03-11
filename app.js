@@ -15,6 +15,7 @@ const fileNameEl = document.getElementById("fileName");
 const fileNameTextEl = document.getElementById("fileNameText");
 const sheetSelect = document.getElementById("sheetSelect");
 const headerRowEl = document.getElementById("headerRow");
+const autoHeaderRowEl = document.getElementById("autoHeaderRow");
 const displayModeEl = document.getElementById("displayMode");
 const maxRowsEl = document.getElementById("maxRows");
 const loadBtn = document.getElementById("loadBtn");
@@ -43,6 +44,10 @@ const exportCsvBtn = document.getElementById("exportCsvBtn");
 const saveBtn = document.getElementById("saveBtn");
 const saveAsBtn = document.getElementById("saveAsBtn");
 const resetWidthsBtn = document.getElementById("resetWidthsBtn");
+const readingToggle = document.getElementById("readingToggle");
+const quickSearchWrap = document.getElementById("quickSearchWrap");
+const quickSearchEl = document.getElementById("quickSearch");
+const quickSearchBtn = document.getElementById("quickSearchBtn");
 
 const columnPickerEl = document.getElementById("columnPicker");
 const columnListEl = document.getElementById("columnList");
@@ -68,6 +73,7 @@ let viewRows = [];
 let currentFileName = "";
 let currentSheetName = "";
 let currentHeaderRow = 1;
+let wasSidebarCollapsed = false;
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
@@ -484,6 +490,10 @@ function renderTable(headers, rows) {
     const th = document.createElement("th");
     th.className = "guide-cell";
     th.textContent = XLSX.utils.encode_col(i);
+    const resizer = document.createElement("div");
+    resizer.className = "col-resizer";
+    resizer.dataset.colIndex = String(i);
+    th.appendChild(resizer);
     guideRow.appendChild(th);
   });
   theadEl.appendChild(guideRow);
@@ -515,10 +525,6 @@ function renderTable(headers, rows) {
       th.appendChild(arrow);
     }
 
-    const resizer = document.createElement("div");
-    resizer.className = "col-resizer";
-    resizer.dataset.colIndex = String(i);
-    th.appendChild(resizer);
     headRow.appendChild(th);
   });
   theadEl.appendChild(headRow);
@@ -574,6 +580,38 @@ function buildRows(sheet, headerRow) {
     rows.push({ values, display, rawValues: values, rowIndex0: r });
   }
   return { headers, rows };
+}
+
+function detectHeaderRowSimple(sheet) {
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const maxRow = Math.min(range.e.r, range.s.r + 100);
+  for (let r = range.s.r; r <= maxRow; r++) {
+    let filled = 0;
+    let stringCount = 0;
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const v = cell.v;
+      if (v === null || v === "") continue;
+      filled += 1;
+      if (typeof v === "string") stringCount += 1;
+      if (filled >= 2 || (filled >= 1 && stringCount >= 1)) {
+        return r + 1;
+      }
+    }
+  }
+  return 1;
+}
+
+function applyAutoHeaderRowIfEnabled() {
+  if (!autoHeaderRowEl || !autoHeaderRowEl.checked) return false;
+  if (!workbook) return false;
+  const sheetName = sheetSelect.value;
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return false;
+  const detected = detectHeaderRowSimple(sheet);
+  headerRowEl.value = String(detected);
+  return true;
 }
 
 function columnSummary(set) {
@@ -886,6 +924,7 @@ loadBtn.addEventListener("click", () => {
         log("Brak arkusza.", "error");
         return;
       }
+      applyAutoHeaderRowIfEnabled();
       const headerRow = Math.max(1, parseInt(headerRowEl.value || "1", 10));
       currentHeaderRow = headerRow;
       currentSheetName = sheetName;
@@ -917,6 +956,25 @@ applyFilterBtn.addEventListener("click", () => {
   updateFilterBadge();
   toast("Zastosowano filtry", "info");
 });
+
+function applyQuickSearch() {
+  if (!quickSearchEl || !currentHeaders.length) return;
+  searchQueryEl.value = quickSearchEl.value;
+  applyFilters();
+  sortRows();
+  renderTable(currentHeaders, viewRows);
+  updateFilterBadge();
+}
+
+if (quickSearchBtn) {
+  quickSearchBtn.addEventListener("click", applyQuickSearch);
+}
+
+if (quickSearchEl) {
+  quickSearchEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") applyQuickSearch();
+  });
+}
 
 
 resetFiltersBtn.addEventListener("click", () => {
@@ -1063,6 +1121,10 @@ tbodyEl.addEventListener("dblclick", (e) => {
   el.addEventListener("change", updateFilterBadge);
 });
 
+searchQueryEl.addEventListener("input", () => {
+  if (quickSearchEl) quickSearchEl.value = searchQueryEl.value;
+});
+
 maxRowsEl.addEventListener("change", () => {
   saveMaxRowsPreference();
   renderTable(currentHeaders, viewRows);
@@ -1080,12 +1142,37 @@ themeToggle.addEventListener("click", () => {
 
 function toggleSidebar() {
   rootEl.classList.toggle("sidebar-collapsed");
+  syncSidebarHandle();
+}
+
+function syncSidebarHandle() {
   const collapsed = rootEl.classList.contains("sidebar-collapsed");
   if (panelHandle) panelHandle.textContent = collapsed ? "›" : "‹";
 }
 
+function setReadingMode(enabled) {
+  rootEl.classList.toggle("reading", enabled);
+  if (enabled) {
+    wasSidebarCollapsed = rootEl.classList.contains("sidebar-collapsed");
+    rootEl.classList.add("sidebar-collapsed");
+    if (quickSearchWrap) quickSearchWrap.classList.remove("hidden");
+    if (readingToggle) readingToggle.textContent = "Tryb standardowy";
+  } else {
+    if (!wasSidebarCollapsed) rootEl.classList.remove("sidebar-collapsed");
+    if (quickSearchWrap) quickSearchWrap.classList.add("hidden");
+    if (readingToggle) readingToggle.textContent = "Tryb czytania";
+  }
+  syncSidebarHandle();
+}
+
 panelToggle.addEventListener("click", toggleSidebar);
 if (panelHandle) panelHandle.addEventListener("click", toggleSidebar);
+if (readingToggle) {
+  readingToggle.addEventListener("click", () => {
+    const enabled = !rootEl.classList.contains("reading");
+    setReadingMode(enabled);
+  });
+}
 
 
 dropZone.addEventListener("dragover", (e) => {
@@ -1114,7 +1201,16 @@ dropZone.addEventListener("keydown", (e) => {
 sheetSelect.addEventListener("change", () => {
   if (!workbook) return;
   setStatus("Wybrano arkusz");
+  applyAutoHeaderRowIfEnabled();
 });
+
+if (autoHeaderRowEl) {
+  autoHeaderRowEl.addEventListener("change", () => {
+    if (applyAutoHeaderRowIfEnabled()) {
+      toast("Wykryto wiersz nagłówka", "info");
+    }
+  });
+}
 
 document.addEventListener("keydown", (e) => {
   const meta = e.ctrlKey || e.metaKey;
@@ -1122,9 +1218,25 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     applyFilterBtn.click();
   }
+  if (meta && !e.shiftKey && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    saveBtn.click();
+  }
+  if (meta && e.shiftKey && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    saveAsBtn.click();
+  }
   if (meta && e.shiftKey && e.key.toLowerCase() === "e") {
     e.preventDefault();
     exportCsvBtn.click();
+  }
+  if (meta && e.shiftKey && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    resetFiltersBtn.click();
+  }
+  if (meta && e.shiftKey && e.key.toLowerCase() === "w") {
+    e.preventDefault();
+    resetWidthsBtn.click();
   }
   if (meta && e.key.toLowerCase() === "k") {
     e.preventDefault();

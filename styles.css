@@ -672,6 +672,35 @@ details.panel[open] > summary .chevron { transform: rotate(180deg); }
   gap: 8px;
 }
 
+.quick-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--muted);
+  flex-wrap: nowrap;
+}
+
+.quick-search input {
+  border: none;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--ink);
+  min-width: 180px;
+}
+
+.quick-search input:focus {
+  outline: none;
+}
+
+.reading .panel-toggle,
+.reading .sidebar-handle {
+  display: none;
+}
+
 .status-badge {
   font-size: 11.5px;
   font-weight: 500;
@@ -772,11 +801,35 @@ thead .guide-row th {
   cursor: default;
   height: var(--guide-row-height);
   padding: 6px 10px;
+  position: relative;
 }
 
 .corner-cell {
   background: var(--panel);
   border-right: 1px solid var(--border);
+}
+
+.guide-cell .col-resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.guide-cell .col-resizer::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: rgba(90, 96, 86, 0.25);
+}
+
+[data-theme="dark"] .guide-cell .col-resizer::after {
+  background: rgba(220, 230, 220, 0.22);
 }
 
 .row-head {
@@ -823,15 +876,6 @@ tbody tr { transition: background var(--t-fast); }
 tbody tr:hover td { background: rgba(47,111,92,.04); }
 [data-theme="dark"] tbody tr:hover td { background: rgba(77,184,143,.05); }
 tbody tr:last-child td { border-bottom: none; }
-
-.col-resizer {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-}
 
 .resizing {
   cursor: col-resize;
