@@ -15,11 +15,9 @@ const fileNameEl = document.getElementById("fileName");
 const fileNameTextEl = document.getElementById("fileNameText");
 const sheetSelect = document.getElementById("sheetSelect");
 const headerRowEl = document.getElementById("headerRow");
-const autoDetectBtn = document.getElementById("autoDetectBtn");
 const displayModeEl = document.getElementById("displayMode");
 const maxRowsEl = document.getElementById("maxRows");
 const loadBtn = document.getElementById("loadBtn");
-const hideEmptyColsEl = document.getElementById("hideEmptyCols");
 
 const searchQueryEl = document.getElementById("searchQuery");
 const searchQuery2El = document.getElementById("searchQuery2");
@@ -45,8 +43,6 @@ const exportCsvBtn = document.getElementById("exportCsvBtn");
 const saveBtn = document.getElementById("saveBtn");
 const saveAsBtn = document.getElementById("saveAsBtn");
 const resetWidthsBtn = document.getElementById("resetWidthsBtn");
-const resetHeightsBtn = document.getElementById("resetHeightsBtn");
-const toggleCellStylesEl = document.getElementById("toggleCellStyles");
 
 const columnPickerEl = document.getElementById("columnPicker");
 const columnListEl = document.getElementById("columnList");
@@ -58,32 +54,19 @@ const closePickerBtn = document.getElementById("closePicker");
 
 const themeToggle = document.getElementById("themeToggle");
 const panelToggle = document.getElementById("panelToggle");
-const readingToggle = document.getElementById("readingToggle");
 const panelHandle = document.getElementById("panelHandle");
 const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
-const readingSearchEl = document.getElementById("readingSearch");
 
 const quickRangeButtons = Array.from(document.querySelectorAll(".chip[data-range]"));
 
 let workbook = null;
 let currentHeaders = [];
-let currentHeaderStyles = [];
-let currentColIndices = [];
 let baseRows = [];
 let viewRows = [];
 let currentFileName = "";
 let currentSheetName = "";
-let currentHeaderRow1 = 1;
-let currentMerges = [];
-let currentDataStartRow0 = 0;
-let currentDataEndRow0 = 0;
-let currentColIndexMap = {};
-let currentDataStartRow1 = 1;
-let currentColumnTypes = [];
-let readingMode = false;
-let prevSidebarCollapsed = false;
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
@@ -92,8 +75,6 @@ const columnSelections = {
 let activePickerKey = null;
 let sortState = { col: "", dir: "asc" };
 let manualColumnWidths = {};
-let manualRowHeights = {};
-let autoRangeEndRow = null;
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -172,203 +153,13 @@ function toDisplay(value) {
   return String(value);
 }
 
-function normalizeRgb(rgb) {
-  if (!rgb || typeof rgb !== "string") return null;
-  const cleaned = rgb.trim();
-  if (cleaned.length === 8) return `#${cleaned.slice(2).toLowerCase()}`;
-  if (cleaned.length === 6) return `#${cleaned.toLowerCase()}`;
-  return null;
-}
-
-function readableTextColor(bg) {
-  if (!bg || bg[0] !== "#" || bg.length !== 7) return null;
-  const r = parseInt(bg.slice(1, 3), 16);
-  const g = parseInt(bg.slice(3, 5), 16);
-  const b = parseInt(bg.slice(5, 7), 16);
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance < 0.5 ? "#f7f7f7" : "#1f2a24";
-}
-
-function extractHeaderStyle(cell) {
-  if (!cell || !cell.s) return null;
-  const fill = cell.s.fill;
-  const font = cell.s.font;
-  const bg = fill && fill.fgColor ? normalizeRgb(fill.fgColor.rgb) : null;
-  const color = font && font.color ? normalizeRgb(font.color.rgb) : null;
-  const bold = font && !!font.bold;
-  if (!bg && !color && !bold) return null;
-  return { bg, color, bold };
-}
-
-function extractCellStyle(cell) {
-  if (!cell || !cell.s) return null;
-  const fill = cell.s.fill;
-  const font = cell.s.font;
-  const bg = fill && fill.fgColor ? normalizeRgb(fill.fgColor.rgb) : null;
-  const color = font && font.color ? normalizeRgb(font.color.rgb) : null;
-  const bold = font && !!font.bold;
-  if (!bg && !color && !bold) return null;
-  return { bg, color, bold };
-}
-
-function isLikelyDateString(value) {
-  if (typeof value !== "string") return false;
-  const v = value.trim();
-  if (!v) return false;
-  if (/[-/.]/.test(v)) return true;
-  if (/[A-Za-ząćęłńóśźż]{3,}/i.test(v)) return true;
-  return false;
-}
-
-function inferColumnTypes(rows, limit = 200) {
-  const counts = currentHeaders.map(() => ({ total: 0, num: 0, date: 0, text: 0 }));
-  const sample = rows.slice(0, limit);
-  sample.forEach((row) => {
-    row.values.forEach((v, i) => {
-      if (v === null || v === "") return;
-      counts[i].total += 1;
-      if (v instanceof Date) {
-        counts[i].date += 1;
-        return;
-      }
-      if (typeof v === "number") {
-        counts[i].num += 1;
-        return;
-      }
-      if (typeof v === "string") {
-        if (isLikelyDateString(v) && parseDateFlexible(v)) {
-          counts[i].date += 1;
-        } else if (!Number.isNaN(Number(v))) {
-          counts[i].num += 1;
-        } else {
-          counts[i].text += 1;
-        }
-        return;
-      }
-      counts[i].text += 1;
-    });
-  });
-
-  return counts.map((c) => {
-    if (!c.total) return "";
-    const dateRatio = c.date / c.total;
-    const numRatio = c.num / c.total;
-    const textRatio = c.text / c.total;
-    if (dateRatio >= 0.6) return "Data";
-    if (numRatio >= 0.6) return "Liczba";
-    if (textRatio >= 0.6) return "Tekst";
-    return "";
-  });
-}
-
-function detectHeaderRow(sheet) {
-  if (!sheet || !sheet["!ref"]) return 1;
-  const range = XLSX.utils.decode_range(sheet["!ref"]);
-  const merges = sheet["!merges"] || [];
-  const maxScan = Math.min(range.e.r, range.s.r + 50);
-  let best = { row: range.s.r, score: -Infinity };
-
-  for (let r = range.s.r; r <= maxScan; r++) {
-    let text = 0;
-    let num = 0;
-    let any = false;
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
-      if (!cell || cell.v === null || cell.v === "") continue;
-      any = true;
-      if (typeof cell.v === "string") text += 1;
-      else if (typeof cell.v === "number") num += 1;
-      else text += 1;
-    }
-    if (!any || text === 0) continue;
-    let score = text * 2 - num;
-    const hasMerge = merges.some((m) => m.s.r <= r && m.e.r >= r && m.e.c > m.s.c);
-    if (hasMerge) score -= 1;
-    if (score > best.score) best = { row: r, score };
-  }
-
-  return best.row + 1;
-}
-
-function detectDataEndRow(sheet, dataStartRow1) {
-  if (!sheet || !sheet["!ref"]) return dataStartRow1;
-  const range = XLSX.utils.decode_range(sheet["!ref"]);
-  const start0 = Math.max(range.s.r, dataStartRow1 - 1);
-  let lastDataRow0 = start0;
-  let emptyStreak = 0;
-  for (let r = start0; r <= range.e.r; r++) {
-    let any = false;
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
-      if (cell && cell.v !== null && cell.v !== "") {
-        any = true;
-        break;
-      }
-    }
-    if (any) {
-      lastDataRow0 = r;
-      emptyStreak = 0;
-    } else {
-      emptyStreak += 1;
-      if (emptyStreak >= 2) break;
-    }
-  }
-  return lastDataRow0 + 1;
-}
-
 function getDisplayValue(row, index) {
   if (row && Array.isArray(row.display) && index < row.display.length) {
     return row.display[index];
   }
   if (row && Array.isArray(row.values) && index < row.values.length) {
-  return toDisplay(row.values[index]);
-}
-
-function computeRowHeaderWidth(rows) {
-  let maxRow = currentHeaderRow1 || 1;
-  rows.forEach((row) => {
-    if (typeof row.rowIndex0 === "number") {
-      maxRow = Math.max(maxRow, row.rowIndex0 + 1);
-    }
-  });
-  const digits = String(maxRow).length;
-  return Math.min(64, Math.max(32, 12 + digits * 8));
-}
-
-function buildMergeMaps(rows) {
-  const merges = Array.isArray(currentMerges) ? currentMerges : [];
-  if (!merges.length) return { skip: new Set(), topLeft: new Map() };
-  const visibleRows = new Set(rows.map((r) => r.rowIndex0));
-  const skip = new Set();
-  const topLeft = new Map();
-
-  merges.forEach((m) => {
-    const s = m.s;
-    const e = m.e;
-    if (s.r < currentDataStartRow0 || e.r > currentDataEndRow0) return;
-    for (let c = s.c; c <= e.c; c++) {
-      if (currentColIndexMap[c] === undefined) return;
-    }
-    for (let r = s.r; r <= e.r; r++) {
-      if (!visibleRows.has(r)) return;
-    }
-    const colStart = currentColIndexMap[s.c];
-    const colEnd = currentColIndexMap[e.c];
-    if (colStart === undefined || colEnd === undefined) return;
-    const colSpan = colEnd - colStart + 1;
-    const rowSpan = e.r - s.r + 1;
-    if (colSpan <= 1 && rowSpan <= 1) return;
-    topLeft.set(`${s.r}:${s.c}`, { colspan: colSpan, rowspan: rowSpan });
-    for (let r = s.r; r <= e.r; r++) {
-      for (let c = s.c; c <= e.c; c++) {
-        if (r === s.r && c === s.c) continue;
-        skip.add(`${r}:${c}`);
-      }
-    }
-  });
-
-  return { skip, topLeft };
-}
+    return toDisplay(row.values[index]);
+  }
   return "";
 }
 
@@ -665,16 +456,8 @@ function renderTable(headers, rows) {
   tbodyEl.innerHTML = "";
 
   const widths = computeColumnWidths(headers, rows);
-  const rowHeaderWidth =
-    typeof computeRowHeaderWidth === "function" ? computeRowHeaderWidth(rows) : 36;
-  const mergeMaps =
-    typeof buildMergeMaps === "function"
-      ? buildMergeMaps(rows)
-      : { skip: new Set(), topLeft: new Map() };
+
   const colgroup = document.createElement("colgroup");
-  const rowCol = document.createElement("col");
-  rowCol.style.width = `${rowHeaderWidth}px`;
-  colgroup.appendChild(rowCol);
   widths.forEach((w) => {
     const col = document.createElement("col");
     col.style.width = `${w}px`;
@@ -685,54 +468,10 @@ function renderTable(headers, rows) {
   tableEl.appendChild(theadEl);
   tableEl.appendChild(tbodyEl);
 
-  const guideRow = document.createElement("tr");
-  guideRow.className = "guide-row";
-  const corner = document.createElement("th");
-  corner.className = "row-head col-head corner";
-  corner.textContent = "";
-  guideRow.appendChild(corner);
-  headers.forEach((h, i) => {
-    const th = document.createElement("th");
-    th.className = "col-head";
-    const colIndex = currentColIndices[i] ?? i;
-    th.textContent = XLSX.utils.encode_col(colIndex);
-    const resizer = document.createElement("div");
-    resizer.className = "col-resizer";
-    resizer.dataset.colIndex = String(i);
-    th.appendChild(resizer);
-    guideRow.appendChild(th);
-  });
-  theadEl.appendChild(guideRow);
-
   const headRow = document.createElement("tr");
-  headRow.className = "header-row";
-  const rowHead = document.createElement("th");
-  rowHead.className = "row-head data-head";
-  rowHead.textContent = currentHeaderRow1 ? String(currentHeaderRow1) : "1";
-  headRow.appendChild(rowHead);
   headers.forEach((h, i) => {
     const th = document.createElement("th");
-    th.className = "data-head";
-    const label = document.createElement("span");
-    label.className = "header-label";
-    label.textContent = h;
-    th.appendChild(label);
-    const typeLabel = currentColumnTypes[i];
-    if (typeLabel) {
-      const badge = document.createElement("span");
-      badge.className = "type-badge";
-      badge.textContent = typeLabel;
-      th.appendChild(badge);
-    }
-    const style = currentHeaderStyles && currentHeaderStyles[i] ? currentHeaderStyles[i] : null;
-    if (style) {
-      if (style.bg) {
-        th.style.backgroundColor = style.bg;
-        th.style.color = style.color || readableTextColor(style.bg) || "";
-      }
-      if (style.bold) th.style.fontWeight = "700";
-      if (style.color && !style.bg) th.style.color = style.color;
-    }
+    th.textContent = h;
     th.addEventListener("click", () => {
       if (sortState.col === h) {
         sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
@@ -751,6 +490,10 @@ function renderTable(headers, rows) {
       th.appendChild(arrow);
     }
 
+    const resizer = document.createElement("div");
+    resizer.className = "col-resizer";
+    resizer.dataset.colIndex = String(i);
+    th.appendChild(resizer);
     headRow.appendChild(th);
   });
   theadEl.appendChild(headRow);
@@ -761,115 +504,32 @@ function renderTable(headers, rows) {
     if (typeof row.rowIndex0 === "number") {
       tr.dataset.rowIndex = String(row.rowIndex0);
     }
-    const rowTh = document.createElement("th");
-    rowTh.className = "row-head";
-    const rowNumber = typeof row.rowIndex0 === "number" ? row.rowIndex0 + 1 : "";
-    rowTh.textContent = rowNumber ? String(rowNumber) : "";
-    if (typeof row.rowIndex0 === "number" && manualRowHeights[row.rowIndex0]) {
-      const h = manualRowHeights[row.rowIndex0];
-      tr.style.height = `${h}px`;
-      rowTh.style.height = `${h}px`;
-      rowTh.style.lineHeight = `${h - 2}px`;
-    }
-    const rowResizer = document.createElement("div");
-    rowResizer.className = "row-resizer";
-    if (typeof row.rowIndex0 === "number") {
-      rowResizer.dataset.rowIndex = String(row.rowIndex0);
-    }
-    rowTh.appendChild(rowResizer);
-    tr.appendChild(rowTh);
     row.values.forEach((v, i) => {
-      const sheetCol = currentColIndices[i] ?? i;
-      if (mergeMaps.skip.has(`${row.rowIndex0}:${sheetCol}`)) {
-        return;
-      }
       const td = document.createElement("td");
       td.textContent = getDisplayValue(row, i);
       td.dataset.colIndex = String(i);
-      if (toggleCellStylesEl && toggleCellStylesEl.checked && row.styles && row.styles[i]) {
-        const style = row.styles[i];
-        if (style.bg) {
-          td.style.backgroundColor = style.bg;
-          td.style.color = style.color || readableTextColor(style.bg) || "";
-        }
-        if (style.bold) td.style.fontWeight = "600";
-        if (style.color && !style.bg) td.style.color = style.color;
-      }
-      const key = `${row.rowIndex0}:${sheetCol}`;
-      const merge = mergeMaps.topLeft.get(key);
-      if (merge) {
-        td.colSpan = merge.colspan;
-        td.rowSpan = merge.rowspan;
-      }
-      if (typeof row.rowIndex0 === "number" && manualRowHeights[row.rowIndex0]) {
-        const h = manualRowHeights[row.rowIndex0];
-        td.style.height = `${h}px`;
-        td.style.lineHeight = `${h - 2}px`;
-      }
       tr.appendChild(td);
     });
     tbodyEl.appendChild(tr);
   });
 
-  let status = `Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})`;
-  if (currentHeaderRow1 && currentDataStartRow1) {
-    status += ` • Naglowek: ${currentHeaderRow1} • Dane od: ${currentDataStartRow1}`;
-  }
-  setStatus(status);
+  setStatus(`Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})`);
 }
 
-function buildRows(sheet, dataStartRow1, options = {}) {
+function buildRows(sheet, headerRow) {
   const range = XLSX.utils.decode_range(sheet["!ref"]);
-  const headerRow0 = Math.max(range.s.r, dataStartRow1 - 2);
-  const dataStartRow0 = Math.max(headerRow0 + 1, dataStartRow1 - 1);
-  const endRow0 = options.endRow1 ? Math.min(range.e.r, options.endRow1 - 1) : range.e.r;
-
-  const colIndices = [];
-  for (let c = range.s.c; c <= range.e.c; c++) {
-    if (options.hideEmptyCols) {
-      let hasData = false;
-      for (let r = dataStartRow0; r <= endRow0; r++) {
-        const cell = sheet[XLSX.utils.encode_cell({ r, c })];
-        if (cell && cell.v !== null && cell.v !== "") {
-          hasData = true;
-          break;
-        }
-      }
-      if (!hasData) continue;
-    }
-    colIndices.push(c);
-  }
-  const colIndexMap = {};
-  colIndices.forEach((c, idx) => {
-    colIndexMap[c] = idx;
-  });
-
   const headers = [];
-  const headerStyles = [];
-  for (const c of colIndices) {
-    let cell = sheet[XLSX.utils.encode_cell({ r: headerRow0, c })];
-    let v = cell ? cell.v : null;
-    if (v === null || v === "") {
-      for (let rr = headerRow0 - 1; rr >= Math.max(range.s.r, headerRow0 - 3); rr--) {
-        const above = sheet[XLSX.utils.encode_cell({ r: rr, c })];
-        if (above && above.v !== null && above.v !== "") {
-          v = above.v;
-          cell = above;
-          break;
-        }
-      }
-    }
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r: headerRow - 1, c })];
+    const v = cell ? cell.v : null;
     headers.push(v ? String(v).trim() : XLSX.utils.encode_col(c));
-    headerStyles.push(extractHeaderStyle(cell));
   }
-
   const rows = [];
-  for (let r = dataStartRow0; r <= endRow0; r++) {
+  for (let r = headerRow; r <= range.e.r; r++) {
     const values = [];
     const display = [];
-    const styles = [];
     let any = false;
-    for (const c of colIndices) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       let v = cell ? cell.v : null;
       let shown = cell && cell.w ? String(cell.w) : toDisplay(v);
@@ -879,23 +539,12 @@ function buildRows(sheet, dataStartRow1, options = {}) {
       }
       values.push(v);
       display.push(shown);
-      styles.push(extractCellStyle(cell));
       if (v !== null && v !== "") any = true;
     }
     if (!any) continue;
-    rows.push({ values, display, rawValues: values, styles, rowIndex0: r });
+    rows.push({ values, display, rawValues: values, rowIndex0: r });
   }
-  const merges = Array.isArray(sheet["!merges"]) ? sheet["!merges"] : [];
-  return {
-    headers,
-    rows,
-    headerStyles,
-    colIndices,
-    colIndexMap,
-    dataStartRow0,
-    dataEndRow0: endRow0,
-    merges,
-  };
+  return { headers, rows };
 }
 
 function columnSummary(set) {
@@ -987,45 +636,26 @@ function attachResizeHandlers() {
   let active = null;
   let startX = 0;
   let startW = 0;
-  let startY = 0;
-  let startH = 0;
 
   const start = (e) => {
     const handle = e.target.closest(".col-resizer");
-    const rowHandle = e.target.closest(".row-resizer");
-    if (!handle && !rowHandle) return;
+    if (!handle) return;
     e.preventDefault();
-    if (handle) {
-      const colIndex = parseInt(handle.dataset.colIndex, 10);
-      const th = handle.parentElement;
-      active = { type: "col", colIndex, th };
-      startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
-      startW = th.getBoundingClientRect().width;
-    } else if (rowHandle) {
-      const rowIndex = parseInt(rowHandle.dataset.rowIndex, 10);
-      const tr = rowHandle.closest("tr");
-      active = { type: "row", rowIndex, tr };
-      startY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
-      startH = tr.getBoundingClientRect().height;
-    }
+    const colIndex = parseInt(handle.dataset.colIndex, 10);
+    const th = handle.parentElement;
+    active = { colIndex, th };
+    startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+    startW = th.getBoundingClientRect().width;
     document.body.classList.add("resizing");
   };
 
   const move = (e) => {
     if (!active) return;
-    if (active.type === "col") {
-      const x = e.clientX || (e.touches && e.touches[0].clientX) || 0;
-      const delta = x - startX;
-      const next = Math.max(80, Math.min(520, Math.round(startW + delta)));
-      manualColumnWidths[active.colIndex] = next;
-      renderTable(currentHeaders, viewRows);
-    } else if (active.type === "row") {
-      const y = e.clientY || (e.touches && e.touches[0].clientY) || 0;
-      const delta = y - startY;
-      const next = Math.max(26, Math.min(200, Math.round(startH + delta)));
-      manualRowHeights[active.rowIndex] = next;
-      renderTable(currentHeaders, viewRows);
-    }
+    const x = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+    const delta = x - startX;
+    const next = Math.max(80, Math.min(520, Math.round(startW + delta)));
+    manualColumnWidths[active.colIndex] = next;
+    renderTable(currentHeaders, viewRows);
   };
 
   const stop = () => {
@@ -1109,9 +739,8 @@ async function handleFile(file) {
   try {
     setLoading(true, "Wczytywanie pliku...");
     const data = await file.arrayBuffer();
-    workbook = XLSX.read(data, { cellDates: true, cellStyles: true });
+    workbook = XLSX.read(data, { cellDates: true });
     sheetSelect.innerHTML = "";
-    autoRangeEndRow = null;
     workbook.SheetNames.forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s;
@@ -1229,23 +858,9 @@ loadBtn.addEventListener("click", () => {
         return;
       }
       const headerRow = Math.max(1, parseInt(headerRowEl.value || "1", 10));
-      const dataStartRow1 = headerRow + 1;
       currentSheetName = sheetName;
-      currentHeaderRow1 = headerRow;
-      currentDataStartRow1 = dataStartRow1;
-      const endRow1 = autoRangeEndRow && autoRangeEndRow >= dataStartRow1 ? autoRangeEndRow : null;
-      const data = buildRows(sheet, dataStartRow1, {
-        endRow1,
-        hideEmptyCols: hideEmptyColsEl ? hideEmptyColsEl.checked : false,
-      });
+      const data = buildRows(sheet, headerRow);
       currentHeaders = data.headers;
-      currentHeaderStyles = data.headerStyles || [];
-      currentColIndices = data.colIndices || [];
-      currentColIndexMap = data.colIndexMap || {};
-      currentDataStartRow0 = data.dataStartRow0 ?? 0;
-      currentDataEndRow0 = data.dataEndRow0 ?? 0;
-      currentMerges = data.merges || [];
-      currentColumnTypes = inferColumnTypes(data.rows || []);
       baseRows = data.rows;
       viewRows = data.rows.slice();
       sortState = { col: currentHeaders[0] || "", dir: "asc" };
@@ -1262,27 +877,6 @@ loadBtn.addEventListener("click", () => {
       setLoading(false);
     }
   }, 50);
-});
-
-autoDetectBtn.addEventListener("click", () => {
-  if (!workbook) {
-    toast("Najpierw wybierz plik", "warning");
-    return;
-  }
-  const sheetName = sheetSelect.value;
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet || !sheet["!ref"]) {
-    toast("Brak arkusza", "error");
-    return;
-  }
-  const headerRow1 = detectHeaderRow(sheet);
-  const dataStartRow1 = Math.max(1, headerRow1 + 1);
-  headerRowEl.value = String(headerRow1);
-  autoRangeEndRow = detectDataEndRow(sheet, dataStartRow1);
-  currentHeaderRow1 = headerRow1;
-  currentDataStartRow1 = dataStartRow1;
-  setStatus(`Wykryto naglowek: ${headerRow1} • Dane od: ${dataStartRow1}`);
-  toast(`Wykryto nagłówek: wiersz ${headerRow1}`, "info");
 });
 
 applyFilterBtn.addEventListener("click", () => {
@@ -1374,14 +968,6 @@ resetWidthsBtn.addEventListener("click", () => {
   renderTable(currentHeaders, viewRows);
   toast("Przywrocono automatyczne szerokosci", "info");
 });
-resetHeightsBtn.addEventListener("click", () => {
-  manualRowHeights = {};
-  renderTable(currentHeaders, viewRows);
-  toast("Przywrocono automatyczne wysokosci", "info");
-});
-toggleCellStylesEl.addEventListener("change", () => {
-  renderTable(currentHeaders, viewRows);
-});
 
 tbodyEl.addEventListener("dblclick", (e) => {
   const td = e.target.closest("td");
@@ -1447,39 +1033,9 @@ tbodyEl.addEventListener("dblclick", (e) => {
   el.addEventListener("change", updateFilterBadge);
 });
 
-let readingSearchTimer = null;
-if (readingSearchEl) {
-  readingSearchEl.addEventListener("input", () => {
-    searchQueryEl.value = readingSearchEl.value;
-    updateFilterBadge();
-    if (readingSearchTimer) clearTimeout(readingSearchTimer);
-    readingSearchTimer = setTimeout(() => {
-      applyFilters();
-      sortRows();
-      renderTable(currentHeaders, viewRows);
-    }, 250);
-  });
-  readingSearchEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      applyFilterBtn.click();
-    }
-  });
-}
-
-searchQueryEl.addEventListener("input", () => {
-  if (readingSearchEl && readingSearchEl.value !== searchQueryEl.value) {
-    readingSearchEl.value = searchQueryEl.value;
-  }
-});
-
 maxRowsEl.addEventListener("change", () => {
   saveMaxRowsPreference();
   renderTable(currentHeaders, viewRows);
-});
-
-headerRowEl.addEventListener("input", () => {
-  autoRangeEndRow = null;
 });
 
 initIntroSplash();
@@ -1498,26 +1054,8 @@ function toggleSidebar() {
   if (panelHandle) panelHandle.textContent = collapsed ? "›" : "‹";
 }
 
-function toggleReadingMode() {
-  readingMode = !rootEl.classList.contains("reading-mode");
-  if (readingMode) {
-    prevSidebarCollapsed = rootEl.classList.contains("sidebar-collapsed");
-    rootEl.classList.add("reading-mode", "sidebar-collapsed");
-    if (readingToggle) readingToggle.textContent = "Powrot";
-    if (readingSearchEl) {
-      readingSearchEl.value = searchQueryEl.value || "";
-      readingSearchEl.focus();
-    }
-  } else {
-    rootEl.classList.remove("reading-mode");
-    if (!prevSidebarCollapsed) rootEl.classList.remove("sidebar-collapsed");
-    if (readingToggle) readingToggle.textContent = "Czytanie";
-  }
-}
-
 panelToggle.addEventListener("click", toggleSidebar);
 if (panelHandle) panelHandle.addEventListener("click", toggleSidebar);
-if (readingToggle) readingToggle.addEventListener("click", toggleReadingMode);
 
 
 dropZone.addEventListener("dragover", (e) => {
@@ -1546,25 +1084,13 @@ dropZone.addEventListener("keydown", (e) => {
 sheetSelect.addEventListener("change", () => {
   if (!workbook) return;
   setStatus("Wybrano arkusz");
-  autoRangeEndRow = null;
 });
 
 document.addEventListener("keydown", (e) => {
   const meta = e.ctrlKey || e.metaKey;
-  const isEditable = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable);
   if (meta && e.key === "Enter") {
     e.preventDefault();
     applyFilterBtn.click();
-  }
-  if (meta && e.key.toLowerCase() === "f" && !isEditable) {
-    e.preventDefault();
-    const target = rootEl.classList.contains("reading-mode") && readingSearchEl ? readingSearchEl : searchQueryEl;
-    target.focus();
-    target.select();
-  }
-  if (meta && e.key.toLowerCase() === "s") {
-    e.preventDefault();
-    saveBtn.click();
   }
   if (meta && e.shiftKey && e.key.toLowerCase() === "e") {
     e.preventDefault();

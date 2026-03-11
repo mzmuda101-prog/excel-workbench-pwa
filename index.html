@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260311-4" />
+    <link rel="stylesheet" href="styles.css?v=20260311" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -35,9 +35,6 @@
         <div class="hero-right">
           <button class="panel-toggle" id="panelToggle" type="button" aria-label="Zwin/rozwin panel">
             Panel
-          </button>
-          <button class="panel-toggle" id="readingToggle" type="button" aria-label="Tryb czytania">
-            Czytanie
           </button>
           <span class="hero-badge">PWA</span>
           <button class="theme-toggle" id="themeToggle" title="Zmień motyw (jasny / ciemny)" aria-label="Zmień motyw"></button>
@@ -87,13 +84,6 @@
                 <label class="field">
                   Wiersz nagłówka
                   <input id="headerRow" type="number" min="1" value="1" />
-                  <button class="btn ghost btn-sm" id="autoDetectBtn" type="button">Auto wykryj</button>
-                </label>
-              </div>
-              <div class="row">
-                <label class="field checkbox">
-                  <input id="hideEmptyCols" type="checkbox" />
-                  Ukrywaj puste kolumny
                 </label>
               </div>
 
@@ -256,12 +246,6 @@
               </button>
               <button class="btn ghost full" id="resetFiltersBtn" type="button">Reset filtrow</button>
               <button class="btn ghost full" id="resetWidthsBtn" type="button">Reset szerokosci</button>
-              <button class="btn ghost full" id="resetHeightsBtn" type="button">Reset wysokosci</button>
-              <label class="field checkbox tooltip">
-                <input id="toggleCellStyles" type="checkbox" checked />
-                <span>Pokaz style komorek</span>
-                <span class="tooltip-bubble">Style pochodzą z wersji open-source SheetJS, więc nie zawsze odzwierciedlają pełne formatowanie Excela.</span>
-              </label>
               <button class="btn ghost full" id="saveBtn" type="button">Zapisz</button>
               <button class="btn ghost full" id="saveAsBtn" type="button">Zapisz jako...</button>
             </div>
@@ -292,14 +276,10 @@
             </div>
             <div class="shortcut-hint">
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Enter</kbd> <span>Filtruj</span></div>
-              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>F</kbd> <span>Szukaj</span></div>
-              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>S</kbd> <span>Zapisz</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>E</kbd> <span>Eksport CSV</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>K</kbd> <span>Kolumny</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>/</kbd> <span>Motyw</span></div>
               <div class="shortcut-row"><kbd>Esc</kbd> <span>Zamknij modal</span></div>
-              <div class="shortcut-row"><span>Tryb czytania:</span> <span>przycisk</span> <kbd>Czytanie</kbd></div>
-              <div class="shortcut-row"><span>Szybkie szukanie:</span> <span>pole nad tabelą w trybie czytania</span></div>
             </div>
           </section>
         </aside>
@@ -312,9 +292,6 @@
           <section class="panel table-panel">
             <div class="table-toolbar">
               <div class="status-badge" id="status">Brak danych</div>
-              <div class="reading-search" id="readingSearchWrap">
-                <input id="readingSearch" type="text" placeholder="Szybkie szukanie..." />
-              </div>
               <div class="table-actions">
                 <button class="btn btn-sm ghost" id="exportCsvBtn" type="button">Eksport CSV</button>
               </div>
@@ -377,6 +354,6 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260311-4"></script>
+    <script src="app.js?v=20260311"></script>
   </body>
 </html>
