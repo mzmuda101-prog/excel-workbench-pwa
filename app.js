@@ -47,6 +47,7 @@ const saveAsBtn = document.getElementById("saveAsBtn");
 const resetWidthsBtn = document.getElementById("resetWidthsBtn");
 const resetHeightsBtn = document.getElementById("resetHeightsBtn");
 const toggleCellStylesEl = document.getElementById("toggleCellStyles");
+const toggleGuidesEl = document.getElementById("toggleGuides");
 
 const columnPickerEl = document.getElementById("columnPicker");
 const columnListEl = document.getElementById("columnList");
@@ -84,6 +85,12 @@ let currentDataStartRow1 = 1;
 let currentColumnTypes = [];
 let readingMode = false;
 let prevSidebarCollapsed = false;
+let currentFileSize = 0;
+let performanceMode = false;
+let showGuides = true;
+let renderBatchSize = 80;
+let renderToken = 0;
+let safariLiteMode = false;
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
@@ -288,6 +295,30 @@ function detectHeaderRow(sheet) {
   }
 
   return best.row + 1;
+}
+
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isSafari() {
+  const ua = navigator.userAgent;
+  return /Safari/i.test(ua) && !/Chrome|CriOS|Android/i.test(ua);
+}
+
+const isSafariBrowser = isSafari();
+if (isSafariBrowser) {
+  rootEl.classList.add("safari-lite");
+  safariLiteMode = true;
+}
+
+function shouldEnablePerformanceMode(rowCount, colCount, fileSize) {
+  const totalCells = rowCount * colCount;
+  if (fileSize > 3 * 1024 * 1024) return true;
+  if (rowCount > 2000) return true;
+  if (totalCells > 120000) return true;
+  if (isIOS() && totalCells > 50000) return true;
+  return false;
 }
 
 function detectDataEndRow(sheet, dataStartRow1) {
@@ -625,7 +656,8 @@ function computeColumnWidths(headers, rows) {
   headers.forEach((h, i) => {
     widths[i] = Math.max(widths[i], ctx.measureText(h).width);
   });
-  const limit = Math.min(rows.length, 300);
+  const sampleLimit = performanceMode ? 120 : 300;
+  const limit = Math.min(rows.length, sampleLimit);
   const samples = headers.map(() => []);
   for (let r = 0; r < limit; r++) {
     rows[r].values.forEach((v, i) => {
@@ -668,13 +700,15 @@ function renderTable(headers, rows) {
   const rowHeaderWidth =
     typeof computeRowHeaderWidth === "function" ? computeRowHeaderWidth(rows) : 36;
   const mergeMaps =
-    typeof buildMergeMaps === "function"
+    !performanceMode && !isSafariBrowser && typeof buildMergeMaps === "function"
       ? buildMergeMaps(rows)
       : { skip: new Set(), topLeft: new Map() };
   const colgroup = document.createElement("colgroup");
-  const rowCol = document.createElement("col");
-  rowCol.style.width = `${rowHeaderWidth}px`;
-  colgroup.appendChild(rowCol);
+  if (showGuides) {
+    const rowCol = document.createElement("col");
+    rowCol.style.width = `${rowHeaderWidth}px`;
+    colgroup.appendChild(rowCol);
+  }
   widths.forEach((w) => {
     const col = document.createElement("col");
     col.style.width = `${w}px`;
@@ -685,31 +719,35 @@ function renderTable(headers, rows) {
   tableEl.appendChild(theadEl);
   tableEl.appendChild(tbodyEl);
 
-  const guideRow = document.createElement("tr");
-  guideRow.className = "guide-row";
-  const corner = document.createElement("th");
-  corner.className = "row-head col-head corner";
-  corner.textContent = "";
-  guideRow.appendChild(corner);
-  headers.forEach((h, i) => {
-    const th = document.createElement("th");
-    th.className = "col-head";
-    const colIndex = currentColIndices[i] ?? i;
-    th.textContent = XLSX.utils.encode_col(colIndex);
-    const resizer = document.createElement("div");
-    resizer.className = "col-resizer";
-    resizer.dataset.colIndex = String(i);
-    th.appendChild(resizer);
-    guideRow.appendChild(th);
-  });
-  theadEl.appendChild(guideRow);
+  if (showGuides) {
+    const guideRow = document.createElement("tr");
+    guideRow.className = "guide-row";
+    const corner = document.createElement("th");
+    corner.className = "row-head col-head corner";
+    corner.textContent = "";
+    guideRow.appendChild(corner);
+    headers.forEach((h, i) => {
+      const th = document.createElement("th");
+      th.className = "col-head";
+      const colIndex = currentColIndices[i] ?? i;
+      th.textContent = XLSX.utils.encode_col(colIndex);
+      const resizer = document.createElement("div");
+      resizer.className = "col-resizer";
+      resizer.dataset.colIndex = String(i);
+      th.appendChild(resizer);
+      guideRow.appendChild(th);
+    });
+    theadEl.appendChild(guideRow);
+  }
 
   const headRow = document.createElement("tr");
   headRow.className = "header-row";
-  const rowHead = document.createElement("th");
-  rowHead.className = "row-head data-head";
-  rowHead.textContent = currentHeaderRow1 ? String(currentHeaderRow1) : "1";
-  headRow.appendChild(rowHead);
+  if (showGuides) {
+    const rowHead = document.createElement("th");
+    rowHead.className = "row-head data-head";
+    rowHead.textContent = currentHeaderRow1 ? String(currentHeaderRow1) : "1";
+    headRow.appendChild(rowHead);
+  }
   headers.forEach((h, i) => {
     const th = document.createElement("th");
     th.className = "data-head";
@@ -718,7 +756,7 @@ function renderTable(headers, rows) {
     label.textContent = h;
     th.appendChild(label);
     const typeLabel = currentColumnTypes[i];
-    if (typeLabel) {
+    if (typeLabel && !safariLiteMode) {
       const badge = document.createElement("span");
       badge.className = "type-badge";
       badge.textContent = typeLabel;
@@ -756,28 +794,33 @@ function renderTable(headers, rows) {
   theadEl.appendChild(headRow);
 
   const limit = Math.max(1, parseInt(maxRowsEl.value || "200", 10));
-  rows.slice(0, limit).forEach((row) => {
+  const visibleRows = rows.slice(0, limit);
+  const token = ++renderToken;
+
+  const appendRow = (row) => {
     const tr = document.createElement("tr");
     if (typeof row.rowIndex0 === "number") {
       tr.dataset.rowIndex = String(row.rowIndex0);
     }
-    const rowTh = document.createElement("th");
-    rowTh.className = "row-head";
-    const rowNumber = typeof row.rowIndex0 === "number" ? row.rowIndex0 + 1 : "";
-    rowTh.textContent = rowNumber ? String(rowNumber) : "";
-    if (typeof row.rowIndex0 === "number" && manualRowHeights[row.rowIndex0]) {
-      const h = manualRowHeights[row.rowIndex0];
-      tr.style.height = `${h}px`;
-      rowTh.style.height = `${h}px`;
-      rowTh.style.lineHeight = `${h - 2}px`;
+    if (showGuides) {
+      const rowTh = document.createElement("th");
+      rowTh.className = "row-head";
+      const rowNumber = typeof row.rowIndex0 === "number" ? row.rowIndex0 + 1 : "";
+      rowTh.textContent = rowNumber ? String(rowNumber) : "";
+      if (typeof row.rowIndex0 === "number" && manualRowHeights[row.rowIndex0]) {
+        const h = manualRowHeights[row.rowIndex0];
+        tr.style.height = `${h}px`;
+        rowTh.style.height = `${h}px`;
+        rowTh.style.lineHeight = `${h - 2}px`;
+      }
+      const rowResizer = document.createElement("div");
+      rowResizer.className = "row-resizer";
+      if (typeof row.rowIndex0 === "number") {
+        rowResizer.dataset.rowIndex = String(row.rowIndex0);
+      }
+      rowTh.appendChild(rowResizer);
+      tr.appendChild(rowTh);
     }
-    const rowResizer = document.createElement("div");
-    rowResizer.className = "row-resizer";
-    if (typeof row.rowIndex0 === "number") {
-      rowResizer.dataset.rowIndex = String(row.rowIndex0);
-    }
-    rowTh.appendChild(rowResizer);
-    tr.appendChild(rowTh);
     row.values.forEach((v, i) => {
       const sheetCol = currentColIndices[i] ?? i;
       if (mergeMaps.skip.has(`${row.rowIndex0}:${sheetCol}`)) {
@@ -809,7 +852,34 @@ function renderTable(headers, rows) {
       tr.appendChild(td);
     });
     tbodyEl.appendChild(tr);
-  });
+  };
+
+  const renderBatch = () => {
+    if (token !== renderToken) return;
+    const end = Math.min(renderBatchSize, visibleRows.length);
+    for (let i = 0; i < end; i++) appendRow(visibleRows[i]);
+    if (end < visibleRows.length) {
+      renderBatchSize = renderBatchSize;
+      requestAnimationFrame(() => renderBatch());
+    }
+  };
+
+  if (visibleRows.length > renderBatchSize * 2) {
+    requestAnimationFrame(() => {
+      if (token !== renderToken) return;
+      const end = Math.min(renderBatchSize, visibleRows.length);
+      for (let i = 0; i < end; i++) appendRow(visibleRows[i]);
+      const renderChunk = (start) => {
+        if (token !== renderToken) return;
+        const nextEnd = Math.min(start + renderBatchSize, visibleRows.length);
+        for (let i = start; i < nextEnd; i++) appendRow(visibleRows[i]);
+        if (nextEnd < visibleRows.length) requestAnimationFrame(() => renderChunk(nextEnd));
+      };
+      if (end < visibleRows.length) requestAnimationFrame(() => renderChunk(end));
+    });
+  } else {
+    renderBatch();
+  }
 
   let status = `Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})`;
   if (currentHeaderRow1 && currentDataStartRow1) {
@@ -1109,6 +1179,7 @@ async function handleFile(file) {
   try {
     setLoading(true, "Wczytywanie pliku...");
     const data = await file.arrayBuffer();
+    currentFileSize = file.size || 0;
     workbook = XLSX.read(data, { cellDates: true, cellStyles: true });
     sheetSelect.innerHTML = "";
     autoRangeEndRow = null;
@@ -1245,7 +1316,20 @@ loadBtn.addEventListener("click", () => {
       currentDataStartRow0 = data.dataStartRow0 ?? 0;
       currentDataEndRow0 = data.dataEndRow0 ?? 0;
       currentMerges = data.merges || [];
-      currentColumnTypes = inferColumnTypes(data.rows || []);
+      performanceMode = shouldEnablePerformanceMode(data.rows.length, data.headers.length, currentFileSize);
+      renderBatchSize = performanceMode ? 40 : 80;
+      if (performanceMode) {
+        if (toggleCellStylesEl) toggleCellStylesEl.checked = false;
+        toast("Tryb lekki: style wyłączone (dla wydajności)", "info");
+      }
+      if (safariLiteMode) {
+        if (toggleGuidesEl) toggleGuidesEl.checked = false;
+        if (toggleCellStylesEl) toggleCellStylesEl.checked = false;
+        showGuides = false;
+      } else {
+        showGuides = toggleGuidesEl ? toggleGuidesEl.checked : true;
+      }
+      currentColumnTypes = safariLiteMode ? [] : inferColumnTypes(data.rows || [], performanceMode ? 120 : 200);
       baseRows = data.rows;
       viewRows = data.rows.slice();
       sortState = { col: currentHeaders[0] || "", dir: "asc" };
@@ -1380,8 +1464,18 @@ resetHeightsBtn.addEventListener("click", () => {
   toast("Przywrocono automatyczne wysokosci", "info");
 });
 toggleCellStylesEl.addEventListener("change", () => {
+  if (performanceMode && toggleCellStylesEl.checked) {
+    toast("Uwaga: style na dużych arkuszach mogą spowalniać", "warning");
+  }
   renderTable(currentHeaders, viewRows);
 });
+if (toggleGuidesEl) {
+  toggleGuidesEl.addEventListener("change", () => {
+    showGuides = toggleGuidesEl.checked;
+    if (!showGuides) manualRowHeights = {};
+    renderTable(currentHeaders, viewRows);
+  });
+}
 
 tbodyEl.addEventListener("dblclick", (e) => {
   const td = e.target.closest("td");

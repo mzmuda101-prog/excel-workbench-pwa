@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260311-4" />
+    <link rel="stylesheet" href="styles.css?v=20260311-10" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -257,8 +257,12 @@
               <button class="btn ghost full" id="resetFiltersBtn" type="button">Reset filtrow</button>
               <button class="btn ghost full" id="resetWidthsBtn" type="button">Reset szerokosci</button>
               <button class="btn ghost full" id="resetHeightsBtn" type="button">Reset wysokosci</button>
+              <label class="field checkbox">
+                <input id="toggleGuides" type="checkbox" checked />
+                <span>Pokaz guide (A,B / 1,2)</span>
+              </label>
               <label class="field checkbox tooltip">
-                <input id="toggleCellStyles" type="checkbox" checked />
+                <input id="toggleCellStyles" type="checkbox" />
                 <span>Pokaz style komorek</span>
                 <span class="tooltip-bubble">Style pochodzą z wersji open-source SheetJS, więc nie zawsze odzwierciedlają pełne formatowanie Excela.</span>
               </label>
@@ -377,6 +381,6 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260311-4"></script>
+    <script src="app.js?v=20260311-10"></script>
   </body>
 </html>
