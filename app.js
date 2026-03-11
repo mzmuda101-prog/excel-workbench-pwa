@@ -67,6 +67,7 @@ let baseRows = [];
 let viewRows = [];
 let currentFileName = "";
 let currentSheetName = "";
+let currentHeaderRow = 1;
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
@@ -456,8 +457,13 @@ function renderTable(headers, rows) {
   tbodyEl.innerHTML = "";
 
   const widths = computeColumnWidths(headers, rows);
+  const rowHeaderDigits = String(rows.length + currentHeaderRow).length;
+  const rowHeaderWidth = Math.max(42, rowHeaderDigits * 8 + 18);
 
   const colgroup = document.createElement("colgroup");
+  const rowHeadCol = document.createElement("col");
+  rowHeadCol.style.width = `${rowHeaderWidth}px`;
+  colgroup.appendChild(rowHeadCol);
   widths.forEach((w) => {
     const col = document.createElement("col");
     col.style.width = `${w}px`;
@@ -468,7 +474,26 @@ function renderTable(headers, rows) {
   tableEl.appendChild(theadEl);
   tableEl.appendChild(tbodyEl);
 
+  const guideRow = document.createElement("tr");
+  guideRow.className = "guide-row";
+  const corner = document.createElement("th");
+  corner.className = "corner-cell";
+  corner.textContent = "";
+  guideRow.appendChild(corner);
+  headers.forEach((_, i) => {
+    const th = document.createElement("th");
+    th.className = "guide-cell";
+    th.textContent = XLSX.utils.encode_col(i);
+    guideRow.appendChild(th);
+  });
+  theadEl.appendChild(guideRow);
+
   const headRow = document.createElement("tr");
+  headRow.className = "header-row";
+  const rowHead = document.createElement("th");
+  rowHead.className = "row-head";
+  rowHead.textContent = String(currentHeaderRow);
+  headRow.appendChild(rowHead);
   headers.forEach((h, i) => {
     const th = document.createElement("th");
     th.textContent = h;
@@ -504,6 +529,10 @@ function renderTable(headers, rows) {
     if (typeof row.rowIndex0 === "number") {
       tr.dataset.rowIndex = String(row.rowIndex0);
     }
+    const rowHead = document.createElement("td");
+    rowHead.className = "row-head";
+    rowHead.textContent = String(row.rowIndex0 + 1);
+    tr.appendChild(rowHead);
     row.values.forEach((v, i) => {
       const td = document.createElement("td");
       td.textContent = getDisplayValue(row, i);
@@ -858,6 +887,7 @@ loadBtn.addEventListener("click", () => {
         return;
       }
       const headerRow = Math.max(1, parseInt(headerRowEl.value || "1", 10));
+      currentHeaderRow = headerRow;
       currentSheetName = sheetName;
       const data = buildRows(sheet, headerRow);
       currentHeaders = data.headers;
