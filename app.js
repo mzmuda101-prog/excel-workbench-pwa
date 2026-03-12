@@ -1049,7 +1049,9 @@ closePickerBtn.addEventListener("click", closeColumnPicker);
 columnSearchEl.addEventListener("input", filterColumnList);
 
 exportCsvBtn.addEventListener("click", exportCsv);
-saveBtn.addEventListener("click", saveWorkbook);
+saveBtn.addEventListener("click", () => {
+  toast("Wersja webowa nie nadpisuje pliku. Użyj „Zapisz jako…”", "info");
+});
 saveAsBtn.addEventListener("click", saveWorkbookAs);
 resetWidthsBtn.addEventListener("click", () => {
   manualColumnWidths = {};
@@ -1217,10 +1219,6 @@ document.addEventListener("keydown", (e) => {
   if (meta && e.key === "Enter") {
     e.preventDefault();
     applyFilterBtn.click();
-  }
-  if (meta && !e.shiftKey && e.key.toLowerCase() === "s") {
-    e.preventDefault();
-    saveBtn.click();
   }
   if (meta && e.shiftKey && e.key.toLowerCase() === "s") {
     e.preventDefault();

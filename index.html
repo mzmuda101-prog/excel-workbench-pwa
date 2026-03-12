@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260311-5" />
+    <link rel="stylesheet" href="styles.css?v=20260312-1" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -250,7 +250,7 @@
               </button>
               <button class="btn ghost full" id="resetFiltersBtn" type="button">Reset filtrow</button>
               <button class="btn ghost full" id="resetWidthsBtn" type="button">Reset szerokosci</button>
-              <button class="btn ghost full" id="saveBtn" type="button">Zapisz</button>
+              <button class="btn ghost full" id="saveBtn" type="button" disabled aria-disabled="true" title="Wersja webowa nie zapisuje do oryginalnego pliku. Użyj „Zapisz jako…”.">Zapisz</button>
               <button class="btn ghost full" id="saveAsBtn" type="button">Zapisz jako...</button>
             </div>
           </section>
@@ -281,7 +281,6 @@
             <div class="shortcut-hint">
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Enter</kbd> <span>Filtruj</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>E</kbd> <span>Eksport CSV</span></div>
-              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>S</kbd> <span>Zapisz</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>S</kbd> <span>Zapisz jako</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>F</kbd> <span>Reset filtrów</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>W</kbd> <span>Reset szerokości</span></div>
@@ -371,6 +370,6 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260311-5"></script>
+    <script src="app.js?v=20260312-1"></script>
   </body>
 </html>
