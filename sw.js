@@ -1,9 +1,10 @@
-const CACHE = "excel-wb-pwa-v9";
+const CACHE = "excel-wb-pwa-v11";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=20260312-1",
-  "./app.js?v=20260312-1",
+  "./styles.css?v=20260312-3",
+  "./app.js?v=20260312-3",
+  "./logo%20Mateusz%20przezroczyste.png",
   "./vendor/xlsx.full.min.js",
 ];
 

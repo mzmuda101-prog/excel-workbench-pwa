@@ -206,6 +206,7 @@ body.splashing {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  transition: gap var(--t);
 }
 
 .panel-toggle {
@@ -227,6 +228,55 @@ body.splashing {
   background: var(--accent-light);
   color: var(--accent);
   border: 1px solid var(--accent-border);
+}
+
+.logo-badge {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: all var(--t);
+  overflow: hidden;
+  line-height: 0;
+  transform-origin: center;
+}
+
+.logo-badge img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  opacity: 0.9;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.logo-badge.expanded {
+  transform: scale(2.2);
+  margin: 0 10px;
+  z-index: 2;
+}
+
+.hero-right.expanded {
+  gap: 16px;
+}
+
+.logo-badge:hover,
+.logo-badge:focus-visible {
+  transform: scale(2.2);
+  margin: 0 10px;
+  z-index: 2;
+}
+.logo-badge:hover {
+  background: var(--accent-light);
+  border-color: var(--accent-border);
 }
 
 .theme-toggle {

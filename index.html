@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260312-1" />
+    <link rel="stylesheet" href="styles.css?v=20260312-3" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -32,11 +32,14 @@
             <div class="hero-sub">Lokalne przeglądanie, filtrowanie i analiza arkuszy</div>
           </div>
         </div>
-        <div class="hero-right">
+        <div class="hero-right" id="heroRight">
           <button class="panel-toggle" id="panelToggle" type="button" aria-label="Zwin/rozwin panel">
             Panel
           </button>
           <span class="hero-badge">PWA</span>
+          <button class="logo-badge" id="brandRefresh" title="Odśwież aplikację" aria-label="Odśwież aplikację">
+            <img src="logo%20Mateusz%20przezroczyste.png" alt="Logo Mateusz" />
+          </button>
           <button class="theme-toggle" id="themeToggle" title="Zmień motyw (jasny / ciemny)" aria-label="Zmień motyw"></button>
         </div>
       </header>
@@ -370,6 +373,6 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260312-1"></script>
+    <script src="app.js?v=20260312-3"></script>
   </body>
 </html>

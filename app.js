@@ -60,6 +60,8 @@ const closePickerBtn = document.getElementById("closePicker");
 const themeToggle = document.getElementById("themeToggle");
 const panelToggle = document.getElementById("panelToggle");
 const panelHandle = document.getElementById("panelHandle");
+const brandRefreshBtn = document.getElementById("brandRefresh");
+const heroRightEl = document.getElementById("heroRight");
 const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
@@ -1141,6 +1143,34 @@ themeToggle.addEventListener("click", () => {
   const next = rootEl.getAttribute("data-theme") === "dark" ? "light" : "dark";
   setTheme(next);
 });
+
+if (brandRefreshBtn) {
+  brandRefreshBtn.addEventListener("click", () => {
+    window.location.reload();
+  });
+
+  const expandLogo = () => {
+    brandRefreshBtn.classList.add("expanded");
+    if (heroRightEl) heroRightEl.classList.add("expanded");
+  };
+  const collapseLogo = () => {
+    brandRefreshBtn.classList.remove("expanded");
+    if (heroRightEl) heroRightEl.classList.remove("expanded");
+  };
+
+  brandRefreshBtn.addEventListener("mouseenter", expandLogo);
+  brandRefreshBtn.addEventListener("mouseleave", collapseLogo);
+  brandRefreshBtn.addEventListener("pointerenter", expandLogo);
+  brandRefreshBtn.addEventListener("pointerleave", collapseLogo);
+  brandRefreshBtn.addEventListener("focus", expandLogo);
+  brandRefreshBtn.addEventListener("blur", collapseLogo);
+  brandRefreshBtn.addEventListener("touchstart", expandLogo, { passive: true });
+
+  window.addEventListener("pageshow", collapseLogo);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") collapseLogo();
+  });
+}
 
 function toggleSidebar() {
   rootEl.classList.toggle("sidebar-collapsed");
