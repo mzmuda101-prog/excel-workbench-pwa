@@ -65,6 +65,9 @@ const heroRightEl = document.getElementById("heroRight");
 const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
+const quickSearchPopupEl = document.getElementById("quickSearchPopup");
+const quickSearchPopupInput = document.getElementById("quickSearchPopupInput");
+const quickSearchPopupBtn = document.getElementById("quickSearchPopupBtn");
 
 const quickRangeButtons = Array.from(document.querySelectorAll(".chip[data-range]"));
 
@@ -82,6 +85,7 @@ const columnSelections = {
   date: new Set(),
 };
 let activePickerKey = null;
+let lastPickerTriggerEl = null;
 let sortState = { col: "", dir: "asc" };
 let manualColumnWidths = {};
 
@@ -342,8 +346,8 @@ function rowMatchesTextFilter(row, criteria, onlyNonEmpty) {
         candidates.push(`${dd}-${mm}-${yy}`);
         candidates.push(`${dd}-${mm}-${yyyy}`);
       }
-      if (criterion.mode === "Rowna sie" && candidates.some((c) => c === query)) matched = true;
-      if (criterion.mode === "Zaczyna sie" && candidates.some((c) => c.startsWith(query))) matched = true;
+      if (criterion.mode === "Równa się" && candidates.some((c) => c === query)) matched = true;
+      if (criterion.mode === "Zaczyna się" && candidates.some((c) => c.startsWith(query))) matched = true;
       if (criterion.mode === "Zawiera" && candidates.some((c) => c.includes(query))) matched = true;
       if (matched) break;
     }
@@ -491,6 +495,7 @@ function renderTable(headers, rows) {
   headers.forEach((_, i) => {
     const th = document.createElement("th");
     th.className = "guide-cell";
+    th.setAttribute("scope", "col");
     th.textContent = XLSX.utils.encode_col(i);
     const resizer = document.createElement("div");
     resizer.className = "col-resizer";
@@ -504,10 +509,12 @@ function renderTable(headers, rows) {
   headRow.className = "header-row";
   const rowHead = document.createElement("th");
   rowHead.className = "row-head";
+  rowHead.setAttribute("scope", "row");
   rowHead.textContent = String(currentHeaderRow);
   headRow.appendChild(rowHead);
   headers.forEach((h, i) => {
     const th = document.createElement("th");
+    th.setAttribute("scope", "col");
     th.textContent = h;
     th.addEventListener("click", () => {
       if (sortState.col === h) {
@@ -534,6 +541,7 @@ function renderTable(headers, rows) {
   const limit = Math.max(1, parseInt(maxRowsEl.value || "200", 10));
   rows.slice(0, limit).forEach((row) => {
     const tr = document.createElement("tr");
+    if (row.isSubheader) tr.classList.add("row-subheader");
     if (typeof row.rowIndex0 === "number") {
       tr.dataset.rowIndex = String(row.rowIndex0);
     }
@@ -545,6 +553,11 @@ function renderTable(headers, rows) {
       const td = document.createElement("td");
       td.textContent = getDisplayValue(row, i);
       td.dataset.colIndex = String(i);
+      if (row.cellFills && row.cellFills[i]) {
+        td.classList.add("cell-has-fill");
+        const bg = hexToRgba(row.cellFills[i], 0.32);
+        if (bg) td.style.background = bg;
+      }
       tr.appendChild(td);
     });
     tbodyEl.appendChild(tr);
@@ -553,7 +566,7 @@ function renderTable(headers, rows) {
   setStatus(`Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})`);
 }
 
-function buildRows(sheet, headerRow) {
+function buildRows(sheet, headerRow, wb) {
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const headers = [];
   for (let c = range.s.c; c <= range.e.c; c++) {
@@ -565,23 +578,71 @@ function buildRows(sheet, headerRow) {
   for (let r = headerRow; r <= range.e.r; r++) {
     const values = [];
     const display = [];
+    const cellFills = [];
     let any = false;
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       let v = cell ? cell.v : null;
       let shown = cell && cell.w ? String(cell.w) : toDisplay(v);
-      if (displayModeEl.value === "Formuly" && cell && cell.f) {
+      if (displayModeEl.value === "Formuły" && cell && cell.f) {
         v = "=" + cell.f;
         shown = v;
       }
       values.push(v);
       display.push(shown);
+      cellFills.push(wb ? getCellFill(cell, wb) : null);
       if (v !== null && v !== "") any = true;
     }
     if (!any) continue;
-    rows.push({ values, display, rawValues: values, rowIndex0: r });
+    rows.push({ values, display, rawValues: values, rowIndex0: r, cellFills });
   }
   return { headers, rows };
+}
+
+// [EN] Try to get cell fill color (best-effort; standard xlsx may not expose styles)
+function getCellFill(cell, wb) {
+  if (!cell) return null;
+  try {
+    const s = cell.s;
+    if (s && typeof s === "object" && s.fill && s.fill.fgColor && s.fill.fgColor.rgb) return s.fill.fgColor.rgb;
+    if (s && typeof s === "object" && s.fill && s.fill.patternType && s.fill.patternType !== "none") return s.fill.fgColor?.rgb || "#E0E0E0";
+    if (typeof s === "number" && wb && wb.Styles && Array.isArray(wb.Styles.CellXfs)) {
+      const xf = wb.Styles.CellXfs[s];
+      if (xf && xf.fillId != null && wb.Styles.Fills && wb.Styles.Fills[xf.fillId]) {
+        const fill = wb.Styles.Fills[xf.fillId];
+        if (fill && fill.fgColor && fill.fgColor.rgb) return fill.fgColor.rgb;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function hexToRgba(hex, alpha = 0.35) {
+  if (!hex || typeof hex !== "string") return null;
+  const m = hex.replace(/^#/, "").replace(/^([A-Fa-f0-9]{6})[A-Fa-f0-9]*$/, "$1").match(/([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})/);
+  if (!m) return null;
+  return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`;
+}
+
+// [EN] Mark rows that look like subheaders (e.g. second header row or important info) in first N data rows
+function markSubheaderRows(rows, maxCheck = 10) {
+  const toCheck = Math.min(maxCheck, rows.length);
+  for (let i = 0; i < toCheck; i++) {
+    const row = rows[i];
+    let nonEmpty = 0;
+    let textLike = 0;
+    row.values.forEach((v) => {
+      if (v != null && String(v).trim() !== "") {
+        nonEmpty += 1;
+        if (typeof v === "string") textLike += 1;
+        else if (!(v instanceof Date) && typeof v !== "number") textLike += 1;
+      }
+    });
+    const n = row.values.length;
+    if (n === 0) continue;
+    if (nonEmpty >= n * 0.5 && textLike >= n * 0.5) row.isSubheader = true;
+  }
+  return rows;
 }
 
 function detectHeaderRowSimple(sheet) {
@@ -643,6 +704,15 @@ function updateFilterBadge() {
   filterBadgeEl.classList.toggle("hidden", count === 0);
 }
 
+function updateDateChipsActive() {
+  const isLastN = dateModeEl.value === "last_n_days";
+  const days = lastDaysEl.value.trim() ? String(lastDaysEl.value) : "30";
+  quickRangeButtons.forEach((btn) => {
+    const active = isLastN && btn.dataset.range === days;
+    btn.classList.toggle("active", !!active);
+  });
+}
+
 function openColumnPicker(key) {
   if (!currentHeaders.length) return;
   activePickerKey = key;
@@ -671,6 +741,37 @@ function openColumnPicker(key) {
 
 function closeColumnPicker() {
   columnPickerEl.classList.add("hidden");
+  if (lastPickerTriggerEl) {
+    lastPickerTriggerEl.focus();
+    lastPickerTriggerEl = null;
+  }
+}
+
+function getModalFocusables() {
+  const modalContent = columnPickerEl.querySelector(".modal-content");
+  if (!modalContent) return [];
+  const all = Array.from(modalContent.querySelectorAll("button, input:not([type=hidden]), [tabindex]:not([tabindex^='-'])"));
+  return all.filter((el) => {
+    const row = el.closest(".field.checkbox");
+    return !row || !row.classList.contains("hidden");
+  });
+}
+
+function handlePickerKeydown(e) {
+  if (columnPickerEl.classList.contains("hidden")) return;
+  if (e.key === "Tab") {
+    const focusables = getModalFocusables();
+    if (focusables.length === 0) return;
+    const idx = focusables.indexOf(document.activeElement);
+    if (idx === -1) return;
+    if (e.shiftKey && idx === 0) {
+      e.preventDefault();
+      focusables[focusables.length - 1].focus();
+    } else if (!e.shiftKey && idx === focusables.length - 1) {
+      e.preventDefault();
+      focusables[0].focus();
+    }
+  }
 }
 
 function filterColumnList() {
@@ -808,7 +909,11 @@ async function handleFile(file) {
   try {
     setLoading(true, "Wczytywanie pliku...");
     const data = await file.arrayBuffer();
-    workbook = XLSX.read(data, { cellDates: true });
+    try {
+      workbook = XLSX.read(data, { cellDates: true, cellStyles: true });
+    } catch {
+      workbook = XLSX.read(data, { cellDates: true });
+    }
     sheetSelect.innerHTML = "";
     workbook.SheetNames.forEach((s) => {
       const opt = document.createElement("option");
@@ -930,10 +1035,10 @@ loadBtn.addEventListener("click", () => {
       const headerRow = Math.max(1, parseInt(headerRowEl.value || "1", 10));
       currentHeaderRow = headerRow;
       currentSheetName = sheetName;
-      const data = buildRows(sheet, headerRow);
+      const data = buildRows(sheet, headerRow, workbook);
       currentHeaders = data.headers;
-      baseRows = data.rows;
-      viewRows = data.rows.slice();
+      baseRows = markSubheaderRows(data.rows);
+      viewRows = baseRows.slice();
       sortState = { col: currentHeaders[0] || "", dir: "asc" };
       manualColumnWidths = {};
       columnSelections.filter1.clear();
@@ -960,12 +1065,21 @@ applyFilterBtn.addEventListener("click", () => {
 });
 
 function applyQuickSearch() {
-  if (!quickSearchEl || !currentHeaders.length) return;
-  searchQueryEl.value = quickSearchEl.value;
+  if (!currentHeaders.length) return;
+  let value = "";
+  if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden") && quickSearchPopupInput) value = quickSearchPopupInput.value;
+  else if (quickSearchEl) value = quickSearchEl.value;
+  else value = searchQueryEl.value || "";
+  if (quickSearchPopupInput) quickSearchPopupInput.value = value;
+  if (quickSearchEl) quickSearchEl.value = value;
+  searchQueryEl.value = value;
   applyFilters();
   sortRows();
   renderTable(currentHeaders, viewRows);
   updateFilterBadge();
+  if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
+    quickSearchPopupEl.classList.add("hidden");
+  }
 }
 
 if (quickSearchBtn) {
@@ -975,6 +1089,20 @@ if (quickSearchBtn) {
 if (quickSearchEl) {
   quickSearchEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter") applyQuickSearch();
+  });
+}
+
+if (quickSearchPopupInput) {
+  quickSearchPopupInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); applyQuickSearch(); }
+  });
+}
+if (quickSearchPopupBtn) {
+  quickSearchPopupBtn.addEventListener("click", applyQuickSearch);
+}
+if (quickSearchPopupEl) {
+  quickSearchPopupEl.addEventListener("click", (e) => {
+    if (e.target === quickSearchPopupEl) quickSearchPopupEl.classList.add("hidden");
   });
 }
 
@@ -1000,15 +1128,25 @@ resetFiltersBtn.addEventListener("click", () => {
   toast("Reset filtrow", "info");
 });
 
-filter1PickBtn.addEventListener("click", () => openColumnPicker("filter1"));
-filter2PickBtn.addEventListener("click", () => openColumnPicker("filter2"));
-datePickBtn.addEventListener("click", () => openColumnPicker("date"));
+filter1PickBtn.addEventListener("click", () => {
+  lastPickerTriggerEl = filter1PickBtn;
+  openColumnPicker("filter1");
+});
+filter2PickBtn.addEventListener("click", () => {
+  lastPickerTriggerEl = filter2PickBtn;
+  openColumnPicker("filter2");
+});
+datePickBtn.addEventListener("click", () => {
+  lastPickerTriggerEl = datePickBtn;
+  openColumnPicker("date");
+});
 
 quickRangeButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     const days = parseInt(btn.dataset.range || "30", 10);
     dateModeEl.value = "last_n_days";
     lastDaysEl.value = String(days);
+    updateDateChipsActive();
     applyFilters();
     sortRows();
     renderTable(currentHeaders, viewRows);
@@ -1046,6 +1184,8 @@ applyPickBtn.addEventListener("click", () => {
 columnPickerEl.addEventListener("click", (e) => {
   if (e.target === columnPickerEl) closeColumnPicker();
 });
+
+columnPickerEl.addEventListener("keydown", handlePickerKeydown);
 
 closePickerBtn.addEventListener("click", closeColumnPicker);
 columnSearchEl.addEventListener("input", filterColumnList);
@@ -1123,6 +1263,10 @@ tbodyEl.addEventListener("dblclick", (e) => {
 [searchQueryEl, searchQuery2El, onlyNonEmptyEl, dateModeEl, dateFromEl, dateToEl, lastDaysEl].forEach((el) => {
   el.addEventListener("input", updateFilterBadge);
   el.addEventListener("change", updateFilterBadge);
+});
+[dateModeEl, lastDaysEl].forEach((el) => {
+  el.addEventListener("change", updateDateChipsActive);
+  el.addEventListener("input", updateDateChipsActive);
 });
 
 searchQueryEl.addEventListener("input", () => {
@@ -1268,18 +1412,35 @@ document.addEventListener("keydown", (e) => {
   }
   if (meta && e.key.toLowerCase() === "k") {
     e.preventDefault();
+    lastPickerTriggerEl = filter1PickBtn;
     openColumnPicker("filter1");
   }
   if (meta && e.key === "/") {
     e.preventDefault();
     themeToggle.click();
   }
+  if (meta && e.key === "f") {
+    e.preventDefault();
+    if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
+      quickSearchPopupEl.classList.add("hidden");
+    } else if (currentHeaders.length && quickSearchPopupEl && quickSearchPopupInput) {
+      quickSearchPopupInput.value = searchQueryEl.value || "";
+      quickSearchPopupEl.classList.remove("hidden");
+      quickSearchPopupInput.focus();
+    } else if (!currentHeaders.length) {
+      toast("Wczytaj arkusz, żeby szukać", "info");
+    }
+  }
   if (e.key === "Escape" && !columnPickerEl.classList.contains("hidden")) {
     closeColumnPicker();
+  }
+  if (e.key === "Escape" && quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
+    quickSearchPopupEl.classList.add("hidden");
   }
 });
 
 setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
+updateDateChipsActive();
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js?v=20260311").then((registration) => {

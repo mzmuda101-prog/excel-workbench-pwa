@@ -98,8 +98,8 @@
                 <label class="field">
                   Tryb wyświetlania
                   <select id="displayMode">
-                    <option>Wartosci</option>
-                    <option>Formuly</option>
+                    <option>Wartości</option>
+                    <option>Formuły</option>
                   </select>
                 </label>
                 <label class="field">
@@ -108,7 +108,14 @@
                 </label>
               </div>
 
-              <button class="btn full" id="loadBtn">Wczytaj arkusz</button>
+              <button class="btn full" id="loadBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                Wczytaj arkusz
+              </button>
             </div>
           </section>
 
@@ -130,8 +137,8 @@
                   Tryb
                   <select id="filterMode">
                     <option>Zawiera</option>
-                    <option>Zaczyna sie</option>
-                    <option>Rowna sie</option>
+                    <option>Zaczyna się</option>
+                    <option>Równa się</option>
                   </select>
                 </label>
                 <label class="field">
@@ -167,8 +174,8 @@
                   Tryb
                   <select id="filterMode2">
                     <option>Zawiera</option>
-                    <option>Zaczyna sie</option>
-                    <option>Rowna sie</option>
+                    <option>Zaczyna się</option>
+                    <option>Równa się</option>
                   </select>
                 </label>
                 <label class="field">
@@ -197,7 +204,7 @@
                 <label class="field">
                   Tryb
                   <select id="dateMode">
-                    <option value="between">Pomiedzy</option>
+                    <option value="between">Między</option>
                     <option value="before">Przed</option>
                     <option value="after">Po</option>
                     <option value="last_n_days">Ostatnie N dni</option>
@@ -212,11 +219,11 @@
               <div class="row">
                 <label class="field">
                   Od
-                  <input id="dateFrom" type="text" placeholder="dd-mm-rrrr / yyyy-mm-dd" />
+                  <input id="dateFrom" type="text" placeholder="dd-mm-rrrr / yyyy-mm-dd" title="np. 14-03-2025 lub 2025-03-14" />
                 </label>
                 <label class="field">
                   Do
-                  <input id="dateTo" type="text" placeholder="dd-mm-rrrr / yyyy-mm-dd" />
+                  <input id="dateTo" type="text" placeholder="dd-mm-rrrr / yyyy-mm-dd" title="np. 14-03-2025 lub 2025-03-14" />
                 </label>
               </div>
 
@@ -248,13 +255,33 @@
             </div>
             <div class="stack">
               <button class="btn full" id="applyFilterBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
                 Filtruj
                 <span class="filter-badge hidden" id="filterBadge">0</span>
               </button>
-              <button class="btn ghost full" id="resetFiltersBtn" type="button">Reset filtrow</button>
-              <button class="btn ghost full" id="resetWidthsBtn" type="button">Reset szerokosci</button>
+              <button class="btn ghost full" id="resetFiltersBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1 4 1 10 7 10"></polyline>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                </svg>
+                Reset filtrow
+              </button>
+              <button class="btn ghost full" id="resetWidthsBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+                Reset szerokosci
+              </button>
               <button class="btn ghost full" id="saveBtn" type="button" disabled aria-disabled="true" title="Wersja webowa nie zapisuje do oryginalnego pliku. Użyj „Zapisz jako…”.">Zapisz</button>
-              <button class="btn ghost full" id="saveAsBtn" type="button">Zapisz jako...</button>
+              <button class="btn ghost full" id="saveAsBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7l18 8 1-4H3z"></path>
+                </svg>
+                Zapisz jako...</button>
             </div>
           </section>
 
@@ -268,7 +295,7 @@
               </svg>
               <span class="panel-title">Log</span>
             </div>
-            <div class="log" id="log"></div>
+            <div class="log" id="log" role="log" aria-label="Log zdarzeń"></div>
           </section>
 
           <section class="panel compact">
@@ -282,6 +309,7 @@
               <span class="panel-title">Skróty</span>
             </div>
             <div class="shortcut-hint">
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>F</kbd> <span>Szybkie szukanie</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Enter</kbd> <span>Filtruj</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>E</kbd> <span>Eksport CSV</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>S</kbd> <span>Zapisz jako</span></div>
@@ -308,7 +336,13 @@
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input id="quickSearch" type="text" placeholder="Szybkie szukanie..." />
-                <button class="btn btn-sm ghost" id="quickSearchBtn" type="button">Filtruj</button>
+                <button class="btn btn-sm ghost" id="quickSearchBtn" type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  Filtruj
+                </button>
               </div>
               <div class="table-actions">
                 <button class="btn btn-sm ghost" id="readingToggle" type="button">Tryb czytania</button>
@@ -355,9 +389,21 @@
         <div class="modal-list" id="columnList"></div>
         <div class="modal-actions">
           <button class="btn ghost" id="selectAllBtn" type="button">Zaznacz wszystko</button>
-          <button class="btn ghost" id="clearAllBtn" type="button">Wyczysc</button>
+          <button class="btn ghost" id="clearAllBtn" type="button">Wyczyść</button>
           <button class="btn" id="applyPickBtn" type="button">Zastosuj</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Quick search popup (Ctrl/Cmd+F) -->
+    <div class="quick-search-popup hidden" id="quickSearchPopup" role="dialog" aria-label="Szybkie szukanie">
+      <div class="quick-search-popup-box">
+        <label class="quick-search-popup-label" for="quickSearchPopupInput">Szukaj w tabeli</label>
+        <div class="quick-search-popup-row">
+          <input id="quickSearchPopupInput" type="text" placeholder="np. faktura..." />
+          <button class="btn btn-sm" id="quickSearchPopupBtn" type="button">Filtruj</button>
+        </div>
+        <p class="quick-search-popup-hint">Enter – zastosuj, Esc – zamknij</p>
       </div>
     </div>
 
@@ -370,9 +416,9 @@
     </div>
 
     <!-- Toasts -->
-    <div class="toast-container" id="toastContainer"></div>
+    <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="vendor/xlsx.full.min.js"></script>
     <script src="app.js?v=20260312-3"></script>
   </body>
 </html>
