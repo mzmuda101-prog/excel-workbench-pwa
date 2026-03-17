@@ -61,6 +61,7 @@ const themeToggle = document.getElementById("themeToggle");
 const panelToggle = document.getElementById("panelToggle");
 const panelHandle = document.getElementById("panelHandle");
 const brandRefreshBtn = document.getElementById("brandRefresh");
+const networkBadgeEl = document.getElementById("networkBadge");
 const heroRightEl = document.getElementById("heroRight");
 const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
@@ -88,10 +89,12 @@ let activePickerKey = null;
 let lastPickerTriggerEl = null;
 let sortState = { col: "", dir: "asc" };
 let manualColumnWidths = {};
+let hasUnsavedChanges = false;
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
 const INTRO_PLAYED_KEY = "introPlayed";
+const BASE_TITLE = document.title || "Excel Workbench";
 
 function log(msg, type = "info") {
   const line = document.createElement("div");
@@ -128,6 +131,38 @@ function setLoading(isLoading, text) {
 
 function setStatus(msg) {
   statusEl.textContent = msg;
+}
+
+function setDirtyState(isDirty) {
+  hasUnsavedChanges = !!isDirty;
+  statusEl.classList.toggle("unsaved", hasUnsavedChanges);
+  document.title = hasUnsavedChanges ? `* ${BASE_TITLE}` : BASE_TITLE;
+}
+
+function valuesEqual(a, b) {
+  if (a === b) return true;
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  if ((a === null || a === undefined) && (b === null || b === undefined)) return true;
+  return false;
+}
+
+function isXlsxAvailable(showFeedback = false) {
+  const available = typeof window !== "undefined" && !!window.XLSX;
+  if (!available && showFeedback) {
+    setStatus("Brak biblioteki XLSX");
+    toast("Brak biblioteki XLSX. Odśwież stronę lub sprawdź połączenie.", "error");
+    log("Brak biblioteki XLSX (window.XLSX).", "error");
+  }
+  return available;
+}
+
+function setRuntimeAvailability(isAvailable) {
+  fileInput.disabled = !isAvailable;
+  loadBtn.disabled = !isAvailable;
+  saveAsBtn.disabled = !isAvailable;
+  saveAsBtn.setAttribute("aria-disabled", isAvailable ? "false" : "true");
+  dropZone.classList.toggle("disabled", !isAvailable);
+  dropZone.setAttribute("aria-disabled", isAvailable ? "false" : "true");
 }
 
 function loadMaxRowsPreference() {
@@ -904,8 +939,23 @@ function setTheme(theme, persist = true) {
       : "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z\"/></svg>";
 }
 
+function updateNetworkBadge() {
+  if (!networkBadgeEl) return;
+  const isOnline = navigator.onLine;
+  networkBadgeEl.textContent = isOnline ? "Online" : "Offline";
+  networkBadgeEl.classList.toggle("offline", !isOnline);
+  const safetyNote = "Pliki Excel są wczytywane i przetwarzane lokalnie na Twoim urządzeniu.";
+  networkBadgeEl.setAttribute(
+    "title",
+    isOnline
+      ? `Połączenie aktywne. ${safetyNote}`
+      : `Brak połączenia sieciowego. ${safetyNote}`
+  );
+}
+
 async function handleFile(file) {
   if (!file) return;
+  if (!isXlsxAvailable(true)) return;
   try {
     setLoading(true, "Wczytywanie pliku...");
     const data = await file.arrayBuffer();
@@ -925,6 +975,7 @@ async function handleFile(file) {
     fileNameTextEl.textContent = file.name;
     fileNameEl.classList.remove("hidden");
     dropZone.classList.add("has-file");
+    setDirtyState(false);
     setStatus("Plik wczytany");
     toast("Plik wczytany", "success");
     log(`Wczytano plik: ${file.name}`, "success");
@@ -970,6 +1021,7 @@ function exportCsv() {
 }
 
 function saveWorkbook() {
+  if (!isXlsxAvailable(true)) return;
   if (!workbook) {
     toast("Brak pliku do zapisu", "warning");
     return;
@@ -982,11 +1034,13 @@ function saveWorkbook() {
   }
   const filename = `${base}_edited.${ext}`;
   XLSX.writeFile(workbook, filename, { bookType: ext });
+  setDirtyState(false);
   toast("Zapisano plik", "success");
   log(`Zapisano plik: ${filename}`, "success");
 }
 
 function saveWorkbookAs() {
+  if (!isXlsxAvailable(true)) return;
   if (!workbook) {
     toast("Brak pliku do zapisu", "warning");
     return;
@@ -1006,6 +1060,7 @@ function saveWorkbookAs() {
     if (!ok) return;
   }
   XLSX.writeFile(workbook, name, { bookType: ext });
+  setDirtyState(false);
   toast("Zapisano plik", "success");
   log(`Zapisano plik: ${name}`, "success");
 }
@@ -1016,6 +1071,7 @@ fileInput.addEventListener("change", (e) => {
 });
 
 loadBtn.addEventListener("click", () => {
+  if (!isXlsxAvailable(true)) return;
   if (!workbook) {
     toast("Najpierw wybierz plik", "warning");
     log("Najpierw wybierz plik.", "warn");
@@ -1047,6 +1103,7 @@ loadBtn.addEventListener("click", () => {
       updateColumnSummary();
       updateFilterBadge();
       renderTable(currentHeaders, viewRows);
+      setDirtyState(false);
       toast("Arkusz wczytany", "success");
       log(`Wczytano arkusz: ${sheetName}`, "success");
     } finally {
@@ -1241,10 +1298,12 @@ tbodyEl.addEventListener("dblclick", (e) => {
       rowObj.values[colIndex0] = null;
       rowObj.display[colIndex0] = "";
       updateSheetCell(rowIndex0, colIndex0, null);
+      if (!valuesEqual(oldValue, null)) setDirtyState(true);
     } else {
       rowObj.values[colIndex0] = parsed.value;
       rowObj.display[colIndex0] = toDisplay(parsed.value);
       updateSheetCell(rowIndex0, colIndex0, parsed);
+      if (!valuesEqual(oldValue, parsed.value)) setDirtyState(true);
     }
     renderTable(currentHeaders, viewRows);
   };
@@ -1282,6 +1341,9 @@ initIntroSplash();
 initTheme();
 loadMaxRowsPreference();
 attachResizeHandlers();
+updateNetworkBadge();
+window.addEventListener("online", updateNetworkBadge);
+window.addEventListener("offline", updateNetworkBadge);
 
 themeToggle.addEventListener("click", () => {
   const next = rootEl.getAttribute("data-theme") === "dark" ? "light" : "dark";
@@ -1441,9 +1503,26 @@ document.addEventListener("keydown", (e) => {
 
 setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
 updateDateChipsActive();
+setDirtyState(false);
+
+const xlsxReady = isXlsxAvailable(false);
+setRuntimeAvailability(xlsxReady);
+if (!xlsxReady) {
+  setEmptyState(
+    "Brak biblioteki XLSX",
+    "Aplikacja nie zaladowala silnika arkuszy. Odswiez strone i sprawdz polaczenie z internetem."
+  );
+  setStatus("Brak biblioteki XLSX");
+}
+
+window.addEventListener("beforeunload", (e) => {
+  if (!hasUnsavedChanges) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260311").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260317-1").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }

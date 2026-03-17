@@ -235,6 +235,32 @@ body.splashing {
   border: 1px solid var(--accent-border);
 }
 
+.network-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.network-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.network-badge.offline {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+}
+
+.network-badge.offline::before {
+  background: var(--warning);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent);
+}
+
 .logo-badge {
   width: 36px;
   height: 36px;
@@ -488,6 +514,16 @@ details.panel[open] > summary .chevron { transform: rotate(180deg); }
   border-style: solid;
   border-color: var(--accent-border);
   background: var(--accent-light);
+}
+
+.drop-zone.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.2);
+}
+
+.drop-zone.disabled input[type="file"] {
+  pointer-events: none;
 }
 
 .drop-icon {
@@ -802,6 +838,29 @@ details.panel[open] > summary .chevron { transform: rotate(180deg); }
   border: 1px solid var(--border);
   border-radius: var(--r-full);
   white-space: nowrap;
+}
+
+.status-badge.unsaved {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: linear-gradient(120deg, var(--warning-bg) 0%, var(--surface) 100%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 15%, transparent);
+}
+
+.status-badge.unsaved::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 7px;
+  background: var(--warning);
+  animation: unsavedPulse 1.8s infinite;
+}
+
+@keyframes unsavedPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.65); opacity: 0.55; }
 }
 
 /* ===================================================

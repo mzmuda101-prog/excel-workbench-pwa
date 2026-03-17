@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260312-3" />
+    <link rel="stylesheet" href="styles.css?v=20260317-1" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -37,6 +37,7 @@
             Panel
           </button>
           <span class="hero-badge">PWA</span>
+          <span class="hero-badge network-badge" id="networkBadge" aria-live="polite">Online</span>
           <button class="logo-badge" id="brandRefresh" title="Odśwież aplikację" aria-label="Odśwież aplikację">
             <img src="logo%20Mateusz%20przezroczyste.png" alt="Logo Mateusz" />
           </button>
@@ -418,8 +419,8 @@
     <!-- Toasts -->
     <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
 
-    <!-- xlsx-js-style: SheetJS + style/fill support; for offline PWA put dist/xlsx.bundle.js in vendor/ -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-    <script src="app.js?v=20260312-3"></script>
+    <!-- Local xlsx-js-style (better style read/write, stable offline) -->
+    <script src="vendor/xlsx-js-style.bundle.min.js"></script>
+    <script src="app.js?v=20260317-1"></script>
   </body>
 </html>
