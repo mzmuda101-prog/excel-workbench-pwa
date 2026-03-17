@@ -710,6 +710,13 @@ details.panel[open] > summary .chevron { transform: rotate(180deg); }
   box-shadow: none;
 }
 
+.btn.ghost.active,
+.btn.ghost[aria-pressed="true"] {
+  background: var(--accent-light);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
 .btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(47,111,92,.35);
@@ -1018,6 +1025,11 @@ tbody td {
 tbody td.cell-has-fill {
   border-left: 3px solid var(--accent);
   padding-left: 9px;
+}
+
+tbody td.cell-merged {
+  vertical-align: middle;
+  box-shadow: inset 0 0 0 1px rgba(47,111,92,.12);
 }
 tbody td.cell-has-fill:not([style*="background"]) {
   background: rgba(47,111,92,.08);

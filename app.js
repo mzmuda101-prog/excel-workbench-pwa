@@ -18,6 +18,7 @@ const headerRowEl = document.getElementById("headerRow");
 const autoHeaderRowEl = document.getElementById("autoHeaderRow");
 const displayModeEl = document.getElementById("displayMode");
 const maxRowsEl = document.getElementById("maxRows");
+const excelLayoutToggleEl = document.getElementById("excelLayoutToggle");
 const loadBtn = document.getElementById("loadBtn");
 
 const searchQueryEl = document.getElementById("searchQuery");
@@ -79,6 +80,11 @@ let viewRows = [];
 let currentFileName = "";
 let currentSheetName = "";
 let currentHeaderRow = 1;
+let currentStartCol = 0;
+let currentMerges = [];
+let currentHeaderStyles = [];
+let currentSheetColWidths = [];
+let currentSheetRowHeights = {};
 let wasSidebarCollapsed = false;
 const columnSelections = {
   filter1: new Set(),
@@ -93,6 +99,7 @@ let hasUnsavedChanges = false;
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
+const EXCEL_LAYOUT_KEY = "excel-workbench-excel-layout";
 const INTRO_PLAYED_KEY = "introPlayed";
 const BASE_TITLE = document.title || "Excel Workbench";
 
@@ -160,6 +167,10 @@ function setRuntimeAvailability(isAvailable) {
   fileInput.disabled = !isAvailable;
   loadBtn.disabled = !isAvailable;
   saveAsBtn.disabled = !isAvailable;
+  if (excelLayoutToggleEl) {
+    excelLayoutToggleEl.disabled = !isAvailable;
+    excelLayoutToggleEl.setAttribute("aria-disabled", isAvailable ? "false" : "true");
+  }
   saveAsBtn.setAttribute("aria-disabled", isAvailable ? "false" : "true");
   dropZone.classList.toggle("disabled", !isAvailable);
   dropZone.setAttribute("aria-disabled", isAvailable ? "false" : "true");
@@ -176,6 +187,29 @@ function loadMaxRowsPreference() {
 function saveMaxRowsPreference() {
   const value = Math.max(1, parseInt(maxRowsEl.value || "200", 10));
   localStorage.setItem(MAX_ROWS_KEY, String(value));
+}
+
+function loadExcelLayoutPreference() {
+  if (!excelLayoutToggleEl) return;
+  setExcelLayoutEnabled(localStorage.getItem(EXCEL_LAYOUT_KEY) === "1");
+}
+
+function saveExcelLayoutPreference() {
+  if (!excelLayoutToggleEl) return;
+  localStorage.setItem(EXCEL_LAYOUT_KEY, isExcelLayoutEnabled() ? "1" : "0");
+}
+
+function isExcelLayoutEnabled() {
+  if (!excelLayoutToggleEl) return false;
+  return excelLayoutToggleEl.getAttribute("aria-pressed") === "true";
+}
+
+function setExcelLayoutEnabled(enabled) {
+  if (!excelLayoutToggleEl) return;
+  const next = !!enabled;
+  excelLayoutToggleEl.setAttribute("aria-pressed", next ? "true" : "false");
+  excelLayoutToggleEl.classList.toggle("active", next);
+  excelLayoutToggleEl.textContent = next ? "Widok Excel: ON" : "Widok Excel";
 }
 
 function setEmptyState(title, subtitle) {
@@ -315,7 +349,8 @@ function updateSheetCell(rowIndex0, colIndex0, parsed) {
   if (!workbook || !currentSheetName) return;
   const sheet = workbook.Sheets[currentSheetName];
   if (!sheet) return;
-  const cellRef = XLSX.utils.encode_cell({ r: rowIndex0, c: colIndex0 });
+  const absoluteCol = currentStartCol + colIndex0;
+  const cellRef = XLSX.utils.encode_cell({ r: rowIndex0, c: absoluteCol });
   if (!parsed || parsed.value === null) {
     delete sheet[cellRef];
     return;
@@ -454,8 +489,282 @@ function sortRows() {
   if (!ascending) viewRows.reverse();
 }
 
-function computeColumnWidths(headers, rows) {
+function toPixelWidth(meta) {
+  if (!meta || typeof meta !== "object") return null;
+  if (Number.isFinite(meta.wpx)) return Math.max(40, Math.round(meta.wpx));
+  if (Number.isFinite(meta.wch)) return Math.max(40, Math.round(meta.wch * 8 + 16));
+  if (Number.isFinite(meta.width)) return Math.max(40, Math.round(meta.width * 7 + 8));
+  return null;
+}
+
+function toPixelHeight(meta) {
+  if (!meta || typeof meta !== "object") return null;
+  if (Number.isFinite(meta.hpx)) return Math.max(18, Math.round(meta.hpx));
+  if (Number.isFinite(meta.hpt)) return Math.max(18, Math.round((meta.hpt * 96) / 72));
+  return null;
+}
+
+function normalizeHexColor(input) {
+  if (!input) return null;
+  const raw = String(input).replace(/^#/, "").trim();
+  if (/^[A-Fa-f0-9]{8}$/.test(raw)) return `#${raw.slice(2)}`;
+  if (/^[A-Fa-f0-9]{6}$/.test(raw)) return `#${raw}`;
+  if (/^[A-Fa-f0-9]{3}$/.test(raw)) return `#${raw[0]}${raw[0]}${raw[1]}${raw[1]}${raw[2]}${raw[2]}`;
+  return null;
+}
+
+function colorFromStyleNode(node) {
+  if (!node || typeof node !== "object") return null;
+  const rgb = node.rgb ?? node.RGB;
+  const direct = normalizeHexColor(rgb);
+  if (direct) return direct;
+  const auto = normalizeHexColor(node.auto);
+  if (auto) return auto;
+  return null;
+}
+
+function isDefaultLikeFill(fill, fillColor) {
+  if (!fill || typeof fill !== "object") return true;
+  const patternType = String(fill.patternType || fill.PatternType || "none").toLowerCase();
+  if (!patternType || patternType === "none") return true;
+  if (!fillColor) return true;
+  const fg = fill.fgColor || fill.FgColor || null;
+  const hasExplicitFgColor = !!(
+    fg
+    && typeof fg === "object"
+    && (
+      fg.rgb != null
+      || fg.RGB != null
+      || fg.indexed != null
+      || fg.Indexed != null
+      || fg.theme != null
+      || fg.Theme != null
+      || fg.tint != null
+      || fg.Tint != null
+    )
+  );
+  const normalized = String(fillColor).toUpperCase();
+  // White-ish fill can be intentionally chosen by the user (especially solid fill),
+  // so treat it as custom when the fg color is explicitly present in style.
+  if (normalized === "#FFFFFF" || normalized === "#FFFFFE") {
+    return !(patternType === "solid" && hasExplicitFgColor);
+  }
+  if (normalized === "#000000") return true;
+  return false;
+}
+
+function isDefaultLikeFontColor(fontColor) {
+  if (!fontColor) return true;
+  const normalized = String(fontColor).toUpperCase();
+  return normalized === "#000000" || normalized === "#FFFFFF";
+}
+
+function isCustomAlignment(alignment) {
+  if (!alignment || typeof alignment !== "object") return false;
+  const horizontal = String(alignment.horizontal || alignment.Horizontal || "").toLowerCase();
+  const vertical = String(alignment.vertical || alignment.Vertical || "").toLowerCase();
+  const wrapText = !!(alignment.wrapText || alignment.wrap || alignment.WrapText);
+  const isDefaultHorizontal = !horizontal || horizontal === "general";
+  const isDefaultVertical = !vertical || vertical === "bottom";
+  return !isDefaultHorizontal || !isDefaultVertical || wrapText;
+}
+
+function hasCustomBorder(border) {
+  if (!border || typeof border !== "object") return false;
+  const edges = [
+    border.top || border.Top,
+    border.right || border.Right,
+    border.bottom || border.Bottom,
+    border.left || border.Left,
+    border.diagonal || border.Diagonal,
+  ];
+  return edges.some((edge) => {
+    const style = String(edge?.style || edge?.Style || "").toLowerCase();
+    return !!style && style !== "none";
+  });
+}
+
+function resolveXfStyle(styleIndex, wb) {
+  if (!Number.isFinite(styleIndex) || !wb || !wb.Styles) return null;
+  const styles = wb.Styles;
+  const xfs = styles.CellXfs || styles.cellXfs;
+  const xf = Array.isArray(xfs) ? xfs[styleIndex] : null;
+  if (!xf) return null;
+  const fontId = xf.fontId ?? xf.FontId;
+  const fillId = xf.fillId ?? xf.FillId;
+  const borderId = xf.borderId ?? xf.BorderId;
+  const alignment = xf.alignment || xf.Alignment || null;
+  const numFmtId = xf.numFmtId ?? xf.NumFmtId;
+  const fonts = styles.Fonts || styles.fonts || [];
+  const fills = styles.Fills || styles.fills || [];
+  const borders = styles.Borders || styles.borders || [];
+  return {
+    font: Number.isFinite(fontId) ? fonts[fontId] : null,
+    fill: Number.isFinite(fillId) ? fills[fillId] : null,
+    border: Number.isFinite(borderId) ? borders[borderId] : null,
+    alignment,
+    numFmtId,
+  };
+}
+
+function extractCellStyle(cell, wb) {
+  if (!cell) return null;
+  let style = null;
+  if (cell.s && typeof cell.s === "object") {
+    style = cell.s;
+  } else if (Number.isFinite(cell.s)) {
+    style = resolveXfStyle(cell.s, wb);
+  }
+  if (!style || typeof style !== "object") return null;
+
+  const fill = style.fill || style.Fill || null;
+  const font = style.font || style.Font || null;
+  const border = style.border || style.Border || null;
+  const alignment = style.alignment || style.Alignment || null;
+
+  const fillColor = colorFromStyleNode(fill?.fgColor || fill?.FgColor || fill?.bgColor || fill?.BgColor);
+  const fontColor = colorFromStyleNode(font?.color || font?.Color);
+  const hasCustomFill = !isDefaultLikeFill(fill, fillColor);
+  const hasCustomFontColor = !isDefaultLikeFontColor(fontColor);
+  const hasCustomAlign = isCustomAlignment(alignment);
+  const hasBorder = hasCustomBorder(border);
+
+  const styleOut = {
+    fillColor,
+    hasCustomFill,
+    fontColor,
+    hasCustomFontColor,
+    bold: !!(font && (font.bold || font.b || font.Bold)),
+    italic: !!(font && (font.italic || font.i || font.Italic)),
+    underline: !!(font && (font.underline || font.u || font.Underline)),
+    horizontal: hasCustomAlign ? (alignment?.horizontal || alignment?.Horizontal || "") : "",
+    vertical: hasCustomAlign ? (alignment?.vertical || alignment?.Vertical || "") : "",
+    wrapText: hasCustomAlign ? !!(alignment && (alignment.wrapText || alignment.wrap || alignment.WrapText)) : false,
+    hasBorder,
+    border,
+  };
+
+  return styleOut;
+}
+
+function applyEdgeBorder(td, edge) {
+  if (!edge) return;
+  const borderStyle = edge.style || edge.Style || "";
+  if (!borderStyle || borderStyle === "none") return;
+  const color = colorFromStyleNode(edge.color || edge.Color) || "rgba(0,0,0,0.32)";
+  return `1px solid ${color}`;
+}
+
+function applyCellStyle(td, style) {
+  if (!style) return;
+  if (style.hasCustomFill && style.fillColor) {
+    td.classList.add("cell-has-fill");
+    td.style.background = hexToRgba(style.fillColor, 0.28) || td.style.background;
+  }
+  if (style.hasCustomFontColor && style.fontColor) td.style.color = style.fontColor;
+  if (style.bold) td.style.fontWeight = "700";
+  if (style.italic) td.style.fontStyle = "italic";
+  if (style.underline) td.style.textDecoration = "underline";
+  if (style.horizontal) td.style.textAlign = style.horizontal;
+  if (style.vertical) td.style.verticalAlign = style.vertical;
+  if (style.wrapText) td.style.whiteSpace = "normal";
+
+  if (style.hasBorder && style.border && typeof style.border === "object") {
+    const t = applyEdgeBorder(td, style.border.top || style.border.Top);
+    const r = applyEdgeBorder(td, style.border.right || style.border.Right);
+    const b = applyEdgeBorder(td, style.border.bottom || style.border.Bottom);
+    const l = applyEdgeBorder(td, style.border.left || style.border.Left);
+    if (t) td.style.borderTop = t;
+    if (r) td.style.borderRight = r;
+    if (b) td.style.borderBottom = b;
+    if (l) td.style.borderLeft = l;
+  }
+}
+
+function computeMergeLayout(rowsShown, colCount) {
+  if (!Array.isArray(currentMerges) || !currentMerges.length || !rowsShown.length) return null;
+  const rowPosByAbs = new Map();
+  rowsShown.forEach((row, pos) => rowPosByAbs.set(row.rowIndex0, pos));
+  const anchors = new Map();
+  const covered = new Set();
+
+  currentMerges.forEach((merge) => {
+    if (!merge || !merge.s || !merge.e) return;
+    if (merge.s.c < currentStartCol || merge.e.c >= currentStartCol + colCount) return;
+    const topPos = rowPosByAbs.get(merge.s.r);
+    if (topPos == null) return;
+    for (let r = merge.s.r; r <= merge.e.r; r++) {
+      const p = rowPosByAbs.get(r);
+      if (p == null || p !== topPos + (r - merge.s.r)) return;
+    }
+    const startCol = merge.s.c - currentStartCol;
+    const endCol = merge.e.c - currentStartCol;
+    const rowspan = merge.e.r - merge.s.r + 1;
+    const colspan = endCol - startCol + 1;
+    if (rowspan < 2 && colspan < 2) return;
+
+    const anchorKey = `${topPos}:${startCol}`;
+    anchors.set(anchorKey, {
+      rowspan,
+      colspan,
+      ref: XLSX.utils.encode_range({
+        s: { r: merge.s.r, c: merge.s.c },
+        e: { r: merge.e.r, c: merge.e.c },
+      }),
+    });
+    for (let rp = topPos; rp < topPos + rowspan; rp++) {
+      for (let c = startCol; c <= endCol; c++) {
+        if (rp === topPos && c === startCol) continue;
+        covered.add(`${rp}:${c}`);
+      }
+    }
+  });
+
+  return { anchors, covered };
+}
+
+function computeHeaderMergeLayout(colCount) {
+  if (!Array.isArray(currentMerges) || !currentMerges.length) return null;
+  const headerAbsRow = currentHeaderRow - 1;
+  const anchors = new Map();
+  const covered = new Set();
+
+  currentMerges.forEach((merge) => {
+    if (!merge || !merge.s || !merge.e) return;
+    if (merge.s.r !== headerAbsRow || merge.e.r !== headerAbsRow) return;
+    if (merge.s.c < currentStartCol || merge.e.c >= currentStartCol + colCount) return;
+    const startCol = merge.s.c - currentStartCol;
+    const endCol = merge.e.c - currentStartCol;
+    const colspan = endCol - startCol + 1;
+    if (colspan < 2) return;
+    anchors.set(startCol, {
+      colspan,
+      ref: XLSX.utils.encode_range({
+        s: { r: merge.s.r, c: merge.s.c },
+        e: { r: merge.e.r, c: merge.e.c },
+      }),
+    });
+    for (let c = startCol + 1; c <= endCol; c++) covered.add(c);
+  });
+
+  return { anchors, covered };
+}
+
+function computeColumnWidths(headers, rows, useExcelLayout) {
   const widths = headers.map(() => 0);
+  const min = 80;
+  const max = 520;
+
+  if (useExcelLayout && Array.isArray(currentSheetColWidths) && currentSheetColWidths.length) {
+    return widths.map((_, i) => {
+      const manual = manualColumnWidths[i];
+      if (manual) return Math.max(min, Math.min(max, manual));
+      const fromSheet = toPixelWidth(currentSheetColWidths[i]);
+      if (fromSheet) return Math.max(min, Math.min(max, fromSheet));
+      return 140;
+    });
+  }
+
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   const tableFont = getComputedStyle(tableEl).font;
@@ -479,8 +788,6 @@ function computeColumnWidths(headers, rows) {
     const idx = Math.floor(colSamples.length * 0.9);
     const p90 = colSamples.length ? colSamples[Math.min(idx, colSamples.length - 1)] : base;
     const raw = Math.max(base, p90) + padding;
-    const min = 80;
-    const max = 520;
     const manual = manualColumnWidths[i];
     if (manual) return Math.max(min, Math.min(max, manual));
     return Math.max(min, Math.min(max, Math.ceil(raw)));
@@ -503,7 +810,8 @@ function renderTable(headers, rows) {
   theadEl.innerHTML = "";
   tbodyEl.innerHTML = "";
 
-  const widths = computeColumnWidths(headers, rows);
+  const useExcelLayout = isExcelLayoutEnabled();
+  const widths = computeColumnWidths(headers, rows, useExcelLayout);
   const rowHeaderDigits = String(rows.length + currentHeaderRow).length;
   const rowHeaderWidth = Math.max(42, rowHeaderDigits * 8 + 18);
 
@@ -531,7 +839,7 @@ function renderTable(headers, rows) {
     const th = document.createElement("th");
     th.className = "guide-cell";
     th.setAttribute("scope", "col");
-    th.textContent = XLSX.utils.encode_col(i);
+    th.textContent = XLSX.utils.encode_col(i + currentStartCol);
     const resizer = document.createElement("div");
     resizer.className = "col-resizer";
     resizer.dataset.colIndex = String(i);
@@ -547,10 +855,24 @@ function renderTable(headers, rows) {
   rowHead.setAttribute("scope", "row");
   rowHead.textContent = String(currentHeaderRow);
   headRow.appendChild(rowHead);
-  headers.forEach((h, i) => {
+  const headerMergeLayout = computeHeaderMergeLayout(headers.length);
+  for (let i = 0; i < headers.length; i++) {
+    if (headerMergeLayout && headerMergeLayout.covered.has(i)) continue;
+    const h = headers[i];
     const th = document.createElement("th");
     th.setAttribute("scope", "col");
     th.textContent = h;
+    if (currentHeaderStyles[i]) applyCellStyle(th, currentHeaderStyles[i]);
+
+    if (headerMergeLayout) {
+      const merge = headerMergeLayout.anchors.get(i);
+      if (merge) {
+        th.colSpan = merge.colspan;
+        th.classList.add("cell-merged");
+        if (merge.ref) th.title = `Scalona komórka: ${merge.ref}`;
+      }
+    }
+
     th.addEventListener("click", () => {
       if (sortState.col === h) {
         sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
@@ -570,29 +892,46 @@ function renderTable(headers, rows) {
     }
 
     headRow.appendChild(th);
-  });
+  }
   theadEl.appendChild(headRow);
 
   const limit = Math.max(1, parseInt(maxRowsEl.value || "200", 10));
-  rows.slice(0, limit).forEach((row) => {
+  const rowsShown = rows.slice(0, limit);
+  const mergeLayout = computeMergeLayout(rowsShown, headers.length);
+
+  rowsShown.forEach((row, rowPos) => {
     const tr = document.createElement("tr");
     if (row.isSubheader) tr.classList.add("row-subheader");
     if (typeof row.rowIndex0 === "number") {
       tr.dataset.rowIndex = String(row.rowIndex0);
+    }
+    if (useExcelLayout) {
+      const rowMeta = currentSheetRowHeights[row.rowIndex0];
+      const h = toPixelHeight(rowMeta);
+      if (h) tr.style.height = `${h}px`;
     }
     const rowHead = document.createElement("td");
     rowHead.className = "row-head";
     rowHead.textContent = String(row.rowIndex0 + 1);
     tr.appendChild(rowHead);
     row.values.forEach((v, i) => {
+      const mergeKey = `${rowPos}:${i}`;
+      if (mergeLayout && mergeLayout.covered.has(mergeKey)) return;
       const td = document.createElement("td");
       td.textContent = getDisplayValue(row, i);
       td.dataset.colIndex = String(i);
-      if (row.cellFills && row.cellFills[i]) {
-        td.classList.add("cell-has-fill");
-        const bg = hexToRgba(row.cellFills[i], 0.32);
-        if (bg) td.style.background = bg;
+
+      if (mergeLayout) {
+        const anchor = mergeLayout.anchors.get(mergeKey);
+        if (anchor) {
+          if (anchor.rowspan > 1) td.rowSpan = anchor.rowspan;
+          if (anchor.colspan > 1) td.colSpan = anchor.colspan;
+          td.classList.add("cell-merged");
+          if (anchor.ref) td.title = `Scalona komórka: ${anchor.ref}`;
+        }
       }
+
+      if (row.cellStyles && row.cellStyles[i]) applyCellStyle(td, row.cellStyles[i]);
       tr.appendChild(td);
     });
     tbodyEl.appendChild(tr);
@@ -603,17 +942,22 @@ function renderTable(headers, rows) {
 
 function buildRows(sheet, headerRow, wb) {
   const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const colMeta = sheet["!cols"] || [];
+  const rowMeta = sheet["!rows"] || [];
+  const merges = Array.isArray(sheet["!merges"]) ? sheet["!merges"] : [];
   const headers = [];
+  const headerStyles = [];
   for (let c = range.s.c; c <= range.e.c; c++) {
     const cell = sheet[XLSX.utils.encode_cell({ r: headerRow - 1, c })];
     const v = cell ? cell.v : null;
     headers.push(v ? String(v).trim() : XLSX.utils.encode_col(c));
+    headerStyles.push(wb ? extractCellStyle(cell, wb) : null);
   }
   const rows = [];
   for (let r = headerRow; r <= range.e.r; r++) {
     const values = [];
     const display = [];
-    const cellFills = [];
+    const cellStyles = [];
     let any = false;
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
@@ -625,31 +969,21 @@ function buildRows(sheet, headerRow, wb) {
       }
       values.push(v);
       display.push(shown);
-      cellFills.push(wb ? getCellFill(cell, wb) : null);
+      cellStyles.push(wb ? extractCellStyle(cell, wb) : null);
       if (v !== null && v !== "") any = true;
     }
     if (!any) continue;
-    rows.push({ values, display, rawValues: values, rowIndex0: r, cellFills });
+    rows.push({ values, display, rawValues: values, rowIndex0: r, cellStyles });
   }
-  return { headers, rows };
-}
-
-// [EN] Try to get cell fill color (best-effort; standard xlsx may not expose styles)
-function getCellFill(cell, wb) {
-  if (!cell) return null;
-  try {
-    const s = cell.s;
-    if (s && typeof s === "object" && s.fill && s.fill.fgColor && s.fill.fgColor.rgb) return s.fill.fgColor.rgb;
-    if (s && typeof s === "object" && s.fill && s.fill.patternType && s.fill.patternType !== "none") return s.fill.fgColor?.rgb || "#E0E0E0";
-    if (typeof s === "number" && wb && wb.Styles && Array.isArray(wb.Styles.CellXfs)) {
-      const xf = wb.Styles.CellXfs[s];
-      if (xf && xf.fillId != null && wb.Styles.Fills && wb.Styles.Fills[xf.fillId]) {
-        const fill = wb.Styles.Fills[xf.fillId];
-        if (fill && fill.fgColor && fill.fgColor.rgb) return fill.fgColor.rgb;
-      }
-    }
-  } catch (_) {}
-  return null;
+  return {
+    headers,
+    headerStyles,
+    rows,
+    startCol: range.s.c,
+    merges,
+    colWidths: headers.map((_, idx) => colMeta[range.s.c + idx] || null),
+    rowHeights: rowMeta,
+  };
 }
 
 function hexToRgba(hex, alpha = 0.35) {
@@ -972,6 +1306,11 @@ async function handleFile(file) {
       sheetSelect.appendChild(opt);
     });
     currentFileName = file.name;
+    currentStartCol = 0;
+    currentMerges = [];
+    currentHeaderStyles = [];
+    currentSheetColWidths = [];
+    currentSheetRowHeights = {};
     fileNameTextEl.textContent = file.name;
     fileNameEl.classList.remove("hidden");
     dropZone.classList.add("has-file");
@@ -1093,6 +1432,11 @@ loadBtn.addEventListener("click", () => {
       currentSheetName = sheetName;
       const data = buildRows(sheet, headerRow, workbook);
       currentHeaders = data.headers;
+      currentStartCol = data.startCol || 0;
+      currentMerges = Array.isArray(data.merges) ? data.merges : [];
+      currentHeaderStyles = Array.isArray(data.headerStyles) ? data.headerStyles : [];
+      currentSheetColWidths = Array.isArray(data.colWidths) ? data.colWidths : [];
+      currentSheetRowHeights = data.rowHeights || {};
       baseRows = markSubheaderRows(data.rows);
       viewRows = baseRows.slice();
       sortState = { col: currentHeaders[0] || "", dir: "asc" };
@@ -1268,7 +1612,8 @@ tbodyEl.addEventListener("dblclick", (e) => {
 
   if (!workbook || !currentSheetName) return;
   const sheet = workbook.Sheets[currentSheetName];
-  const cellRef = XLSX.utils.encode_cell({ r: rowIndex0, c: colIndex0 });
+  const absoluteCol = currentStartCol + colIndex0;
+  const cellRef = XLSX.utils.encode_cell({ r: rowIndex0, c: absoluteCol });
   const cell = sheet ? sheet[cellRef] : null;
   if (cell && cell.f) {
     toast("Edycja formul jest zablokowana", "warning");
@@ -1337,9 +1682,18 @@ maxRowsEl.addEventListener("change", () => {
   renderTable(currentHeaders, viewRows);
 });
 
+if (excelLayoutToggleEl) {
+  excelLayoutToggleEl.addEventListener("click", () => {
+    setExcelLayoutEnabled(!isExcelLayoutEnabled());
+    saveExcelLayoutPreference();
+    renderTable(currentHeaders, viewRows);
+  });
+}
+
 initIntroSplash();
 initTheme();
 loadMaxRowsPreference();
+loadExcelLayoutPreference();
 attachResizeHandlers();
 updateNetworkBadge();
 window.addEventListener("online", updateNetworkBadge);
@@ -1522,7 +1876,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260317-1").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260318-2").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }

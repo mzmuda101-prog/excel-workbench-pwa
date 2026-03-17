@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260317-1" />
+    <link rel="stylesheet" href="styles.css?v=20260318-2" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -108,7 +108,6 @@
                   <input id="maxRows" type="number" min="1" value="200" />
                 </label>
               </div>
-
               <button class="btn full" id="loadBtn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -346,6 +345,9 @@
                 </button>
               </div>
               <div class="table-actions">
+                <button class="btn btn-sm ghost" id="excelLayoutToggle" type="button" aria-pressed="false" title="Przełącz widok !cols/!rows">
+                  Widok Excel
+                </button>
                 <button class="btn btn-sm ghost" id="readingToggle" type="button">Tryb czytania</button>
                 <button class="btn btn-sm ghost" id="exportCsvBtn" type="button">Eksport CSV</button>
               </div>
@@ -421,6 +423,6 @@
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260317-1"></script>
+    <script src="app.js?v=20260318-2"></script>
   </body>
 </html>
