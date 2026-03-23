@@ -48,9 +48,11 @@ const resetWidthsBtn = document.getElementById("resetWidthsBtn");
 const readingToggle = document.getElementById("readingToggle");
 const quickSearchWrap = document.getElementById("quickSearchWrap");
 const quickSearchEl = document.getElementById("quickSearch");
+const quickSearchColumnsBtn = document.getElementById("quickSearchColumnsBtn");
 const quickSearchBtn = document.getElementById("quickSearchBtn");
 
 const columnPickerEl = document.getElementById("columnPicker");
+const columnPickerTitleEl = document.getElementById("columnPickerTitle");
 const columnListEl = document.getElementById("columnList");
 const columnSearchEl = document.getElementById("columnSearch");
 const selectAllBtn = document.getElementById("selectAllBtn");
@@ -61,6 +63,8 @@ const closePickerBtn = document.getElementById("closePicker");
 const themeToggle = document.getElementById("themeToggle");
 const panelToggle = document.getElementById("panelToggle");
 const panelHandle = document.getElementById("panelHandle");
+const sidebarEl = document.querySelector(".sidebar");
+const sidebarScrim = document.getElementById("sidebarScrim");
 const brandRefreshBtn = document.getElementById("brandRefresh");
 const networkBadgeEl = document.getElementById("networkBadge");
 const heroRightEl = document.getElementById("heroRight");
@@ -69,6 +73,7 @@ const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
 const quickSearchPopupEl = document.getElementById("quickSearchPopup");
 const quickSearchPopupInput = document.getElementById("quickSearchPopupInput");
+const quickSearchPopupColumnsBtn = document.getElementById("quickSearchPopupColumnsBtn");
 const quickSearchPopupBtn = document.getElementById("quickSearchPopupBtn");
 
 const quickRangeButtons = Array.from(document.querySelectorAll(".chip[data-range]"));
@@ -85,7 +90,6 @@ let currentMerges = [];
 let currentHeaderStyles = [];
 let currentSheetColWidths = [];
 let currentSheetRowHeights = {};
-let wasSidebarCollapsed = false;
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
@@ -1056,6 +1060,7 @@ function updateColumnSummary() {
   filter1ColumnsEl.value = columnSummary(columnSelections.filter1);
   filter2ColumnsEl.value = columnSummary(columnSelections.filter2);
   dateColumnsEl.value = columnSummary(columnSelections.date);
+  updateQuickSearchColumnButtons();
 }
 
 function updateFilterBadge() {
@@ -1082,9 +1087,69 @@ function updateDateChipsActive() {
   });
 }
 
+function isSidebarOpen() {
+  return rootEl.classList.contains("sidebar-open");
+}
+
+function syncQuickSearchInputs() {
+  if (quickSearchEl) quickSearchEl.value = searchQueryEl.value;
+  if (quickSearchPopupInput) quickSearchPopupInput.value = searchQueryEl.value;
+}
+
+function updateQuickSearchColumnButtons() {
+  const summary = columnSummary(columnSelections.filter1);
+  const count = columnSelections.filter1.size;
+  const label = count ? `Kolumny (${count})` : "Kolumny";
+  [quickSearchColumnsBtn, quickSearchPopupColumnsBtn].forEach((btn) => {
+    if (!btn) return;
+    btn.textContent = label;
+    btn.title = `Szybkie szukanie: ${summary}`;
+    btn.setAttribute("aria-label", `Kolumny szybkiego szukania. ${summary}.`);
+  });
+}
+
+function resetFilterInputs() {
+  searchQueryEl.value = "";
+  searchQuery2El.value = "";
+  filterModeEl.value = "Zawiera";
+  filterMode2El.value = "Zawiera";
+  onlyNonEmptyEl.checked = false;
+  dateModeEl.value = "between";
+  dateFromEl.value = "";
+  dateToEl.value = "";
+  lastDaysEl.value = "";
+  columnSelections.filter1.clear();
+  columnSelections.filter2.clear();
+  columnSelections.date.clear();
+  syncQuickSearchInputs();
+  updateColumnSummary();
+  updateDateChipsActive();
+  updateFilterBadge();
+}
+
+function setSidebarOpen(open) {
+  const shouldOpen = !!open;
+  rootEl.classList.toggle("sidebar-open", shouldOpen);
+  if (sidebarScrim) sidebarScrim.classList.toggle("hidden", !shouldOpen);
+  if (panelToggle) {
+    panelToggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+    panelToggle.textContent = shouldOpen ? "Zamknij filtry" : "Filtry";
+  }
+}
+
 function openColumnPicker(key) {
-  if (!currentHeaders.length) return;
+  if (!currentHeaders.length) {
+    toast("Wczytaj arkusz, żeby wybrac kolumny", "info");
+    return;
+  }
   activePickerKey = key;
+  if (columnPickerTitleEl) {
+    columnPickerTitleEl.textContent = key === "filter1"
+      ? "Kolumny szybkiego szukania"
+      : key === "filter2"
+        ? "Kolumny filtru tekstowego 2"
+        : "Kolumny filtru dat";
+  }
   columnListEl.innerHTML = "";
   columnSearchEl.value = "";
   const currentSet = columnSelections[key];
@@ -1487,6 +1552,13 @@ if (quickSearchBtn) {
   quickSearchBtn.addEventListener("click", applyQuickSearch);
 }
 
+if (quickSearchColumnsBtn) {
+  quickSearchColumnsBtn.addEventListener("click", () => {
+    lastPickerTriggerEl = quickSearchColumnsBtn;
+    openColumnPicker("filter1");
+  });
+}
+
 if (quickSearchEl) {
   quickSearchEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter") applyQuickSearch();
@@ -1501,6 +1573,12 @@ if (quickSearchPopupInput) {
 if (quickSearchPopupBtn) {
   quickSearchPopupBtn.addEventListener("click", applyQuickSearch);
 }
+if (quickSearchPopupColumnsBtn) {
+  quickSearchPopupColumnsBtn.addEventListener("click", () => {
+    lastPickerTriggerEl = quickSearchPopupColumnsBtn;
+    openColumnPicker("filter1");
+  });
+}
 if (quickSearchPopupEl) {
   quickSearchPopupEl.addEventListener("click", (e) => {
     if (e.target === quickSearchPopupEl) quickSearchPopupEl.classList.add("hidden");
@@ -1509,20 +1587,7 @@ if (quickSearchPopupEl) {
 
 
 resetFiltersBtn.addEventListener("click", () => {
-  searchQueryEl.value = "";
-  searchQuery2El.value = "";
-  filterModeEl.value = "Zawiera";
-  filterMode2El.value = "Zawiera";
-  onlyNonEmptyEl.checked = false;
-  dateModeEl.value = "between";
-  dateFromEl.value = "";
-  dateToEl.value = "";
-  lastDaysEl.value = "30";
-  columnSelections.filter1.clear();
-  columnSelections.filter2.clear();
-  columnSelections.date.clear();
-  updateColumnSummary();
-  updateFilterBadge();
+  resetFilterInputs();
   viewRows = baseRows.slice();
   sortRows();
   renderTable(currentHeaders, viewRows);
@@ -1673,9 +1738,7 @@ tbodyEl.addEventListener("dblclick", (e) => {
   el.addEventListener("input", updateDateChipsActive);
 });
 
-searchQueryEl.addEventListener("input", () => {
-  if (quickSearchEl) quickSearchEl.value = searchQueryEl.value;
-});
+searchQueryEl.addEventListener("input", syncQuickSearchInputs);
 
 maxRowsEl.addEventListener("change", () => {
   saveMaxRowsPreference();
@@ -1733,38 +1796,54 @@ if (brandRefreshBtn) {
 }
 
 function toggleSidebar() {
-  rootEl.classList.toggle("sidebar-collapsed");
+  setSidebarOpen(!isSidebarOpen());
   syncSidebarHandle();
 }
 
 function syncSidebarHandle() {
-  const collapsed = rootEl.classList.contains("sidebar-collapsed");
-  if (panelHandle) panelHandle.textContent = collapsed ? "›" : "‹";
+  if (panelToggle) {
+    panelToggle.setAttribute("aria-expanded", isSidebarOpen() ? "true" : "false");
+    panelToggle.textContent = isSidebarOpen() ? "Zamknij filtry" : "Filtry";
+  }
+  if (panelHandle) {
+    panelHandle.textContent = "";
+    panelHandle.setAttribute("aria-expanded", isSidebarOpen() ? "true" : "false");
+    panelHandle.setAttribute("aria-label", isSidebarOpen() ? "Zamknij panel filtrow" : "Otworz panel filtrow");
+    panelHandle.setAttribute("title", isSidebarOpen() ? "Schowaj filtry" : "Pokaz filtry");
+  }
 }
 
 function setReadingMode(enabled) {
   rootEl.classList.toggle("reading", enabled);
   if (enabled) {
-    wasSidebarCollapsed = rootEl.classList.contains("sidebar-collapsed");
-    rootEl.classList.add("sidebar-collapsed");
     if (quickSearchWrap) quickSearchWrap.classList.remove("hidden");
     if (readingToggle) readingToggle.textContent = "Tryb standardowy";
   } else {
-    if (!wasSidebarCollapsed) rootEl.classList.remove("sidebar-collapsed");
     if (quickSearchWrap) quickSearchWrap.classList.add("hidden");
-    if (readingToggle) readingToggle.textContent = "Tryb czytania";
+    if (readingToggle) readingToggle.textContent = "Tryb szybkie szukanie";
   }
   syncSidebarHandle();
 }
 
 panelToggle.addEventListener("click", toggleSidebar);
 if (panelHandle) panelHandle.addEventListener("click", toggleSidebar);
+if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebarOpen(false));
 if (readingToggle) {
   readingToggle.addEventListener("click", () => {
     const enabled = !rootEl.classList.contains("reading");
     setReadingMode(enabled);
   });
 }
+
+document.addEventListener("click", (e) => {
+  if (!isSidebarOpen()) return;
+  if (sidebarEl && sidebarEl.contains(e.target)) return;
+  if (panelToggle && panelToggle.contains(e.target)) return;
+  if (panelHandle && panelHandle.contains(e.target)) return;
+  if (columnPickerEl && !columnPickerEl.classList.contains("hidden") && columnPickerEl.contains(e.target)) return;
+  if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden") && quickSearchPopupEl.contains(e.target)) return;
+  setSidebarOpen(false);
+});
 
 
 dropZone.addEventListener("dragover", (e) => {
@@ -1853,11 +1932,18 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
     quickSearchPopupEl.classList.add("hidden");
   }
+  if (e.key === "Escape" && isSidebarOpen()) {
+    setSidebarOpen(false);
+  }
 });
 
 setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
 updateDateChipsActive();
+updateQuickSearchColumnButtons();
 setDirtyState(false);
+syncQuickSearchInputs();
+setSidebarOpen(true);
+syncSidebarHandle();
 
 const xlsxReady = isXlsxAvailable(false);
 setRuntimeAvailability(xlsxReady);
@@ -1876,7 +1962,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260318-2").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260323-3").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }

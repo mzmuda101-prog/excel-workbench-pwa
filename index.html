@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260318-2" />
+    <link rel="stylesheet" href="styles.css?v=20260323-3" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -212,7 +212,7 @@
                 </label>
                 <label class="field">
                   Ostatnie dni
-                  <input id="lastDays" type="number" min="1" value="30" />
+                  <input id="lastDays" type="number" min="1" value="" />
                 </label>
               </div>
 
@@ -237,9 +237,11 @@
 
               <div class="quick-row">
                 <button class="chip" data-range="7" type="button">7 dni</button>
+                <button class="chip" data-range="14" type="button">14 dni</button>
                 <button class="chip" data-range="30" type="button">30 dni</button>
                 <button class="chip" data-range="90" type="button">90 dni</button>
                 <button class="chip" data-range="180" type="button">180 dni</button>
+                <button class="chip" data-range="365" type="button">365 dni</button>
               </div>
             </div>
           </section>
@@ -336,6 +338,9 @@
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input id="quickSearch" type="text" placeholder="Szybkie szukanie..." />
+                <button class="btn btn-sm ghost" id="quickSearchColumnsBtn" type="button" title="Wybierz kolumny dla szybkiego szukania">
+                  Kolumny
+                </button>
                 <button class="btn btn-sm ghost" id="quickSearchBtn" type="button">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="11" cy="11" r="8"></circle>
@@ -348,7 +353,7 @@
                 <button class="btn btn-sm ghost" id="excelLayoutToggle" type="button" aria-pressed="false" title="Przełącz widok !cols/!rows">
                   Widok Excel
                 </button>
-                <button class="btn btn-sm ghost" id="readingToggle" type="button">Tryb czytania</button>
+                <button class="btn btn-sm ghost" id="readingToggle" type="button">Tryb szybkie szukanie</button>
                 <button class="btn btn-sm ghost" id="exportCsvBtn" type="button">Eksport CSV</button>
               </div>
             </div>
@@ -368,6 +373,7 @@
           </section>
         </main>
       </div>
+      <button class="sidebar-scrim hidden" id="sidebarScrim" type="button" aria-label="Zamknij panel filtrow"></button>
     </div>
 
     <!-- Column picker modal -->
@@ -404,6 +410,7 @@
         <label class="quick-search-popup-label" for="quickSearchPopupInput">Szukaj w tabeli</label>
         <div class="quick-search-popup-row">
           <input id="quickSearchPopupInput" type="text" placeholder="np. faktura..." />
+          <button class="btn btn-sm ghost" id="quickSearchPopupColumnsBtn" type="button">Kolumny</button>
           <button class="btn btn-sm" id="quickSearchPopupBtn" type="button">Filtruj</button>
         </div>
         <p class="quick-search-popup-hint">Enter – zastosuj, Esc – zamknij</p>
@@ -423,6 +430,6 @@
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260318-2"></script>
+    <script src="app.js?v=20260323-3"></script>
   </body>
 </html>
