@@ -5,9 +5,13 @@ const tableEl = document.getElementById("dataTable");
 const theadEl = tableEl.querySelector("thead");
 const tbodyEl = tableEl.querySelector("tbody");
 const tableWrapEl = document.getElementById("tableWrap");
+const tableScrollbarEl = document.getElementById("tableScrollbar");
+const tableScrollbarInnerEl = document.getElementById("tableScrollbarInner");
 const emptyStateEl = document.getElementById("emptyState");
 const emptyTitleEl = document.getElementById("emptyTitle");
 const emptySubEl = document.getElementById("emptySub");
+const DEFAULT_EMPTY_TITLE = emptyTitleEl.textContent;
+const DEFAULT_EMPTY_SUB = emptySubEl.textContent;
 
 const fileInput = document.getElementById("fileInput");
 const dropZone = document.getElementById("dropZone");
@@ -72,6 +76,7 @@ const heroRightEl = document.getElementById("heroRight");
 const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
+const cellTooltipEl = document.getElementById("cellTooltip");
 const quickSearchPopupEl = document.getElementById("quickSearchPopup");
 const quickSearchPopupInput = document.getElementById("quickSearchPopupInput");
 const quickSearchPopupColumnsBtn = document.getElementById("quickSearchPopupColumnsBtn");
@@ -101,6 +106,8 @@ let lastPickerTriggerEl = null;
 let sortState = { col: "", dir: "asc" };
 let manualColumnWidths = {};
 let hasUnsavedChanges = false;
+let syncingHorizontalScroll = false;
+let tooltipHideTimer = null;
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -227,6 +234,65 @@ function setEmptyState(title, subtitle) {
 function showTable() {
   emptyStateEl.classList.add("hidden");
   tableWrapEl.classList.remove("hidden");
+  if (tableScrollbarEl) tableScrollbarEl.classList.remove("hidden");
+}
+
+function hideCellTooltip() {
+  if (!cellTooltipEl) return;
+  if (tooltipHideTimer) {
+    clearTimeout(tooltipHideTimer);
+    tooltipHideTimer = null;
+  }
+  cellTooltipEl.classList.add("hidden");
+  cellTooltipEl.textContent = "";
+}
+
+function getTooltipText(cell) {
+  if (!cell) return "";
+  return (cell.dataset.fullText || cell.textContent || "").trim();
+}
+
+function isCellTextTruncated(cell) {
+  if (!cell) return false;
+  return cell.scrollWidth - cell.clientWidth > 1;
+}
+
+function positionCellTooltip(cell) {
+  if (!cellTooltipEl || !cell) return;
+  const rect = cell.getBoundingClientRect();
+  const tooltipRect = cellTooltipEl.getBoundingClientRect();
+  const margin = 12;
+  let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+  left = Math.max(margin, Math.min(left, window.innerWidth - tooltipRect.width - margin));
+  let top = rect.top - tooltipRect.height - 10;
+  if (top < margin) top = Math.min(window.innerHeight - tooltipRect.height - margin, rect.bottom + 10);
+  cellTooltipEl.style.left = `${left}px`;
+  cellTooltipEl.style.top = `${top}px`;
+}
+
+function showCellTooltip(cell, persistent = false) {
+  if (!cellTooltipEl || !isCellTextTruncated(cell)) return;
+  const text = getTooltipText(cell);
+  if (!text) return;
+  hideCellTooltip();
+  cellTooltipEl.textContent = text;
+  cellTooltipEl.classList.remove("hidden");
+  positionCellTooltip(cell);
+  if (!persistent) return;
+  tooltipHideTimer = window.setTimeout(() => {
+    hideCellTooltip();
+  }, 2200);
+}
+
+function syncHorizontalScrollbar() {
+  if (!tableWrapEl || !tableScrollbarEl || !tableScrollbarInnerEl) return;
+  const active = !tableWrapEl.classList.contains("hidden") && tableWrapEl.scrollWidth > tableWrapEl.clientWidth + 1;
+  tableScrollbarEl.classList.toggle("hidden", !active);
+  if (!active) return;
+  tableScrollbarInnerEl.style.width = `${tableWrapEl.scrollWidth}px`;
+  if (Math.abs(tableScrollbarEl.scrollLeft - tableWrapEl.scrollLeft) > 1) {
+    tableScrollbarEl.scrollLeft = tableWrapEl.scrollLeft;
+  }
 }
 
 function toDisplay(value) {
@@ -810,11 +876,13 @@ function renderTable(headers, rows) {
   updateSortControls();
   if (!headers.length) {
     setStatus("Brak danych");
-    setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
+    if (tableScrollbarEl) tableScrollbarEl.classList.add("hidden");
+    setEmptyState(DEFAULT_EMPTY_TITLE, DEFAULT_EMPTY_SUB);
     return;
   }
   if (!rows.length) {
     setStatus("Wierszy: 0");
+    if (tableScrollbarEl) tableScrollbarEl.classList.add("hidden");
     setEmptyState("Brak wynikow", "Zmien filtry albo wybierz inny arkusz.");
     return;
   }
@@ -932,7 +1000,9 @@ function renderTable(headers, rows) {
       const mergeKey = `${rowPos}:${i}`;
       if (mergeLayout && mergeLayout.covered.has(mergeKey)) return;
       const td = document.createElement("td");
-      td.textContent = getDisplayValue(row, i);
+      const displayValue = getDisplayValue(row, i);
+      td.textContent = displayValue;
+      td.dataset.fullText = displayValue;
       td.dataset.colIndex = String(i);
 
       if (mergeLayout) {
@@ -952,6 +1022,7 @@ function renderTable(headers, rows) {
   });
 
   setStatus(`Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})`);
+  syncHorizontalScrollbar();
 }
 
 function buildRows(sheet, headerRow, wb) {
@@ -1558,6 +1629,50 @@ function applyQuickSearch() {
   }
 }
 
+if (tableWrapEl && tableScrollbarEl) {
+  tableWrapEl.addEventListener("scroll", () => {
+    hideCellTooltip();
+    if (syncingHorizontalScroll) return;
+    syncingHorizontalScroll = true;
+    tableScrollbarEl.scrollLeft = tableWrapEl.scrollLeft;
+    requestAnimationFrame(() => {
+      syncingHorizontalScroll = false;
+    });
+  }, { passive: true });
+
+  tableScrollbarEl.addEventListener("scroll", () => {
+    if (syncingHorizontalScroll) return;
+    syncingHorizontalScroll = true;
+    tableWrapEl.scrollLeft = tableScrollbarEl.scrollLeft;
+    requestAnimationFrame(() => {
+      syncingHorizontalScroll = false;
+    });
+  }, { passive: true });
+}
+
+tbodyEl.addEventListener("pointerenter", (e) => {
+  const td = e.target.closest("td");
+  if (!td || td.classList.contains("row-head")) return;
+  showCellTooltip(td);
+}, true);
+
+tbodyEl.addEventListener("pointerleave", (e) => {
+  const td = e.target.closest("td");
+  if (!td) return;
+  hideCellTooltip();
+}, true);
+
+tbodyEl.addEventListener("touchstart", (e) => {
+  const td = e.target.closest("td");
+  if (!td || td.classList.contains("row-head")) return;
+  showCellTooltip(td, true);
+}, { passive: true });
+
+window.addEventListener("resize", () => {
+  syncHorizontalScrollbar();
+  hideCellTooltip();
+});
+
 if (quickSearchBtn) {
   quickSearchBtn.addEventListener("click", applyQuickSearch);
 }
@@ -1956,7 +2071,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
+setEmptyState(DEFAULT_EMPTY_TITLE, DEFAULT_EMPTY_SUB);
 updateDateChipsActive();
 updateQuickSearchColumnButtons();
 updateSortControls();
@@ -1982,7 +2097,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260323-4").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260323-5").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }

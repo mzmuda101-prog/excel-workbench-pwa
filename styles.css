@@ -997,6 +997,11 @@ details.panel[open] > summary .chevron { transform: rotate(180deg); }
   border: 1px solid var(--border);
   border-radius: var(--r);
   margin-top: 2px;
+  scrollbar-width: none;
+}
+
+.table-wrap::-webkit-scrollbar {
+  height: 0;
 }
 
 table {
@@ -1141,6 +1146,65 @@ tbody tr:last-child td { border-bottom: none; }
 .resizing {
   cursor: col-resize;
   user-select: none;
+}
+
+.table-scrollbar {
+  position: sticky;
+  bottom: 0;
+  margin-top: 8px;
+  height: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, white) 0%, color-mix(in srgb, var(--surface) 84%, var(--accent-light)) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.65),
+    0 1px 3px rgba(20,30,20,.06);
+  scrollbar-color: color-mix(in srgb, var(--accent) 55%, var(--muted)) color-mix(in srgb, var(--surface) 82%, white);
+}
+
+.table-scrollbar.hidden {
+  display: none;
+}
+
+.table-scrollbar-inner {
+  height: 1px;
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 60%, white) 0%, color-mix(in srgb, var(--accent-h) 72%, var(--accent)) 100%);
+  border-radius: var(--r-full);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.table-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cell-tooltip {
+  position: fixed;
+  z-index: 500;
+  max-width: min(520px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.cell-tooltip.hidden {
+  display: none;
 }
 
 /* ===================================================

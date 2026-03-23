@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260323-4" />
+    <link rel="stylesheet" href="styles.css?v=20260323-5" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -362,7 +362,7 @@
             <div class="empty-state" id="emptyState">
               <div class="empty-icon">XLS</div>
               <div class="empty-title" id="emptyTitle">Wysuń sidebar-a i wczytaj plik Excel</div>
-              <div class="empty-sub" id="emptySub">możesz tam przeciągnąć plik lub wybrać go bezpośrednio z dysku</div><div class="empty-sub hidden" id="emptySub2">Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.</div>
+              <div class="empty-sub" id="emptySub">możesz tam przeciągnąć plik lub wybrać go bezpośrednio z dysku</div>
             </div>
 
             <div class="table-wrap hidden" id="tableWrap">
@@ -370,6 +370,9 @@
                 <thead></thead>
                 <tbody></tbody>
               </table>
+            </div>
+            <div class="table-scrollbar hidden" id="tableScrollbar" aria-hidden="true">
+              <div class="table-scrollbar-inner" id="tableScrollbarInner"></div>
             </div>
           </section>
         </main>
@@ -428,9 +431,10 @@
 
     <!-- Toasts -->
     <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+    <div class="cell-tooltip hidden" id="cellTooltip" role="status" aria-live="polite"></div>
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260323-4"></script>
+    <script src="app.js?v=20260323-5"></script>
   </body>
 </html>
