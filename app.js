@@ -45,6 +45,7 @@ const exportCsvBtn = document.getElementById("exportCsvBtn");
 const saveBtn = document.getElementById("saveBtn");
 const saveAsBtn = document.getElementById("saveAsBtn");
 const resetWidthsBtn = document.getElementById("resetWidthsBtn");
+const resetSortBtn = document.getElementById("resetSortBtn");
 const readingToggle = document.getElementById("readingToggle");
 const quickSearchWrap = document.getElementById("quickSearchWrap");
 const quickSearchEl = document.getElementById("quickSearch");
@@ -493,6 +494,13 @@ function sortRows() {
   if (!ascending) viewRows.reverse();
 }
 
+function updateSortControls() {
+  if (!resetSortBtn) return;
+  const active = !!sortState.col;
+  resetSortBtn.classList.toggle("hidden", !active);
+  resetSortBtn.setAttribute("aria-hidden", active ? "false" : "true");
+}
+
 function toPixelWidth(meta) {
   if (!meta || typeof meta !== "object") return null;
   if (Number.isFinite(meta.wpx)) return Math.max(40, Math.round(meta.wpx));
@@ -799,6 +807,7 @@ function computeColumnWidths(headers, rows, useExcelLayout) {
 }
 
 function renderTable(headers, rows) {
+  updateSortControls();
   if (!headers.length) {
     setStatus("Brak danych");
     setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
@@ -885,6 +894,7 @@ function renderTable(headers, rows) {
         sortState.dir = "asc";
       }
       sortRows();
+      updateSortControls();
       renderTable(currentHeaders, viewRows);
     });
 
@@ -1504,7 +1514,7 @@ loadBtn.addEventListener("click", () => {
       currentSheetRowHeights = data.rowHeights || {};
       baseRows = markSubheaderRows(data.rows);
       viewRows = baseRows.slice();
-      sortState = { col: currentHeaders[0] || "", dir: "asc" };
+      sortState = { col: "", dir: "asc" };
       manualColumnWidths = {};
       columnSelections.filter1.clear();
       columnSelections.filter2.clear();
@@ -1657,6 +1667,15 @@ closePickerBtn.addEventListener("click", closeColumnPicker);
 columnSearchEl.addEventListener("input", filterColumnList);
 
 exportCsvBtn.addEventListener("click", exportCsv);
+if (resetSortBtn) {
+  resetSortBtn.addEventListener("click", () => {
+    sortState = { col: "", dir: "asc" };
+    applyFilters();
+    renderTable(currentHeaders, viewRows);
+    updateSortControls();
+    toast("Przywrocono domyslne sortowanie", "info");
+  });
+}
 saveBtn.addEventListener("click", () => {
   toast("Wersja webowa nie nadpisuje pliku. Użyj „Zapisz jako…”", "info");
 });
@@ -1940,6 +1959,7 @@ document.addEventListener("keydown", (e) => {
 setEmptyState("Wczytaj plik Excel", "Przeciagnij plik lub wybierz go z dysku, aby zaczac prace.");
 updateDateChipsActive();
 updateQuickSearchColumnButtons();
+updateSortControls();
 setDirtyState(false);
 syncQuickSearchInputs();
 setSidebarOpen(true);
