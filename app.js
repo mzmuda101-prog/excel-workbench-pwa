@@ -81,6 +81,9 @@ const quickSearchPopupEl = document.getElementById("quickSearchPopup");
 const quickSearchPopupInput = document.getElementById("quickSearchPopupInput");
 const quickSearchPopupColumnsBtn = document.getElementById("quickSearchPopupColumnsBtn");
 const quickSearchPopupBtn = document.getElementById("quickSearchPopupBtn");
+const workbookInsightsEl = document.getElementById("workbookInsights");
+const sheetInsightsEl = document.getElementById("sheetInsights");
+const insightFlagsEl = document.getElementById("insightFlags");
 
 const quickRangeButtons = Array.from(document.querySelectorAll(".chip[data-range]"));
 
@@ -96,6 +99,8 @@ let currentMerges = [];
 let currentHeaderStyles = [];
 let currentSheetColWidths = [];
 let currentSheetRowHeights = {};
+let currentWorkbookStats = null;
+let currentSheetStats = null;
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
@@ -163,6 +168,189 @@ function valuesEqual(a, b) {
   if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
   if ((a === null || a === undefined) && (b === null || b === undefined)) return true;
   return false;
+}
+
+function makeHeadersUnique(headers) {
+  const seen = new Map();
+  return headers.map((header, index) => {
+    const base = String(header || `Kolumna ${index + 1}`).trim() || `Kolumna ${index + 1}`;
+    const count = seen.get(base) || 0;
+    seen.set(base, count + 1);
+    return count ? `${base} (${count + 1})` : base;
+  });
+}
+
+function formatPercent(part, total) {
+  if (!total) return "0%";
+  return `${Math.round((part / total) * 100)}%`;
+}
+
+function createEmptyInsight(text) {
+  const el = document.createElement("div");
+  el.className = "insight-empty";
+  el.textContent = text;
+  return el;
+}
+
+function renderInsightList(container, items, emptyText) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!items || !items.length) {
+    container.appendChild(createEmptyInsight(emptyText));
+    return;
+  }
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = `insight-item${item.tone ? ` ${item.tone}` : ""}`;
+
+    const label = document.createElement("div");
+    label.className = "insight-label";
+    label.textContent = item.label;
+
+    const value = document.createElement("div");
+    value.className = "insight-value";
+    value.textContent = item.value;
+
+    row.appendChild(label);
+    row.appendChild(value);
+    container.appendChild(row);
+  });
+}
+
+function renderInsightFlags(items) {
+  if (!insightFlagsEl) return;
+  insightFlagsEl.innerHTML = "";
+  if (!items || !items.length) {
+    insightFlagsEl.appendChild(createEmptyInsight("Brak istotnych flag dla aktualnego pliku."));
+    return;
+  }
+  items.forEach((item) => {
+    const badge = document.createElement("div");
+    badge.className = `insight-flag${item.tone ? ` ${item.tone}` : ""}`;
+    badge.textContent = item.label;
+    insightFlagsEl.appendChild(badge);
+  });
+}
+
+function collectWorkbookStats(wb, fileName) {
+  const book = wb && wb.Workbook ? wb.Workbook : {};
+  const sheetsMeta = Array.isArray(book.Sheets) ? book.Sheets : [];
+  let hiddenSheets = 0;
+  let veryHiddenSheets = 0;
+  sheetsMeta.forEach((sheetMeta) => {
+    const hidden = Number(sheetMeta && sheetMeta.Hidden);
+    if (hidden === 1) hiddenSheets += 1;
+    if (hidden === 2) veryHiddenSheets += 1;
+  });
+
+  const definedNames = Array.isArray(book.Names) ? book.Names.length : 0;
+  const ext = String(fileName || "").toLowerCase();
+  const hasMacros = !!wb?.vbaraw || ext.endsWith(".xlsm");
+
+  return {
+    sheets: Array.isArray(wb?.SheetNames) ? wb.SheetNames.length : 0,
+    hiddenSheets,
+    veryHiddenSheets,
+    definedNames,
+    hasMacros,
+  };
+}
+
+function collectSheetInsights() {
+  const workbookItems = currentWorkbookStats ? [
+    { label: "Arkusze", value: String(currentWorkbookStats.sheets) },
+    { label: "Ukryte arkusze", value: String(currentWorkbookStats.hiddenSheets), tone: currentWorkbookStats.hiddenSheets ? "warning" : "" },
+    { label: "Very hidden", value: String(currentWorkbookStats.veryHiddenSheets), tone: currentWorkbookStats.veryHiddenSheets ? "warning" : "" },
+    { label: "Nazwane zakresy", value: String(currentWorkbookStats.definedNames), tone: currentWorkbookStats.definedNames ? "info" : "" },
+  ] : [];
+
+  if (!currentHeaders.length || !baseRows.length) {
+    return {
+      workbookRows: workbookItems,
+      rows: [],
+      flags: currentWorkbookStats?.hasMacros ? [{ label: "Plik makr .xlsm", tone: "warning" }] : [],
+    };
+  }
+
+  const totalRows = baseRows.length;
+  const visibleRows = viewRows.length;
+  const totalCols = currentHeaders.length;
+  const duplicateHeaders = currentSheetStats?.duplicateHeaderCount || 0;
+  const duplicateRows = (() => {
+    const keys = baseRows.map((row) => JSON.stringify(row.values.map((value) => value instanceof Date ? value.toISOString() : value ?? "")));
+    return keys.length - new Set(keys).size;
+  })();
+
+  let numericColumns = 0;
+  let dateColumns = 0;
+  let longTextColumns = 0;
+  let sparseColumns = 0;
+
+  currentHeaders.forEach((_, colIdx) => {
+    let nonEmpty = 0;
+    let numeric = 0;
+    let dates = 0;
+    let maxLen = 0;
+    baseRows.forEach((row) => {
+      const value = row.values[colIdx];
+      if (value === null || value === undefined || String(value).trim() === "") return;
+      nonEmpty += 1;
+      if (typeof value === "number") numeric += 1;
+      if (parseDateFlexible(value) instanceof Date) dates += 1;
+      maxLen = Math.max(maxLen, String(getDisplayValue(row, colIdx)).length);
+    });
+    if (nonEmpty && numeric / nonEmpty >= 0.8) numericColumns += 1;
+    if (nonEmpty && dates / nonEmpty >= 0.8) dateColumns += 1;
+    if (maxLen > 150) longTextColumns += 1;
+    if (totalRows && nonEmpty / totalRows <= 0.4) sparseColumns += 1;
+  });
+
+  const sheetItems = [
+    { label: "Widoczne / wszystkie wiersze", value: `${visibleRows} / ${totalRows}`, tone: visibleRows !== totalRows ? "info" : "" },
+    { label: "Kolumny", value: String(totalCols) },
+    { label: "Formuły", value: String(currentSheetStats?.formulaCount || 0), tone: (currentSheetStats?.formulaCount || 0) ? "info" : "" },
+    {
+      label: "Scalenia (zakresy / komorki)",
+      value: `${currentSheetStats?.mergeRegions || 0} / ${currentSheetStats?.mergedCells || 0}`,
+      tone: (currentSheetStats?.mergeRegions || 0) ? "info" : "",
+    },
+    { label: "Ukryte kolumny / wiersze", value: `${currentSheetStats?.hiddenColumns || 0} / ${currentSheetStats?.hiddenRows || 0}`, tone: ((currentSheetStats?.hiddenColumns || 0) || (currentSheetStats?.hiddenRows || 0)) ? "warning" : "" },
+    { label: "Kolumny liczbowe / datowe", value: `${numericColumns} / ${dateColumns}` },
+    { label: "Rzadkie kolumny", value: `${sparseColumns} (${formatPercent(sparseColumns, totalCols)})`, tone: sparseColumns ? "warning" : "" },
+    { label: "Długie teksty", value: String(longTextColumns), tone: longTextColumns ? "info" : "" },
+  ];
+
+  const flags = [];
+  if (currentWorkbookStats?.hasMacros) flags.push({ label: "Plik makr .xlsm", tone: "warning" });
+  if (duplicateHeaders) flags.push({ label: `Zdublowane nagłówki: ${duplicateHeaders}`, tone: "warning" });
+  if (duplicateRows) flags.push({ label: `Duplikaty wierszy: ${duplicateRows}`, tone: duplicateRows > 0 ? "warning" : "" });
+  if ((currentSheetStats?.formulaMissingResultCount || 0) > 0) {
+    flags.push({ label: `Formuły bez wyniku: ${currentSheetStats.formulaMissingResultCount}`, tone: "warning" });
+  }
+  if ((currentSheetStats?.commentCount || 0) > 0) flags.push({ label: `Komentarze: ${currentSheetStats.commentCount}`, tone: "info" });
+  if ((currentSheetStats?.hyperlinkCount || 0) > 0) flags.push({ label: `Linki: ${currentSheetStats.hyperlinkCount}`, tone: "info" });
+  if (currentWorkbookStats?.veryHiddenSheets) flags.push({ label: "Są arkusze very hidden", tone: "warning" });
+
+  return {
+    workbookRows: workbookItems,
+    rows: sheetItems,
+    flags,
+  };
+}
+
+function renderInsights() {
+  const data = collectSheetInsights();
+  renderInsightList(
+    workbookInsightsEl,
+    data.workbookRows || [],
+    "Wczytaj plik, aby zobaczyc metadane skoroszytu."
+  );
+  renderInsightList(
+    sheetInsightsEl,
+    data.rows || [],
+    "Wczytaj arkusz, aby zobaczyc sygnaly jakosci danych i struktury."
+  );
+  renderInsightFlags(data.flags || []);
 }
 
 function isXlsxAvailable(showFeedback = false) {
@@ -1030,15 +1218,21 @@ function buildRows(sheet, headerRow, wb) {
   const colMeta = sheet["!cols"] || [];
   const rowMeta = sheet["!rows"] || [];
   const merges = Array.isArray(sheet["!merges"]) ? sheet["!merges"] : [];
-  const headers = [];
+  const rawHeaders = [];
   const headerStyles = [];
   for (let c = range.s.c; c <= range.e.c; c++) {
     const cell = sheet[XLSX.utils.encode_cell({ r: headerRow - 1, c })];
     const v = cell ? cell.v : null;
-    headers.push(v ? String(v).trim() : XLSX.utils.encode_col(c));
+    rawHeaders.push(v ? String(v).trim() : XLSX.utils.encode_col(c));
     headerStyles.push(wb ? extractCellStyle(cell, wb) : null);
   }
+  const headers = makeHeadersUnique(rawHeaders);
+  const duplicateHeaderCount = rawHeaders.length - new Set(rawHeaders).size;
   const rows = [];
+  let formulaCount = 0;
+  let formulaMissingResultCount = 0;
+  let commentCount = 0;
+  let hyperlinkCount = 0;
   for (let r = headerRow; r <= range.e.r; r++) {
     const values = [];
     const display = [];
@@ -1048,6 +1242,12 @@ function buildRows(sheet, headerRow, wb) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       let v = cell ? cell.v : null;
       let shown = cell && cell.w ? String(cell.w) : toDisplay(v);
+      if (cell && cell.f) {
+        formulaCount += 1;
+        if (cell.v == null && cell.w == null) formulaMissingResultCount += 1;
+      }
+      if (cell && Array.isArray(cell.c) && cell.c.length) commentCount += 1;
+      if (cell && cell.l && (cell.l.Target || cell.l.target)) hyperlinkCount += 1;
       if (displayModeEl.value === "Formuły" && cell && cell.f) {
         v = "=" + cell.f;
         shown = v;
@@ -1066,6 +1266,17 @@ function buildRows(sheet, headerRow, wb) {
     rows,
     startCol: range.s.c,
     merges,
+    stats: {
+      duplicateHeaderCount,
+      formulaCount,
+      formulaMissingResultCount,
+      commentCount,
+      hyperlinkCount,
+      mergeRegions: merges.length,
+      mergedCells: merges.reduce((sum, merge) => sum + ((merge.e.r - merge.s.r + 1) * (merge.e.c - merge.s.c + 1)), 0),
+      hiddenColumns: colMeta.filter((meta) => meta && meta.hidden).length,
+      hiddenRows: rowMeta.filter((meta) => meta && meta.hidden).length,
+    },
     colWidths: headers.map((_, idx) => colMeta[range.s.c + idx] || null),
     rowHeights: rowMeta,
   };
@@ -1449,8 +1660,10 @@ async function handleFile(file) {
       const opt = document.createElement("option");
       opt.value = s;
       opt.textContent = s;
-      sheetSelect.appendChild(opt);
-    });
+    sheetSelect.appendChild(opt);
+  });
+    currentWorkbookStats = collectWorkbookStats(workbook, file.name);
+    currentSheetStats = null;
     currentFileName = file.name;
     currentStartCol = 0;
     currentMerges = [];
@@ -1462,6 +1675,7 @@ async function handleFile(file) {
     dropZone.classList.add("has-file");
     setDirtyState(false);
     setStatus("Plik wczytany");
+    renderInsights();
     toast("Plik wczytany", "success");
     log(`Wczytano plik: ${file.name}`, "success");
   } catch (err) {
@@ -1583,6 +1797,7 @@ loadBtn.addEventListener("click", () => {
       currentHeaderStyles = Array.isArray(data.headerStyles) ? data.headerStyles : [];
       currentSheetColWidths = Array.isArray(data.colWidths) ? data.colWidths : [];
       currentSheetRowHeights = data.rowHeights || {};
+      currentSheetStats = data.stats || null;
       baseRows = markSubheaderRows(data.rows);
       viewRows = baseRows.slice();
       sortState = { col: "", dir: "asc" };
@@ -1593,7 +1808,11 @@ loadBtn.addEventListener("click", () => {
       updateColumnSummary();
       updateFilterBadge();
       renderTable(currentHeaders, viewRows);
+      renderInsights();
       setDirtyState(false);
+      if (currentSheetStats?.duplicateHeaderCount) {
+        toast(`Zdublowane naglowki rozrozniono (${currentSheetStats.duplicateHeaderCount})`, "warning");
+      }
       toast("Arkusz wczytany", "success");
       log(`Wczytano arkusz: ${sheetName}`, "success");
     } finally {
@@ -1607,6 +1826,7 @@ applyFilterBtn.addEventListener("click", () => {
   applyFilters();
   sortRows();
   renderTable(currentHeaders, viewRows);
+  renderInsights();
   updateFilterBadge();
   toast("Zastosowano filtry", "info");
 });
@@ -1623,6 +1843,7 @@ function applyQuickSearch() {
   applyFilters();
   sortRows();
   renderTable(currentHeaders, viewRows);
+  renderInsights();
   updateFilterBadge();
   if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
     quickSearchPopupEl.classList.add("hidden");
@@ -1716,6 +1937,7 @@ resetFiltersBtn.addEventListener("click", () => {
   viewRows = baseRows.slice();
   sortRows();
   renderTable(currentHeaders, viewRows);
+  renderInsights();
   toast("Reset filtrow", "info");
 });
 
@@ -1789,6 +2011,7 @@ if (resetSortBtn) {
     renderTable(currentHeaders, viewRows);
     updateSortControls();
     toast("Przywrocono domyslne sortowanie", "info");
+    renderInsights();
   });
 }
 saveBtn.addEventListener("click", () => {
@@ -1850,6 +2073,7 @@ tbodyEl.addEventListener("dblclick", (e) => {
       if (!valuesEqual(oldValue, parsed.value)) setDirtyState(true);
     }
     renderTable(currentHeaders, viewRows);
+    renderInsights();
   };
 
   const cancel = () => {
@@ -2079,6 +2303,7 @@ setDirtyState(false);
 syncQuickSearchInputs();
 setSidebarOpen(true);
 syncSidebarHandle();
+renderInsights();
 
 const xlsxReady = isXlsxAvailable(false);
 setRuntimeAvailability(xlsxReady);

@@ -556,6 +556,108 @@ details.panel[open] > summary .chevron { transform: rotate(180deg); }
 .row   { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; min-width: 0; }
 .divider { height: 1px; background: var(--border-subtle); margin: 2px 0; }
 
+.insights-block {
+  display: grid;
+  gap: 10px;
+}
+
+.insight-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.insight-list {
+  display: grid;
+  gap: 6px;
+}
+
+.insight-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.insight-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.insight-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+}
+
+.insight-item.warning {
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 26%, var(--border));
+}
+
+.insight-item.warning .insight-value,
+.insight-item.warning .insight-label {
+  color: var(--warning);
+}
+
+.insight-item.info {
+  background: var(--info-bg);
+  border-color: color-mix(in srgb, var(--info) 26%, var(--border));
+}
+
+.insight-item.info .insight-value,
+.insight-item.info .insight-label {
+  color: var(--info);
+}
+
+.insight-empty {
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.insight-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.insight-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--r-full);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+}
+
+.insight-flag.warning {
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
+  color: var(--warning);
+}
+
+.insight-flag.info {
+  background: var(--info-bg);
+  border-color: color-mix(in srgb, var(--info) 30%, var(--border));
+  color: var(--info);
+}
+
 /* ===================================================
    DROP ZONE
    =================================================== */
