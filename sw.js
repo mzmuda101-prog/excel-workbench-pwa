@@ -1,4 +1,4 @@
-const CACHE_VERSION = "20260323-3";
+const CACHE_VERSION = "20260323-4";
 const APP_CACHE = `excel-wb-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `excel-wb-runtime-${CACHE_VERSION}`;
 
@@ -6,8 +6,8 @@ const APP_ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
-  "./styles.css?v=20260323-3",
-  "./app.js?v=20260323-3",
+  "./styles.css?v=20260323-4",
+  "./app.js?v=20260323-4",
   "./vendor/xlsx-js-style.bundle.min.js",
   "./apple-touch-icon.png",
   "./icon-512.png",

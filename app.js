@@ -1982,7 +1982,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260323-3").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260323-4").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }
