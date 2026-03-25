@@ -36,6 +36,14 @@ const filter2PickBtn = document.getElementById("filter2Pick");
 const onlyNonEmptyEl = document.getElementById("onlyNonEmpty");
 const applyFilterBtn = document.getElementById("applyFilterBtn");
 const filterBadgeEl = document.getElementById("filterBadge");
+const sortColumnSelectEl = document.getElementById("sortColumnSelect");
+const sortDirectionSelectEl = document.getElementById("sortDirectionSelect");
+const addSortRuleBtn = document.getElementById("addSortRuleBtn");
+const sortRulesListEl = document.getElementById("sortRulesList");
+const sortPresetSelectEl = document.getElementById("sortPresetSelect");
+const saveSortPresetBtn = document.getElementById("saveSortPresetBtn");
+const applySortPresetBtn = document.getElementById("applySortPresetBtn");
+const deleteSortPresetBtn = document.getElementById("deleteSortPresetBtn");
 
 const dateModeEl = document.getElementById("dateMode");
 const dateFromEl = document.getElementById("dateFrom");
@@ -55,6 +63,7 @@ const quickSearchWrap = document.getElementById("quickSearchWrap");
 const quickSearchEl = document.getElementById("quickSearch");
 const quickSearchColumnsBtn = document.getElementById("quickSearchColumnsBtn");
 const quickSearchBtn = document.getElementById("quickSearchBtn");
+const wideLongToggleEl = document.getElementById("wideLongToggle");
 
 const columnPickerEl = document.getElementById("columnPicker");
 const columnPickerTitleEl = document.getElementById("columnPickerTitle");
@@ -84,6 +93,9 @@ const quickSearchPopupBtn = document.getElementById("quickSearchPopupBtn");
 const workbookInsightsEl = document.getElementById("workbookInsights");
 const sheetInsightsEl = document.getElementById("sheetInsights");
 const insightFlagsEl = document.getElementById("insightFlags");
+const columnProfilerEl = document.getElementById("columnProfiler");
+const sectionNavigatorEl = document.getElementById("sectionNavigator");
+const repeatBlockDetectorEl = document.getElementById("repeatBlockDetector");
 
 const quickRangeButtons = Array.from(document.querySelectorAll(".chip[data-range]"));
 
@@ -101,6 +113,11 @@ let currentSheetColWidths = [];
 let currentSheetRowHeights = {};
 let currentWorkbookStats = null;
 let currentSheetStats = null;
+let currentColumnProfiles = [];
+let currentSections = [];
+let currentRepeatingBlocks = [];
+let currentDisplayModel = null;
+let tableViewMode = "wide";
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
@@ -109,6 +126,7 @@ const columnSelections = {
 let activePickerKey = null;
 let lastPickerTriggerEl = null;
 let sortState = { col: "", dir: "asc" };
+let multiSortState = [];
 let manualColumnWidths = {};
 let hasUnsavedChanges = false;
 let syncingHorizontalScroll = false;
@@ -117,6 +135,7 @@ let tooltipHideTimer = null;
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
 const EXCEL_LAYOUT_KEY = "excel-workbench-excel-layout";
+const SORT_PRESETS_KEY = "excel-workbench-sort-presets";
 const INTRO_PLAYED_KEY = "introPlayed";
 const BASE_TITLE = document.title || "Excel Workbench";
 
@@ -232,6 +251,487 @@ function renderInsightFlags(items) {
   });
 }
 
+function cleanSectionLabel(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function formatColRange(startColAbs, endColAbs = startColAbs) {
+  const start = XLSX.utils.encode_col(startColAbs);
+  const end = XLSX.utils.encode_col(endColAbs);
+  return start === end ? start : `${start}:${end}`;
+}
+
+function getCellDisplayText(sheet, rowAbs, colAbs) {
+  if (!sheet) return "";
+  const ref = XLSX.utils.encode_cell({ r: rowAbs, c: colAbs });
+  const cell = sheet[ref];
+  if (!cell) return "";
+  return cleanSectionLabel(cell.w ?? cell.v ?? "");
+}
+
+function inferSectionKindLabel(kind) {
+  if (kind === "table") return "Tabela";
+  if (kind === "group") return "Blok";
+  if (kind === "candidate") return "Nagłówek";
+  if (kind === "subheader") return "Sekcja";
+  return "Układ";
+}
+
+function addSection(sections, seen, entry) {
+  if (!entry || !entry.label) return;
+  const key = `${entry.kind}|${entry.label}|${entry.rowIndex0 ?? ""}|${entry.headerRow ?? ""}|${entry.colIndex ?? ""}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  sections.push(entry);
+}
+
+function detectSections(sheet, headerRow, data) {
+  if (!sheet || !data || !data.headers || !data.headers.length) return [];
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const sections = [];
+  const seen = new Set();
+  const headerAbsRow = headerRow - 1;
+
+  addSection(sections, seen, {
+    kind: "table",
+    label: "Tabela danych",
+    meta: `Nagłówek: wiersz ${headerRow} • kolumny ${formatColRange(data.startCol || 0, (data.startCol || 0) + data.headers.length - 1)}`,
+    tone: "info",
+    action: "scroll-top",
+  });
+
+  const scanHeaderMax = Math.min(range.e.r, range.s.r + 7);
+  for (let r = range.s.r; r <= scanHeaderMax; r++) {
+    const texts = [];
+    let filled = 0;
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const txt = getCellDisplayText(sheet, r, c);
+      if (!txt) continue;
+      filled += 1;
+      if (texts.length < 3) texts.push(txt);
+    }
+    if (filled < 2) continue;
+    addSection(sections, seen, {
+      kind: "candidate",
+      label: r + 1 === headerRow ? `Aktualny wiersz nagłówka: ${r + 1}` : `Możliwy wiersz nagłówka: ${r + 1}`,
+      meta: texts.join(" • "),
+      tone: r + 1 === headerRow ? "info" : "",
+      action: r + 1 === headerRow ? "scroll-top" : "set-header",
+      headerRow: r + 1,
+    });
+  }
+
+  const merges = Array.isArray(data.merges) ? data.merges : [];
+  merges
+    .filter((merge) => merge && merge.s && merge.e)
+    .sort((a, b) => (a.s.r - b.s.r) || (a.s.c - b.s.c))
+    .forEach((merge) => {
+      const colspan = merge.e.c - merge.s.c + 1;
+      if (colspan < 2) return;
+      const label = getCellDisplayText(sheet, merge.s.r, merge.s.c);
+      if (!label) return;
+      const isAboveHeader = merge.s.r < headerAbsRow;
+      const overlapsTable = merge.e.c >= (data.startCol || 0) && merge.s.c <= (data.startCol || 0) + data.headers.length - 1;
+      if (!isAboveHeader && !overlapsTable) return;
+      addSection(sections, seen, {
+        kind: "group",
+        label,
+        meta: `Wiersz ${merge.s.r + 1} • kolumny ${formatColRange(merge.s.c, merge.e.c)}`,
+        tone: isAboveHeader ? "" : "info",
+        action: overlapsTable ? "scroll-col" : "set-header",
+        colIndex: Math.max(0, merge.s.c - (data.startCol || 0)),
+        headerRow: merge.s.r + 1,
+      });
+    });
+
+  baseRows
+    .filter((row) => row && row.isSubheader)
+    .slice(0, 8)
+    .forEach((row) => {
+      const firstText = row.values.find((value) => typeof value === "string" && cleanSectionLabel(value));
+      if (!firstText) return;
+      addSection(sections, seen, {
+        kind: "subheader",
+        label: cleanSectionLabel(firstText),
+        meta: `Wiersz danych ${row.rowIndex0 + 1}`,
+        tone: "",
+        action: "scroll-row",
+        rowIndex0: row.rowIndex0,
+      });
+    });
+
+  return sections.slice(0, 14);
+}
+
+function renderSections() {
+  if (!sectionNavigatorEl) return;
+  sectionNavigatorEl.innerHTML = "";
+  if (!currentSections.length) {
+    sectionNavigatorEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby wykryc sekcje i bloki layoutu."));
+    return;
+  }
+
+  currentSections.forEach((section, index) => {
+    const item = document.createElement("div");
+    item.className = `section-nav-item${section.tone ? ` ${section.tone}` : ""}`;
+
+    const top = document.createElement("div");
+    top.className = "section-nav-top";
+
+    const title = document.createElement("div");
+    title.className = "section-nav-title";
+    title.textContent = section.label;
+
+    const kind = document.createElement("div");
+    kind.className = "section-nav-kind";
+    kind.textContent = inferSectionKindLabel(section.kind);
+
+    top.appendChild(title);
+    top.appendChild(kind);
+
+    const meta = document.createElement("div");
+    meta.className = "section-nav-meta";
+    meta.textContent = section.meta || "Sekcja arkusza";
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+
+    const primary = document.createElement("button");
+    primary.className = "btn ghost btn-sm";
+    primary.type = "button";
+    primary.dataset.sectionIndex = String(index);
+    primary.dataset.sectionAction = section.action || "scroll-top";
+    primary.textContent = section.action === "set-header" ? "Ustaw nagłówek" : "Skocz";
+    actions.appendChild(primary);
+
+    item.appendChild(top);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    sectionNavigatorEl.appendChild(item);
+  });
+}
+
+function focusSection(section) {
+  if (!section) return;
+  if (section.action === "set-header" && section.headerRow) {
+    if (autoHeaderRowEl) autoHeaderRowEl.checked = false;
+    headerRowEl.value = String(section.headerRow);
+    toast(`Ustawiono wiersz nagłówka ${section.headerRow}`, "info");
+    loadBtn.click();
+    return;
+  }
+
+  if (section.action === "scroll-row" && Number.isFinite(section.rowIndex0)) {
+    const rowEl = tbodyEl.querySelector(`tr[data-row-index="${section.rowIndex0}"]`);
+    if (rowEl) {
+      rowEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      return;
+    }
+    toast("Ta sekcja nie miesci sie w aktualnym limicie wierszy", "info");
+    return;
+  }
+
+  if (section.action === "scroll-col" && Number.isFinite(section.colIndex)) {
+    const cells = theadEl.querySelectorAll(".guide-row .guide-cell");
+    const cell = cells[section.colIndex];
+    if (cell && tableWrapEl) {
+      const targetLeft = Math.max(0, cell.offsetLeft - 64);
+      tableWrapEl.scrollTo({ left: targetLeft, behavior: "smooth" });
+      syncHorizontalScrollbar();
+      return;
+    }
+  }
+
+  if (tableWrapEl) {
+    tableWrapEl.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    syncHorizontalScrollbar();
+  }
+}
+
+function parseRepeatedHeader(header) {
+  const raw = cleanSectionLabel(header);
+  if (!raw) return null;
+  const match = raw.match(/^(.*?)(\d+)$/);
+  if (!match) return { base: raw, order: 1 };
+  const base = cleanSectionLabel(match[1]);
+  const order = Number(match[2]);
+  if (!base || !Number.isFinite(order)) return { base: raw, order: 1 };
+  return { base, order };
+}
+
+function buildMergedLabelMap(merges, sheet, tableStartCol, tableEndCol, headerAbsRow) {
+  const labels = new Map();
+  merges
+    .filter((merge) => merge && merge.s && merge.e && merge.s.r < headerAbsRow)
+    .forEach((merge) => {
+      if (merge.e.c < tableStartCol || merge.s.c > tableEndCol) return;
+      const label = getCellDisplayText(sheet, merge.s.r, merge.s.c);
+      if (!label) return;
+      const startIndex = Math.max(0, merge.s.c - tableStartCol);
+      labels.set(startIndex, label);
+    });
+  return labels;
+}
+
+function buildGroupFromSignature(headers, startIndex, span, repeatCount, tableStartCol, mergedLabels) {
+  const bases = headers
+    .slice(startIndex, startIndex + span)
+    .map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header))
+    .filter(Boolean);
+  const uniqueBases = Array.from(new Set(bases));
+  const blocks = [];
+
+  for (let i = 0; i < repeatCount; i++) {
+    const blockStart = startIndex + (i * span);
+    const blockEnd = blockStart + span - 1;
+    blocks.push({
+      label: mergedLabels.get(blockStart) || `Blok ${i + 1}`,
+      span,
+      startIndex: blockStart,
+      endIndex: blockEnd,
+      startAbs: tableStartCol + blockStart,
+      endAbs: tableStartCol + blockEnd,
+      headers: headers.slice(blockStart, blockEnd + 1),
+    });
+  }
+
+  return {
+    label: repeatCount >= 2 ? `Powtarzalny układ: ${repeatCount} bloków` : "Powtarzalny układ kolumn",
+    kind: "repeating-signature",
+    meta: `${repeatCount} bloków po ${span} kolumny`,
+    prefixCount: startIndex,
+    prefixLabel: startIndex > 0 ? formatColRange(tableStartCol, tableStartCol + startIndex - 1) : "",
+    families: uniqueBases.slice(0, 8).map((label) => ({ label, count: repeatCount })),
+    blocks,
+  };
+}
+
+function detectSignatureRepeatingBlocks(headers, tableStartCol, mergedLabels) {
+  if (!Array.isArray(headers) || headers.length < 4) return [];
+
+  let best = null;
+  const maxSpan = Math.min(12, Math.floor(headers.length / 2));
+
+  for (let startIndex = 0; startIndex < headers.length - 3; startIndex++) {
+    for (let span = 2; span <= maxSpan; span++) {
+      if (startIndex + (span * 2) > headers.length) break;
+
+      const template = headers.slice(startIndex, startIndex + span).map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header));
+      if (!template.some(Boolean)) continue;
+
+      let repeatCount = 1;
+      let nextStart = startIndex + span;
+
+      while (nextStart + span <= headers.length) {
+        const candidate = headers.slice(nextStart, nextStart + span).map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header));
+        if (candidate.length !== template.length) break;
+        if (!candidate.every((value, idx) => value === template[idx])) break;
+        repeatCount += 1;
+        nextStart += span;
+      }
+
+      if (repeatCount < 2) continue;
+
+      const score = (repeatCount * span * 100) - startIndex;
+      if (!best || score > best.score) {
+        best = { score, startIndex, span, repeatCount };
+      }
+    }
+  }
+
+  if (!best) return [];
+  return [buildGroupFromSignature(headers, best.startIndex, best.span, best.repeatCount, tableStartCol, mergedLabels)];
+}
+
+function detectRepeatingBlocks(sheet, headerRow, data) {
+  if (!sheet || !data || !Array.isArray(data.headers) || !data.headers.length) return [];
+  const merges = Array.isArray(data.merges) ? data.merges : [];
+  const headerAbsRow = headerRow - 1;
+  const tableStartCol = data.startCol || 0;
+  const tableEndCol = tableStartCol + data.headers.length - 1;
+  const mergedLabels = buildMergedLabelMap(merges, sheet, tableStartCol, tableEndCol, headerAbsRow);
+
+  const signatureGroups = detectSignatureRepeatingBlocks(data.headers, tableStartCol, mergedLabels);
+  if (signatureGroups.length) {
+    return signatureGroups;
+  }
+
+  const groups = [];
+
+  const mergeBlocks = merges
+    .filter((merge) => merge && merge.s && merge.e && merge.s.r < headerAbsRow && merge.e.c >= tableStartCol && merge.s.c <= tableEndCol)
+    .sort((a, b) => a.s.c - b.s.c);
+
+  if (mergeBlocks.length >= 2) {
+    const bySpan = new Map();
+    mergeBlocks.forEach((merge) => {
+      const span = merge.e.c - merge.s.c + 1;
+      if (span < 2) return;
+      const label = getCellDisplayText(sheet, merge.s.r, merge.s.c);
+      if (!label) return;
+      const list = bySpan.get(span) || [];
+      const startIndex = Math.max(0, merge.s.c - tableStartCol);
+      const endIndex = Math.min(data.headers.length - 1, merge.e.c - tableStartCol);
+      list.push({
+        label,
+        span,
+        startIndex,
+        endIndex,
+        startAbs: merge.s.c,
+        endAbs: merge.e.c,
+        headers: data.headers.slice(startIndex, endIndex + 1),
+      });
+      bySpan.set(span, list);
+    });
+
+    bySpan.forEach((blocks, span) => {
+      if (blocks.length < 2) return;
+      const familyMap = new Map();
+      blocks.forEach((block) => {
+        block.headers.forEach((header) => {
+          const parsed = parseRepeatedHeader(header);
+          const key = parsed ? parsed.base : header;
+          familyMap.set(key, (familyMap.get(key) || 0) + 1);
+        });
+      });
+      const families = Array.from(familyMap.entries())
+        .filter(([, count]) => count >= 2)
+        .map(([label, count]) => ({ label, count }))
+        .slice(0, 8);
+
+      groups.push({
+        label: `Powtarzalny układ: ${blocks.length} bloków`,
+        kind: "merged",
+        meta: `${blocks.length} bloków po ${span} kolumny • ${blocks[0].label} -> ${blocks[blocks.length - 1].label}`,
+        prefixCount: blocks[0].startIndex,
+        prefixLabel: blocks[0].startIndex > 0 ? formatColRange(tableStartCol, tableStartCol + blocks[0].startIndex - 1) : "",
+        families,
+        blocks,
+      });
+    });
+  }
+
+  if (groups.length) return groups.slice(0, 4);
+
+  const familyMap = new Map();
+  data.headers.forEach((header, index) => {
+    const parsed = parseRepeatedHeader(header);
+    if (!parsed) return;
+    const entry = familyMap.get(parsed.base) || { label: parsed.base, indexes: [], orders: [] };
+    entry.indexes.push(index);
+    entry.orders.push(parsed.order);
+    familyMap.set(parsed.base, entry);
+  });
+  const families = Array.from(familyMap.values())
+    .filter((entry) => entry.indexes.length >= 3)
+    .sort((a, b) => b.indexes.length - a.indexes.length);
+
+  if (!families.length) return [];
+
+  return [{
+    label: "Powtarzalne rodziny kolumn",
+    kind: "family",
+    meta: `${families.length} rodzin powtarzalnych kolumn`,
+    prefixCount: 0,
+    prefixLabel: "",
+    families: families.slice(0, 10).map((entry) => ({ label: entry.label, count: entry.indexes.length })),
+    blocks: families.slice(0, 10).map((entry) => ({
+      label: entry.label,
+      span: 1,
+      startIndex: entry.indexes[0],
+      endIndex: entry.indexes[entry.indexes.length - 1],
+      startAbs: tableStartCol + entry.indexes[0],
+      endAbs: tableStartCol + entry.indexes[entry.indexes.length - 1],
+      headers: entry.indexes.map((idx) => data.headers[idx]),
+    })),
+  }];
+}
+
+function renderRepeatingBlocks() {
+  if (!repeatBlockDetectorEl) return;
+  repeatBlockDetectorEl.innerHTML = "";
+  if (!currentRepeatingBlocks.length) {
+    repeatBlockDetectorEl.appendChild(createEmptyInsight("Brak wyraznych powtarzalnych blokow dla aktualnego arkusza. Najlepiej dziala na szerokich tabelach z cyklami, etapami albo seriami podobnych kolumn."));
+    return;
+  }
+
+  currentRepeatingBlocks.forEach((group, groupIndex) => {
+    const summary = document.createElement("div");
+    summary.className = "repeat-summary";
+    const prefixNote = group.prefixCount ? ` • stałe kolumny przed blokami: ${group.prefixLabel}` : "";
+    summary.textContent = `${group.meta || group.label}${prefixNote}`;
+    repeatBlockDetectorEl.appendChild(summary);
+
+    group.blocks.slice(0, 10).forEach((block, blockIndex) => {
+      const item = document.createElement("div");
+      item.className = "repeat-block-item";
+
+      const top = document.createElement("div");
+      top.className = "repeat-block-top";
+
+      const title = document.createElement("div");
+      title.className = "repeat-block-title";
+      title.textContent = block.label;
+
+      const badge = document.createElement("div");
+      badge.className = "repeat-block-badge";
+      badge.textContent = `${block.span} kol.`;
+
+      top.appendChild(title);
+      top.appendChild(badge);
+
+      const meta = document.createElement("div");
+      meta.className = "repeat-block-meta";
+      const headerPreview = block.headers.slice(0, 4).join(" • ");
+      meta.textContent = `Kolumny ${formatColRange(block.startAbs, block.endAbs)}${headerPreview ? ` • ${headerPreview}` : ""}`;
+
+      const actions = document.createElement("div");
+      actions.className = "section-nav-actions";
+
+      const btn = document.createElement("button");
+      btn.className = "btn ghost btn-sm";
+      btn.type = "button";
+      btn.dataset.repeatGroupIndex = String(groupIndex);
+      btn.dataset.repeatBlockIndex = String(blockIndex);
+      btn.textContent = "Skocz do bloku";
+      actions.appendChild(btn);
+
+      item.appendChild(top);
+      item.appendChild(meta);
+      item.appendChild(actions);
+
+      if (group.families && group.families.length) {
+        const familyList = document.createElement("div");
+        familyList.className = "repeat-family-list";
+        group.families.slice(0, 6).forEach((family) => {
+          const chip = document.createElement("div");
+          chip.className = "repeat-family-chip";
+          chip.textContent = `${family.label} ×${family.count}`;
+          familyList.appendChild(chip);
+        });
+        item.appendChild(familyList);
+      }
+
+      repeatBlockDetectorEl.appendChild(item);
+    });
+  });
+}
+
+function focusRepeatingBlock(groupIndex, blockIndex) {
+  const group = currentRepeatingBlocks[groupIndex];
+  const block = group && group.blocks ? group.blocks[blockIndex] : null;
+  if (!block || !tableWrapEl) return;
+  const cells = theadEl.querySelectorAll(".guide-row .guide-cell");
+  const cell = cells[block.startIndex];
+  if (!cell) {
+    toast("Tego bloku nie widac jeszcze w aktualnym widoku arkusza", "info");
+    return;
+  }
+  const targetLeft = Math.max(0, cell.offsetLeft - 64);
+  tableWrapEl.scrollTo({ left: targetLeft, behavior: "smooth" });
+  syncHorizontalScrollbar();
+}
+
 function collectWorkbookStats(wb, fileName) {
   const book = wb && wb.Workbook ? wb.Workbook : {};
   const sheetsMeta = Array.isArray(book.Sheets) ? book.Sheets : [];
@@ -336,6 +836,236 @@ function collectSheetInsights() {
     rows: sheetItems,
     flags,
   };
+}
+
+function inferColumnProfileType(stats) {
+  if (!stats || !stats.nonEmpty) return "pusta";
+  const ratio = (count) => (stats.nonEmpty ? count / stats.nonEmpty : 0);
+  const numberRatio = ratio(stats.numericCount);
+  const dateRatio = ratio(stats.dateCount);
+  const formulaRatio = ratio(stats.formulaCount);
+  const textRatio = ratio(stats.textCount);
+
+  if (formulaRatio >= 0.8) return "formuly";
+  if (dateRatio >= 0.8) return "daty";
+  if (numberRatio >= 0.8) return "liczby";
+  if (textRatio >= 0.8) return "tekst";
+  return "mixed";
+}
+
+function formatColumnProfileRange(profile) {
+  if (!profile) return "";
+  if (profile.type === "liczby" && Number.isFinite(profile.minValue) && Number.isFinite(profile.maxValue)) {
+    return `${profile.minValue} -> ${profile.maxValue}`;
+  }
+  if (profile.type === "daty" && profile.minDate instanceof Date && profile.maxDate instanceof Date) {
+    return `${toDisplay(profile.minDate)} -> ${toDisplay(profile.maxDate)}`;
+  }
+  return "";
+}
+
+function collectColumnProfiles() {
+  if (!currentHeaders.length || !baseRows.length) return [];
+  const totalRows = baseRows.length;
+  const profiles = currentHeaders.map((header, colIdx) => {
+    const stats = {
+      nonEmpty: 0,
+      numericCount: 0,
+      dateCount: 0,
+      textCount: 0,
+      formulaCount: 0,
+      longTextCount: 0,
+      minValue: null,
+      maxValue: null,
+      minDate: null,
+      maxDate: null,
+      unique: new Map(),
+    };
+
+    baseRows.forEach((row) => {
+      const value = row.values[colIdx];
+      const displayValue = getDisplayValue(row, colIdx);
+      const text = String(displayValue ?? "").trim();
+      if (text === "") return;
+
+      stats.nonEmpty += 1;
+      stats.unique.set(text, (stats.unique.get(text) || 0) + 1);
+      if (text.length > 60) stats.longTextCount += 1;
+
+      if (typeof value === "string" && value.startsWith("=")) stats.formulaCount += 1;
+      if (typeof value === "number") {
+        stats.numericCount += 1;
+        stats.minValue = stats.minValue == null ? value : Math.min(stats.minValue, value);
+        stats.maxValue = stats.maxValue == null ? value : Math.max(stats.maxValue, value);
+      }
+
+      const asDate = parseDateFlexible(value);
+      if (asDate instanceof Date) {
+        stats.dateCount += 1;
+        stats.minDate = !stats.minDate || asDate < stats.minDate ? asDate : stats.minDate;
+        stats.maxDate = !stats.maxDate || asDate > stats.maxDate ? asDate : stats.maxDate;
+      }
+
+      if (typeof value === "string" && !(parseDateFlexible(value) instanceof Date) && !value.startsWith("=")) {
+        stats.textCount += 1;
+      } else if (!(value instanceof Date) && typeof value !== "number" && typeof value !== "string") {
+        stats.textCount += 1;
+      }
+    });
+
+    const emptyCount = totalRows - stats.nonEmpty;
+    const uniqueCount = stats.unique.size;
+    const topValues = Array.from(stats.unique.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([label, count]) => ({ label, count }));
+    const type = inferColumnProfileType(stats);
+    const flags = [];
+    let score = 0;
+
+    if (stats.nonEmpty && stats.nonEmpty / totalRows <= 0.4) {
+      flags.push("rzadka");
+      score += 2;
+    }
+    if (type === "mixed") {
+      flags.push("mixed");
+      score += 3;
+    }
+    if (stats.longTextCount > 0) {
+      flags.push("dlugie teksty");
+      score += 1;
+    }
+    if (uniqueCount > Math.max(20, totalRows * 0.9) && type === "tekst") {
+      flags.push("prawie same unikalne");
+      score += 1;
+    }
+    if (stats.formulaCount > 0 && stats.formulaCount / stats.nonEmpty >= 0.8) {
+      flags.push("kolumna formul");
+      score += 1;
+    }
+    if (emptyCount === totalRows) {
+      flags.push("pusta");
+      score += 4;
+    }
+
+    return {
+      header,
+      colIdx,
+      colAbs: currentStartCol + colIdx,
+      nonEmpty: stats.nonEmpty,
+      emptyCount,
+      emptyPct: totalRows ? Math.round((emptyCount / totalRows) * 100) : 0,
+      uniqueCount,
+      type,
+      topValues,
+      rangeLabel: formatColumnProfileRange({
+        type,
+        minValue: stats.minValue,
+        maxValue: stats.maxValue,
+        minDate: stats.minDate,
+        maxDate: stats.maxDate,
+      }),
+      flags,
+      score,
+    };
+  });
+
+  return profiles.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.emptyPct !== b.emptyPct) return b.emptyPct - a.emptyPct;
+    return a.header.localeCompare(b.header, "pl");
+  });
+}
+
+function renderColumnProfiles() {
+  if (!columnProfilerEl) return;
+  columnProfilerEl.innerHTML = "";
+  if (!currentColumnProfiles.length) {
+    columnProfilerEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby zobaczyc profil kolumn i szybkie sygnaly problemowosci."));
+    return;
+  }
+
+  currentColumnProfiles.slice(0, 14).forEach((profile, index) => {
+    const item = document.createElement("div");
+    item.className = "column-profile-item";
+
+    const top = document.createElement("div");
+    top.className = "column-profile-top";
+
+    const title = document.createElement("div");
+    title.className = "column-profile-title";
+    title.textContent = profile.header;
+
+    const kind = document.createElement("div");
+    kind.className = "column-profile-kind";
+    kind.textContent = profile.type;
+
+    top.appendChild(title);
+    top.appendChild(kind);
+
+    const meta = document.createElement("div");
+    meta.className = "column-profile-meta";
+    meta.textContent = `Kolumna ${XLSX.utils.encode_col(profile.colAbs)} • puste ${profile.emptyPct}% • unikalne ${profile.uniqueCount}`;
+
+    const stats = document.createElement("div");
+    stats.className = "column-profile-stats";
+    if (profile.rangeLabel) {
+      const rangeChip = document.createElement("div");
+      rangeChip.className = "column-profile-chip";
+      rangeChip.textContent = profile.rangeLabel;
+      stats.appendChild(rangeChip);
+    }
+    profile.topValues.forEach((entry) => {
+      const chip = document.createElement("div");
+      chip.className = "column-profile-chip";
+      chip.textContent = `${entry.label.slice(0, 24)}${entry.label.length > 24 ? "..." : ""} ×${entry.count}`;
+      stats.appendChild(chip);
+    });
+
+    if (profile.flags.length) {
+      const flags = document.createElement("div");
+      flags.className = "column-profile-flags";
+      profile.flags.forEach((flag) => {
+        const badge = document.createElement("div");
+        badge.className = "column-profile-flag";
+        badge.textContent = flag;
+        flags.appendChild(badge);
+      });
+      item.appendChild(top);
+      item.appendChild(meta);
+      if (stats.childNodes.length) item.appendChild(stats);
+      item.appendChild(flags);
+    } else {
+      item.appendChild(top);
+      item.appendChild(meta);
+      if (stats.childNodes.length) item.appendChild(stats);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.profileColIndex = String(profile.colIdx);
+    btn.textContent = "Skocz do kolumny";
+    actions.appendChild(btn);
+    item.appendChild(actions);
+
+    columnProfilerEl.appendChild(item);
+  });
+}
+
+function focusColumnProfile(colIdx) {
+  if (!Number.isFinite(colIdx)) return;
+  const cells = theadEl.querySelectorAll(".guide-row .guide-cell");
+  const cell = cells[colIdx];
+  if (cell && tableWrapEl) {
+    const targetLeft = Math.max(0, cell.offsetLeft - 64);
+    tableWrapEl.scrollTo({ left: targetLeft, behavior: "smooth" });
+    syncHorizontalScrollbar();
+    return;
+  }
+  toast("Ta kolumna nie miesci sie jeszcze w aktualnym widoku tabeli", "info");
 }
 
 function renderInsights() {
@@ -705,6 +1435,170 @@ function resolveIndexes(headers, selected) {
   return headers.map((h, i) => (selected.has(h) ? i : -1)).filter((i) => i >= 0);
 }
 
+function compareSortValues(av, bv) {
+  const ad = parseDateFlexible(av);
+  const bd = parseDateFlexible(bv);
+  if (ad && bd) return ad - bd;
+  if (typeof av === "number" && typeof bv === "number") return av - bv;
+  return String(av || "").localeCompare(String(bv || ""), "pl");
+}
+
+function normalizeSortState() {
+  multiSortState = multiSortState
+    .filter((rule) => rule && rule.col && currentHeaders.includes(rule.col))
+    .map((rule) => ({ col: rule.col, dir: rule.dir === "desc" ? "desc" : "asc" }));
+  const primary = multiSortState[0] || null;
+  sortState = primary ? { col: primary.col, dir: primary.dir } : { col: "", dir: "asc" };
+}
+
+function setPrimarySort(col, dir = "asc") {
+  if (!col) {
+    multiSortState = [];
+    normalizeSortState();
+    return;
+  }
+  const next = [{ col, dir: dir === "desc" ? "desc" : "asc" }];
+  multiSortState.forEach((rule) => {
+    if (rule.col === col) return;
+    next.push(rule);
+  });
+  multiSortState = next;
+  normalizeSortState();
+}
+
+function populateSortColumnSelect() {
+  if (!sortColumnSelectEl) return;
+  sortColumnSelectEl.innerHTML = "";
+  if (!currentHeaders.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Najpierw wczytaj arkusz";
+    sortColumnSelectEl.appendChild(opt);
+    sortColumnSelectEl.disabled = true;
+    if (addSortRuleBtn) addSortRuleBtn.disabled = true;
+    return;
+  }
+  sortColumnSelectEl.disabled = false;
+  if (addSortRuleBtn) addSortRuleBtn.disabled = false;
+  currentHeaders.forEach((header) => {
+    const opt = document.createElement("option");
+    opt.value = header;
+    opt.textContent = header;
+    sortColumnSelectEl.appendChild(opt);
+  });
+}
+
+function renderSortRules() {
+  if (!sortRulesListEl) return;
+  sortRulesListEl.innerHTML = "";
+  if (!multiSortState.length) {
+    sortRulesListEl.appendChild(createEmptyInsight("Brak aktywnych sortowan. Kliknij naglowek tabeli albo dodaj regule tutaj."));
+    return;
+  }
+  multiSortState.forEach((rule, index) => {
+    const item = document.createElement("div");
+    item.className = "sort-rule-item";
+
+    const label = document.createElement("div");
+    label.className = "sort-rule-label";
+    label.textContent = `${index + 1}. ${rule.col}`;
+
+    const dir = document.createElement("div");
+    dir.className = "sort-rule-dir";
+    dir.textContent = rule.dir === "asc" ? "Rosnąco" : "Malejąco";
+
+    const actions = document.createElement("div");
+    actions.className = "sort-rule-actions";
+
+    const upBtn = document.createElement("button");
+    upBtn.className = "btn ghost btn-sm";
+    upBtn.type = "button";
+    upBtn.dataset.sortAction = "up";
+    upBtn.dataset.sortIndex = String(index);
+    upBtn.textContent = "Góra";
+    upBtn.disabled = index === 0;
+
+    const downBtn = document.createElement("button");
+    downBtn.className = "btn ghost btn-sm";
+    downBtn.type = "button";
+    downBtn.dataset.sortAction = "down";
+    downBtn.dataset.sortIndex = String(index);
+    downBtn.textContent = "Dół";
+    downBtn.disabled = index === multiSortState.length - 1;
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn ghost btn-sm";
+    toggleBtn.type = "button";
+    toggleBtn.dataset.sortAction = "toggle";
+    toggleBtn.dataset.sortIndex = String(index);
+    toggleBtn.textContent = "Zmień kierunek";
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn ghost btn-sm";
+    removeBtn.type = "button";
+    removeBtn.dataset.sortAction = "remove";
+    removeBtn.dataset.sortIndex = String(index);
+    removeBtn.textContent = "Usuń";
+
+    actions.appendChild(upBtn);
+    actions.appendChild(downBtn);
+    actions.appendChild(toggleBtn);
+    actions.appendChild(removeBtn);
+
+    item.appendChild(label);
+    item.appendChild(dir);
+    item.appendChild(actions);
+    sortRulesListEl.appendChild(item);
+  });
+}
+
+function loadSortPresets() {
+  try {
+    const raw = localStorage.getItem(SORT_PRESETS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSortPresets(presets) {
+  localStorage.setItem(SORT_PRESETS_KEY, JSON.stringify(presets));
+}
+
+function renderSortPresets() {
+  if (!sortPresetSelectEl) return;
+  const presets = loadSortPresets();
+  sortPresetSelectEl.innerHTML = "";
+  if (!presets.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Brak zapisanych presetów";
+    sortPresetSelectEl.appendChild(opt);
+    return;
+  }
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Wybierz preset";
+  sortPresetSelectEl.appendChild(placeholder);
+  presets.forEach((preset) => {
+    const opt = document.createElement("option");
+    opt.value = preset.name;
+    opt.textContent = preset.name;
+    sortPresetSelectEl.appendChild(opt);
+  });
+}
+
+function applyCurrentSort() {
+  applyFilters();
+  sortRows();
+  renderActiveTable();
+  renderInsights();
+  renderColumnProfiles();
+  renderSections();
+  renderRepeatingBlocks();
+}
+
 function applyFilters() {
   const criteria = [
     {
@@ -731,28 +1625,141 @@ function applyFilters() {
 }
 
 function sortRows() {
-  const sortCol = sortState.col;
-  const ascending = sortState.dir === "asc";
-  if (!sortCol) return;
-  const idx = currentHeaders.indexOf(sortCol);
-  if (idx < 0) return;
+  normalizeSortState();
+  if (!multiSortState.length) return;
   viewRows.sort((a, b) => {
-    const av = a.rawValues ? a.rawValues[idx] : a.values[idx];
-    const bv = b.rawValues ? b.rawValues[idx] : b.values[idx];
-    const ad = parseDateFlexible(av);
-    const bd = parseDateFlexible(bv);
-    if (ad && bd) return ad - bd;
-    if (typeof av === "number" && typeof bv === "number") return av - bv;
-    return String(av || "").localeCompare(String(bv || ""));
+    for (const rule of multiSortState) {
+      const idx = currentHeaders.indexOf(rule.col);
+      if (idx < 0) continue;
+      const av = a.rawValues ? a.rawValues[idx] : a.values[idx];
+      const bv = b.rawValues ? b.rawValues[idx] : b.values[idx];
+      const cmp = compareSortValues(av, bv);
+      if (cmp !== 0) return rule.dir === "desc" ? -cmp : cmp;
+    }
+    return 0;
   });
-  if (!ascending) viewRows.reverse();
+}
+
+function sortRowsForHeaders(rows, headers) {
+  normalizeSortState();
+  if (!multiSortState.length || !Array.isArray(rows) || !Array.isArray(headers)) return;
+  rows.sort((a, b) => {
+    for (const rule of multiSortState) {
+      const idx = headers.indexOf(rule.col);
+      if (idx < 0) continue;
+      const av = a.rawValues ? a.rawValues[idx] : a.values[idx];
+      const bv = b.rawValues ? b.rawValues[idx] : b.values[idx];
+      const cmp = compareSortValues(av, bv);
+      if (cmp !== 0) return rule.dir === "desc" ? -cmp : cmp;
+    }
+    return 0;
+  });
+}
+
+function getActiveRepeatingGroup() {
+  return Array.isArray(currentRepeatingBlocks) && currentRepeatingBlocks.length ? currentRepeatingBlocks[0] : null;
+}
+
+function canUseLongView() {
+  const group = getActiveRepeatingGroup();
+  return !!(group && Array.isArray(group.blocks) && group.blocks.length >= 2);
+}
+
+function updateWideLongToggle() {
+  if (!wideLongToggleEl) return;
+  const available = canUseLongView();
+  if (!available) {
+    tableViewMode = "wide";
+  }
+  wideLongToggleEl.classList.toggle("hidden", !available);
+  wideLongToggleEl.setAttribute("aria-hidden", available ? "false" : "true");
+  wideLongToggleEl.setAttribute("aria-pressed", tableViewMode === "long" ? "true" : "false");
+  wideLongToggleEl.textContent = tableViewMode === "long" ? "Widok klasyczny" : "Wide-to-Long";
+  wideLongToggleEl.title = tableViewMode === "long"
+    ? "Wroc do klasycznego ukladu arkusza"
+    : "Przelacz wykryte bloki kolumn na dlugi widok analityczny";
+}
+
+function buildWideDisplayModel() {
+  return {
+    mode: "wide",
+    headers: currentHeaders.slice(),
+    rows: viewRows.slice(),
+    guideLabels: currentHeaders.map((_, i) => XLSX.utils.encode_col(i + currentStartCol)),
+    headerRowLabel: String(currentHeaderRow),
+    rowHeadFormatter: (row) => String((row?.rowIndex0 ?? 0) + 1),
+    editable: true,
+  };
+}
+
+function buildLongViewModel() {
+  const group = getActiveRepeatingGroup();
+  if (!group || !Array.isArray(group.blocks) || !group.blocks.length) return buildWideDisplayModel();
+
+  const firstBlock = group.blocks[0];
+  const prefixCount = Math.max(0, Number(group.prefixCount) || 0);
+  const prefixHeaders = currentHeaders.slice(0, prefixCount);
+  const repeatedHeaders = firstBlock.headers.map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header) || header);
+  const headers = [...prefixHeaders, "Nr bloku", "Blok", ...repeatedHeaders];
+  const rows = [];
+
+  viewRows.forEach((row) => {
+    group.blocks.forEach((block, blockIndex) => {
+      const blockValues = row.values.slice(block.startIndex, block.endIndex + 1);
+      const blockDisplay = blockValues.map((_, idx) => getDisplayValue(row, block.startIndex + idx));
+      const hasMeaningfulValue = blockDisplay.some((value) => String(value ?? "").trim() !== "");
+      if (!hasMeaningfulValue) return;
+
+      const prefixValues = row.values.slice(0, prefixCount);
+      const prefixDisplay = prefixValues.map((_, idx) => getDisplayValue(row, idx));
+      const values = [...prefixValues, blockIndex + 1, block.label, ...blockValues];
+      const display = [...prefixDisplay, String(blockIndex + 1), block.label, ...blockDisplay];
+
+      rows.push({
+        values,
+        rawValues: values.slice(),
+        display,
+        rowIndex0: row.rowIndex0,
+        sourceRowIndex0: row.rowIndex0,
+        sourceBlockIndex: blockIndex,
+        sourceBlockLabel: block.label,
+        isLongViewRow: true,
+      });
+    });
+  });
+
+  return {
+    mode: "long",
+    headers,
+    rows,
+    guideLabels: headers.map((_, idx) => `${idx + 1}`),
+    headerRowLabel: `${currentHeaderRow} -> long`,
+    rowHeadFormatter: (row) => `${(row?.sourceRowIndex0 ?? row?.rowIndex0 ?? 0) + 1}.${(row?.sourceBlockIndex ?? 0) + 1}`,
+    editable: false,
+  };
+}
+
+function getDisplayModel() {
+  if (tableViewMode === "long" && canUseLongView()) {
+    return buildLongViewModel();
+  }
+  return buildWideDisplayModel();
+}
+
+function renderActiveTable() {
+  currentDisplayModel = getDisplayModel();
+  sortRowsForHeaders(currentDisplayModel.rows, currentDisplayModel.headers);
+  renderTable(currentDisplayModel);
+  updateWideLongToggle();
 }
 
 function updateSortControls() {
   if (!resetSortBtn) return;
-  const active = !!sortState.col;
+  normalizeSortState();
+  const active = multiSortState.length > 0;
   resetSortBtn.classList.toggle("hidden", !active);
   resetSortBtn.setAttribute("aria-hidden", active ? "false" : "true");
+  renderSortRules();
 }
 
 function toPixelWidth(meta) {
@@ -1060,7 +2067,21 @@ function computeColumnWidths(headers, rows, useExcelLayout) {
   });
 }
 
-function renderTable(headers, rows) {
+function renderTable(modelOrHeaders, maybeRows) {
+  const model = Array.isArray(modelOrHeaders)
+    ? {
+        mode: "wide",
+        headers: modelOrHeaders,
+        rows: Array.isArray(maybeRows) ? maybeRows : [],
+        guideLabels: modelOrHeaders.map((_, i) => XLSX.utils.encode_col(i + currentStartCol)),
+        headerRowLabel: String(currentHeaderRow),
+        rowHeadFormatter: (row) => String((row?.rowIndex0 ?? 0) + 1),
+        editable: true,
+      }
+    : (modelOrHeaders || { headers: [], rows: [] });
+  const headers = Array.isArray(model.headers) ? model.headers : [];
+  const rows = Array.isArray(model.rows) ? model.rows : [];
+
   updateSortControls();
   if (!headers.length) {
     setStatus("Brak danych");
@@ -1108,7 +2129,7 @@ function renderTable(headers, rows) {
     const th = document.createElement("th");
     th.className = "guide-cell";
     th.setAttribute("scope", "col");
-    th.textContent = XLSX.utils.encode_col(i + currentStartCol);
+    th.textContent = Array.isArray(model.guideLabels) && model.guideLabels[i] ? model.guideLabels[i] : XLSX.utils.encode_col(i + currentStartCol);
     const resizer = document.createElement("div");
     resizer.className = "col-resizer";
     resizer.dataset.colIndex = String(i);
@@ -1122,9 +2143,9 @@ function renderTable(headers, rows) {
   const rowHead = document.createElement("th");
   rowHead.className = "row-head";
   rowHead.setAttribute("scope", "row");
-  rowHead.textContent = String(currentHeaderRow);
+  rowHead.textContent = model.headerRowLabel || String(currentHeaderRow);
   headRow.appendChild(rowHead);
-  const headerMergeLayout = computeHeaderMergeLayout(headers.length);
+  const headerMergeLayout = model.mode === "wide" ? computeHeaderMergeLayout(headers.length) : null;
   for (let i = 0; i < headers.length; i++) {
     if (headerMergeLayout && headerMergeLayout.covered.has(i)) continue;
     const h = headers[i];
@@ -1144,20 +2165,22 @@ function renderTable(headers, rows) {
 
     th.addEventListener("click", () => {
       if (sortState.col === h) {
-        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+        setPrimarySort(h, sortState.dir === "asc" ? "desc" : "asc");
       } else {
-        sortState.col = h;
-        sortState.dir = "asc";
+        setPrimarySort(h, "asc");
       }
-      sortRows();
+      if (model.mode === "wide") {
+        sortRows();
+      }
       updateSortControls();
-      renderTable(currentHeaders, viewRows);
+      renderActiveTable();
     });
 
-    if (sortState.col === h) {
+    const primarySort = multiSortState[0];
+    if (primarySort && primarySort.col === h) {
       const arrow = document.createElement("span");
       arrow.className = "sort-arrow";
-      arrow.textContent = sortState.dir === "asc" ? "▲" : "▼";
+      arrow.textContent = primarySort.dir === "asc" ? "▲" : "▼";
       th.appendChild(arrow);
     }
 
@@ -1167,7 +2190,7 @@ function renderTable(headers, rows) {
 
   const limit = Math.max(1, parseInt(maxRowsEl.value || "200", 10));
   const rowsShown = rows.slice(0, limit);
-  const mergeLayout = computeMergeLayout(rowsShown, headers.length);
+  const mergeLayout = model.mode === "wide" ? computeMergeLayout(rowsShown, headers.length) : null;
 
   rowsShown.forEach((row, rowPos) => {
     const tr = document.createElement("tr");
@@ -1182,7 +2205,7 @@ function renderTable(headers, rows) {
     }
     const rowHead = document.createElement("td");
     rowHead.className = "row-head";
-    rowHead.textContent = String(row.rowIndex0 + 1);
+    rowHead.textContent = model.rowHeadFormatter ? model.rowHeadFormatter(row, rowPos) : String(row.rowIndex0 + 1);
     tr.appendChild(rowHead);
     row.values.forEach((v, i) => {
       const mergeKey = `${rowPos}:${i}`;
@@ -1209,7 +2232,8 @@ function renderTable(headers, rows) {
     tbodyEl.appendChild(tr);
   });
 
-  setStatus(`Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})`);
+  const modeLabel = model.mode === "long" ? " • tryb long" : "";
+  setStatus(`Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})${modeLabel}`);
   syncHorizontalScrollbar();
 }
 
@@ -1551,7 +2575,7 @@ function attachResizeHandlers() {
     const delta = x - startX;
     const next = Math.max(80, Math.min(520, Math.round(startW + delta)));
     manualColumnWidths[active.colIndex] = next;
-    renderTable(currentHeaders, viewRows);
+    renderActiveTable();
   };
 
   const stop = () => {
@@ -1664,6 +2688,13 @@ async function handleFile(file) {
   });
     currentWorkbookStats = collectWorkbookStats(workbook, file.name);
     currentSheetStats = null;
+    currentColumnProfiles = [];
+    currentSections = [];
+    currentRepeatingBlocks = [];
+    currentDisplayModel = null;
+    tableViewMode = "wide";
+    multiSortState = [];
+    sortState = { col: "", dir: "asc" };
     currentFileName = file.name;
     currentStartCol = 0;
     currentMerges = [];
@@ -1676,6 +2707,11 @@ async function handleFile(file) {
     setDirtyState(false);
     setStatus("Plik wczytany");
     renderInsights();
+    renderColumnProfiles();
+    renderSections();
+    renderRepeatingBlocks();
+    populateSortColumnSelect();
+    renderSortPresets();
     toast("Plik wczytany", "success");
     log(`Wczytano plik: ${file.name}`, "success");
   } catch (err) {
@@ -1695,18 +2731,20 @@ function escapeCsv(value) {
 }
 
 function exportCsv() {
-  if (!currentHeaders.length || !viewRows.length) {
+  const model = currentDisplayModel || getDisplayModel();
+  if (!model.headers.length || !model.rows.length) {
     toast("Brak danych do eksportu", "warning");
     return;
   }
   const rows = [
-    currentHeaders,
-    ...viewRows.map((row) => row.values.map((v, i) => getDisplayValue(row, i))),
+    model.headers,
+    ...model.rows.map((row) => row.values.map((v, i) => getDisplayValue(row, i))),
   ];
   const csv = rows.map((row) => row.map(escapeCsv).join(",")).join("\n");
   const base = currentFileName ? currentFileName.replace(/\.[^.]+$/, "") : "excel-workbench";
   const sheet = sheetSelect.value ? sheetSelect.value.replace(/\s+/g, "_") : "arkusz";
-  const filename = `${base}_${sheet}.csv`;
+  const suffix = model.mode === "long" ? "long" : "wide";
+  const filename = `${base}_${sheet}_${suffix}.csv`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -1799,7 +2837,12 @@ loadBtn.addEventListener("click", () => {
       currentSheetRowHeights = data.rowHeights || {};
       currentSheetStats = data.stats || null;
       baseRows = markSubheaderRows(data.rows);
+      currentColumnProfiles = collectColumnProfiles();
+      currentSections = detectSections(sheet, headerRow, data);
+      currentRepeatingBlocks = detectRepeatingBlocks(sheet, headerRow, data);
+      if (!canUseLongView()) tableViewMode = "wide";
       viewRows = baseRows.slice();
+      multiSortState = [];
       sortState = { col: "", dir: "asc" };
       manualColumnWidths = {};
       columnSelections.filter1.clear();
@@ -1807,8 +2850,12 @@ loadBtn.addEventListener("click", () => {
       columnSelections.date.clear();
       updateColumnSummary();
       updateFilterBadge();
-      renderTable(currentHeaders, viewRows);
+      populateSortColumnSelect();
+      renderActiveTable();
       renderInsights();
+      renderColumnProfiles();
+      renderSections();
+      renderRepeatingBlocks();
       setDirtyState(false);
       if (currentSheetStats?.duplicateHeaderCount) {
         toast(`Zdublowane naglowki rozrozniono (${currentSheetStats.duplicateHeaderCount})`, "warning");
@@ -1825,8 +2872,11 @@ applyFilterBtn.addEventListener("click", () => {
   if (!currentHeaders.length) return;
   applyFilters();
   sortRows();
-  renderTable(currentHeaders, viewRows);
+  renderActiveTable();
   renderInsights();
+  renderColumnProfiles();
+  renderSections();
+  renderRepeatingBlocks();
   updateFilterBadge();
   toast("Zastosowano filtry", "info");
 });
@@ -1842,8 +2892,11 @@ function applyQuickSearch() {
   searchQueryEl.value = value;
   applyFilters();
   sortRows();
-  renderTable(currentHeaders, viewRows);
+  renderActiveTable();
   renderInsights();
+  renderColumnProfiles();
+  renderSections();
+  renderRepeatingBlocks();
   updateFilterBadge();
   if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
     quickSearchPopupEl.classList.add("hidden");
@@ -1936,8 +2989,11 @@ resetFiltersBtn.addEventListener("click", () => {
   resetFilterInputs();
   viewRows = baseRows.slice();
   sortRows();
-  renderTable(currentHeaders, viewRows);
+  renderActiveTable();
   renderInsights();
+  renderColumnProfiles();
+  renderSections();
+  renderRepeatingBlocks();
   toast("Reset filtrow", "info");
 });
 
@@ -1962,7 +3018,7 @@ quickRangeButtons.forEach((btn) => {
     updateDateChipsActive();
     applyFilters();
     sortRows();
-    renderTable(currentHeaders, viewRows);
+    renderActiveTable();
     updateFilterBadge();
   });
 });
@@ -1994,6 +3050,100 @@ applyPickBtn.addEventListener("click", () => {
   closeColumnPicker();
 });
 
+if (addSortRuleBtn) {
+  addSortRuleBtn.addEventListener("click", () => {
+    if (!currentHeaders.length) {
+      toast("Najpierw wczytaj arkusz", "info");
+      return;
+    }
+    const col = sortColumnSelectEl?.value;
+    const dir = sortDirectionSelectEl?.value === "desc" ? "desc" : "asc";
+    if (!col) return;
+    multiSortState = multiSortState.filter((rule) => rule.col !== col);
+    multiSortState.push({ col, dir });
+    normalizeSortState();
+    applyCurrentSort();
+    toast("Dodano sortowanie do kolejki", "info");
+  });
+}
+
+if (sortRulesListEl) {
+  sortRulesListEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-sort-action]");
+    if (!btn) return;
+    const action = btn.dataset.sortAction;
+    const index = parseInt(btn.dataset.sortIndex || "", 10);
+    if (!Number.isFinite(index) || index < 0 || index >= multiSortState.length) return;
+
+    if (action === "remove") {
+      multiSortState.splice(index, 1);
+    } else if (action === "toggle") {
+      multiSortState[index].dir = multiSortState[index].dir === "asc" ? "desc" : "asc";
+    } else if (action === "up" && index > 0) {
+      [multiSortState[index - 1], multiSortState[index]] = [multiSortState[index], multiSortState[index - 1]];
+    } else if (action === "down" && index < multiSortState.length - 1) {
+      [multiSortState[index + 1], multiSortState[index]] = [multiSortState[index], multiSortState[index + 1]];
+    }
+
+    normalizeSortState();
+    applyCurrentSort();
+  });
+}
+
+if (saveSortPresetBtn) {
+  saveSortPresetBtn.addEventListener("click", () => {
+    normalizeSortState();
+    if (!multiSortState.length) {
+      toast("Brak sortowan do zapisania", "warning");
+      return;
+    }
+    const name = window.prompt("Nazwa presetu sortowania:", "");
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    const presets = loadSortPresets().filter((preset) => preset.name !== trimmed);
+    presets.push({ name: trimmed, rules: multiSortState.map((rule) => ({ ...rule })) });
+    presets.sort((a, b) => a.name.localeCompare(b.name, "pl"));
+    saveSortPresets(presets);
+    renderSortPresets();
+    if (sortPresetSelectEl) sortPresetSelectEl.value = trimmed;
+    toast("Zapisano preset sortowania", "success");
+  });
+}
+
+if (applySortPresetBtn) {
+  applySortPresetBtn.addEventListener("click", () => {
+    const name = sortPresetSelectEl?.value;
+    if (!name) {
+      toast("Wybierz preset", "info");
+      return;
+    }
+    const preset = loadSortPresets().find((item) => item.name === name);
+    if (!preset) {
+      toast("Nie znaleziono presetu", "warning");
+      renderSortPresets();
+      return;
+    }
+    multiSortState = Array.isArray(preset.rules) ? preset.rules.map((rule) => ({ col: rule.col, dir: rule.dir })) : [];
+    normalizeSortState();
+    applyCurrentSort();
+    toast("Wczytano preset sortowania", "success");
+  });
+}
+
+if (deleteSortPresetBtn) {
+  deleteSortPresetBtn.addEventListener("click", () => {
+    const name = sortPresetSelectEl?.value;
+    if (!name) {
+      toast("Wybierz preset do usuniecia", "info");
+      return;
+    }
+    const presets = loadSortPresets().filter((preset) => preset.name !== name);
+    saveSortPresets(presets);
+    renderSortPresets();
+    toast("Usunieto preset sortowania", "info");
+  });
+}
+
 columnPickerEl.addEventListener("click", (e) => {
   if (e.target === columnPickerEl) closeColumnPicker();
 });
@@ -2006,12 +3156,10 @@ columnSearchEl.addEventListener("input", filterColumnList);
 exportCsvBtn.addEventListener("click", exportCsv);
 if (resetSortBtn) {
   resetSortBtn.addEventListener("click", () => {
-    sortState = { col: "", dir: "asc" };
-    applyFilters();
-    renderTable(currentHeaders, viewRows);
-    updateSortControls();
+    multiSortState = [];
+    normalizeSortState();
+    applyCurrentSort();
     toast("Przywrocono domyslne sortowanie", "info");
-    renderInsights();
   });
 }
 saveBtn.addEventListener("click", () => {
@@ -2020,11 +3168,15 @@ saveBtn.addEventListener("click", () => {
 saveAsBtn.addEventListener("click", saveWorkbookAs);
 resetWidthsBtn.addEventListener("click", () => {
   manualColumnWidths = {};
-  renderTable(currentHeaders, viewRows);
+  renderActiveTable();
   toast("Przywrocono automatyczne szerokosci", "info");
 });
 
 tbodyEl.addEventListener("dblclick", (e) => {
+  if (currentDisplayModel && currentDisplayModel.mode === "long") {
+    toast("Wide-to-Long jest na razie widokiem tylko do analizy", "info");
+    return;
+  }
   const td = e.target.closest("td");
   if (!td) return;
   const tr = td.parentElement;
@@ -2058,7 +3210,7 @@ tbodyEl.addEventListener("dblclick", (e) => {
     const parsed = parseInputValue(input.value);
     if (parsed && parsed.type === "formula") {
       toast("Edycja formul jest zablokowana", "warning");
-      renderTable(currentHeaders, viewRows);
+      renderActiveTable();
       return;
     }
     if (!parsed) {
@@ -2072,12 +3224,15 @@ tbodyEl.addEventListener("dblclick", (e) => {
       updateSheetCell(rowIndex0, colIndex0, parsed);
       if (!valuesEqual(oldValue, parsed.value)) setDirtyState(true);
     }
-    renderTable(currentHeaders, viewRows);
+    renderActiveTable();
     renderInsights();
+    renderColumnProfiles();
+    renderSections();
+    renderRepeatingBlocks();
   };
 
   const cancel = () => {
-    renderTable(currentHeaders, viewRows);
+    renderActiveTable();
   };
 
   input.addEventListener("keydown", (evt) => {
@@ -2100,14 +3255,14 @@ searchQueryEl.addEventListener("input", syncQuickSearchInputs);
 
 maxRowsEl.addEventListener("change", () => {
   saveMaxRowsPreference();
-  renderTable(currentHeaders, viewRows);
+  renderActiveTable();
 });
 
 if (excelLayoutToggleEl) {
   excelLayoutToggleEl.addEventListener("click", () => {
     setExcelLayoutEnabled(!isExcelLayoutEnabled());
     saveExcelLayoutPreference();
-    renderTable(currentHeaders, viewRows);
+    renderActiveTable();
   });
 }
 
@@ -2186,6 +3341,43 @@ function setReadingMode(enabled) {
 panelToggle.addEventListener("click", toggleSidebar);
 if (panelHandle) panelHandle.addEventListener("click", toggleSidebar);
 if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebarOpen(false));
+if (sectionNavigatorEl) {
+  sectionNavigatorEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-section-index]");
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.sectionIndex || "", 10);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= currentSections.length) return;
+    focusSection(currentSections[idx]);
+  });
+}
+if (repeatBlockDetectorEl) {
+  repeatBlockDetectorEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-repeat-group-index]");
+    if (!btn) return;
+    const groupIndex = parseInt(btn.dataset.repeatGroupIndex || "", 10);
+    const blockIndex = parseInt(btn.dataset.repeatBlockIndex || "", 10);
+    if (!Number.isFinite(groupIndex) || !Number.isFinite(blockIndex)) return;
+    focusRepeatingBlock(groupIndex, blockIndex);
+  });
+}
+if (columnProfilerEl) {
+  columnProfilerEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-profile-col-index]");
+    if (!btn) return;
+    const colIdx = parseInt(btn.dataset.profileColIndex || "", 10);
+    if (!Number.isFinite(colIdx)) return;
+    focusColumnProfile(colIdx);
+  });
+}
+if (wideLongToggleEl) {
+  wideLongToggleEl.addEventListener("click", () => {
+    if (!canUseLongView()) return;
+    tableViewMode = tableViewMode === "long" ? "wide" : "long";
+    manualColumnWidths = {};
+    renderActiveTable();
+    toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
+  });
+}
 if (readingToggle) {
   readingToggle.addEventListener("click", () => {
     const enabled = !rootEl.classList.contains("reading");
@@ -2304,6 +3496,12 @@ syncQuickSearchInputs();
 setSidebarOpen(true);
 syncSidebarHandle();
 renderInsights();
+renderColumnProfiles();
+renderSections();
+renderRepeatingBlocks();
+populateSortColumnSelect();
+renderSortPresets();
+updateWideLongToggle();
 
 const xlsxReady = isXlsxAvailable(false);
 setRuntimeAvailability(xlsxReady);
@@ -2322,7 +3520,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260323-5").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260325-4").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }

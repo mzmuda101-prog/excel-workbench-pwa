@@ -61,6 +61,10 @@ Uzywa **xlsx-js-style** (SheetJS + style); domyslnie z CDN. Dla pelnego offline 
 - Eksport CSV
 - Wykrywanie koloru komorek (fill) i subtelne podswietlenie w podgladzie
 
+## Roadmap
+
+Plan dalszego rozwoju jest w [ROADMAP.md](./ROADMAP.md).
+
 ## Zapis a wersja Python (openpyxl)
 
 W PWA zapis dziala tak: edytujesz komorki w pamieci (obiekt `workbook`), potem `XLSX.writeFile(workbook, plik)` zapisuje caly skoroszyt. Formuly i niezmienione komorki sa w obiekcie, wiec trafiaja do pliku. **Roznica:** W Pythonie openpyxl daje pelna wiernosc pliku (otwierasz → edytujesz obiekt → save() = ten sam plik + zmiany). W JS biblioteka przy odczycie i zapisie moze czegos nie odtworzyc 1:1 (np. skomplikowane formatowanie, nisze formuly). Da sie zblizyc do Pythona: uzywamy xlsx-js-style (zachowanie stylow), edytujemy tylko wartosci komorek (formul nie ruszamy) — round-trip jest wtedy lepszy. Pelna rownowaznosc z openpyxl w samej przegladarce nie jest mozliwa bez backendu (Node + openpyxl lub Excel).
