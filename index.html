@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260325-4" />
+    <link rel="stylesheet" href="styles.css?v=20260402-7" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -49,7 +49,7 @@
       <div class="workspace">
         <!-- ====== SIDEBAR ====== -->
         <aside class="sidebar">
-          <details class="panel" open>
+          <details class="panel" id="panel-file-sheet" open>
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -122,7 +122,7 @@
             </div>
           </details>
 
-          <details class="panel" open>
+          <details class="panel" id="panel-text-filter-1">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8" />
@@ -162,7 +162,7 @@
             </div>
           </details>
 
-          <details class="panel">
+          <details class="panel" id="panel-text-filter-2">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8" />
@@ -198,7 +198,7 @@
             </div>
           </details>
 
-          <details class="panel" open>
+          <details class="panel" id="panel-date-filter" open>
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -258,14 +258,16 @@
             </div>
           </details>
 
-          <details class="panel" open>
+          <details class="panel" id="panel-sort-workbench">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 6h18" />
-                <path d="M7 12h10" />
-                <path d="M10 18h4" />
+                <path d="M7 6h10" />
+                <path d="M7 12h7" />
+                <path d="M7 18h4" />
+                <path d="M17 5l2 2 2-2" />
+                <path d="M19 7v10" />
               </svg>
-              <span class="panel-title">Akcje</span>
+              <span class="panel-title">Sortowanie i presety</span>
               <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
@@ -304,9 +306,22 @@
                 </div>
                 <button class="btn ghost full" id="deleteSortPresetBtn" type="button">Usuń preset</button>
               </div>
+            </div>
+          </details>
 
-              <div class="divider"></div>
-
+          <details class="panel" id="panel-actions" open>
+            <summary>
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18" />
+                <path d="M7 12h10" />
+                <path d="M10 18h4" />
+              </svg>
+              <span class="panel-title">Akcje</span>
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="panel-body stack">
               <button class="btn full" id="applyFilterBtn" type="button">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
@@ -338,7 +353,7 @@
             </div>
           </details>
 
-          <details class="panel">
+          <details class="panel" id="panel-workbench-analysis">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 3v18" />
@@ -361,61 +376,98 @@
             </div>
           </details>
 
-          <details class="panel">
+          <details class="panel" id="panel-kpi-extractor">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 19h16" />
-                <path d="M7 15l3-3 2 2 5-6" />
-                <path d="M7 10h.01" />
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M7 15l3-4 3 2 4-6" />
+                <path d="M7 8h10" />
               </svg>
-              <span class="panel-title">Profiler kolumn</span>
+              <span class="panel-title">KPI / Podsumowanie</span>
               <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </summary>
-            <div class="panel-body">
-              <div class="panel-hint">Szybki profil kolumn: typ danych, puste, unikalne, top wartosci i sygnaly problemowosci.</div>
-              <div class="column-profiler-list" id="columnProfiler"></div>
+            <div class="panel-body stack">
+              <div class="panel-hint">Pomocnicze wyciąganie najważniejszych liczb i wskaźników z górnej części arkusza.</div>
+              <div class="kpi-summary" id="kpiSummary"></div>
+              <div class="kpi-list" id="kpiList"></div>
             </div>
           </details>
 
-          <details class="panel" open>
-            <summary>
-              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 6h18" />
-                <path d="M3 12h18" />
-                <path d="M3 18h18" />
-                <path d="M8 4v16" />
-              </svg>
-              <span class="panel-title">Nawigator sekcji</span>
-              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="panel-body section-nav-list" id="sectionNavigator"></div>
-          </details>
-
-          <details class="panel">
+          <details class="panel" id="panel-sheet-inspector">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="4" width="18" height="16" rx="2" />
                 <path d="M7 8h10" />
-                <path d="M7 12h5" />
-                <path d="M15 12h2" />
-                <path d="M7 16h10" />
+                <path d="M7 12h10" />
+                <path d="M7 16h6" />
               </svg>
-              <span class="panel-title">Wykrywacz bloków</span>
+              <span class="panel-title">Inspektor arkusza</span>
               <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </summary>
             <div class="panel-body">
+              <div class="panel-hint">Jedno miejsce na strukturę arkusza: sekcje, powtarzalne bloki i szybki profil kolumn.</div>
+              <div class="sheet-inspector-summary" id="sheetInspectorSummary"></div>
+
+              <div class="insight-subtitle">Nawigator sekcji</div>
+              <div class="panel-hint">Szybkie skoki po sekcjach, nagłówkach i podsekcjach wykrytych w arkuszu.</div>
+              <div class="section-nav-list" id="sectionNavigator"></div>
+
+              <div class="insight-subtitle">Wykrywacz bloków</div>
               <div class="panel-hint">Pomocniczy widok dla szerokich arkuszy z cyklami, turami albo powtarzalnymi sekcjami kolumn.</div>
               <div class="repeat-blocks-list" id="repeatBlockDetector"></div>
+
+              <div class="insight-subtitle">Profiler kolumn</div>
+              <div class="panel-hint">Typ danych, puste, unikalne, top wartosci i sygnaly problemowosci.</div>
+              <div class="column-profiler-list" id="columnProfiler"></div>
             </div>
           </details>
 
-          <details class="panel">
+          <details class="panel" id="panel-formula-workbench">
+            <summary>
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3h8" />
+                <path d="M5 8h14" />
+                <path d="M6 13h5" />
+                <path d="M13 13h5" />
+                <path d="M8 18h8" />
+              </svg>
+              <span class="panel-title">Formula Workbench</span>
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="panel-body stack">
+              <div class="panel-hint">Pogrupowany przegląd formuł z aktualnego arkusza: wyszukiwanie, szybkie flagi, skrócone podglądy i skok do komórki.</div>
+              <div class="formula-summary" id="formulaWorkbenchSummary"></div>
+              <div class="row">
+                <label class="field">
+                  Szukaj formuły
+                  <input id="formulaSearch" type="text" placeholder="np. XLOOKUP, SUMIFS, A1, kwota" />
+                </label>
+                <label class="field">
+                  Filtr
+                  <select id="formulaFilter">
+                    <option value="all">Wszystkie</option>
+                    <option value="missing">Bez wyniku</option>
+                    <option value="error">Z błędem</option>
+                  </select>
+                </label>
+              </div>
+              <label class="field">
+                Funkcja
+                <select id="formulaFunctionFilter">
+                  <option value="">Wszystkie funkcje</option>
+                </select>
+              </label>
+              <div class="formula-list" id="formulaWorkbenchList"></div>
+            </div>
+          </details>
+
+          <details class="panel" id="panel-log">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 19h16" />
@@ -433,7 +485,7 @@
             </div>
           </details>
 
-          <details class="panel">
+          <details class="panel" id="panel-shortcuts">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -576,6 +628,6 @@
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260325-4"></script>
+    <script src="app.js?v=20260402-7"></script>
   </body>
 </html>

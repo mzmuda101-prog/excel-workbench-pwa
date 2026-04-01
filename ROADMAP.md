@@ -23,9 +23,8 @@ Najblizsze rzeczy do zrobienia:
 - multi-sort po wielu kolumnach
 - presety filtrow i sortowania
 - column profiler
-- data quality scanner
+- polaczenie podobnych funkcji inspektorskich w 1-2 bardziej spojne moduly
 - formula workbench
-- compare / diff dwoch arkuszy lub plikow
 
 ## Pattern-aware Features
 
@@ -48,9 +47,17 @@ Opcjonalne warstwy pomocnicze ponad klasycznym widokiem tabeli:
 - `KPI Extractor`:
   - status: planowane
   - opcjonalny panel podsumowan dla workbookow typu kosztorys / dashboard
+  - docelowo powinien rozumiec, ze podsumowania moga byc nad tabela, pod tabela albo przy mniejszych blokach danych
+  - przy duplikatach powinien preferowac bardziej ludzka etykiete, a pozostale pokazywac jako aliasy
 - `Cross-Sheet Dependency Explorer`:
   - status: planowane
   - inspektor zaleznosci miedzy arkuszami pomocniczymi, lookupami i pivotami
+- `Key Compare`:
+  - status: pozniej
+  - lekki compare danych po kluczu dla 2 arkuszy w jednym pliku albo 2 podobnych zestawow danych
+- `Formula Compare`:
+  - status: pozniej
+  - lekkie porownanie formul miedzy 2 arkuszami, najlepiej jako rozszerzenie `Formula Workbench`
 
 ## Pozniej
 
@@ -61,6 +68,8 @@ Kolejna warstwa wartosci:
 - wykrywanie wielu blokow danych w jednym arkuszu
 - batch tools do bezpiecznego czyszczenia danych z preview
 - eksport raportow diagnostycznych do CSV / JSON / TXT
+- lekki `Key Compare` dla 2 arkuszy w jednym pliku
+- lekki `Formula Compare` jako rozszerzenie `Formula Workbench`
 
 ## Premium-fajne
 
@@ -118,35 +127,44 @@ Etapy:
 Definition of done:
 - po zaladowaniu arkusza widac, ktore kolumny sa problematyczne i jakie maja cechy
 
-### 3. Data Quality Scanner
+### 3. Sheet / Workbench Inspector
 
 Dlaczego:
-- bardzo przydatne przy prawdziwej pracy z plikami
-- w Excelu zrobienie tego dobrze jest zwykle wolne i nieprzyjemne
+- sidebar zaczyna miec kilka paneli, ktore odpowiadaja na bardzo podobne pytania
+- lepiej najpierw uproscic i scalic te funkcje niz dokladac kolejny osobny modul
 
 Zakres:
-- duplikaty calych wierszy
-- duplikaty po wskazanych kolumnach
-- puste wartosci w waznych kolumnach
-- liczby jako tekst
-- daty jako tekst
-- trailing spaces / podwojne spacje / niespojne warianty
+- polaczenie `Profiler kolumn`, `Nawigator sekcji` i `Wykrywacz blokow`
+- wspolny widok typu `Inspektor arkusza` albo `Workbench Inspector`
+- bardziej spojna nawigacja po strukturze arkusza
+- jedno miejsce na sygnaly: typy kolumn, bloki, sekcje, problematyczne obszary
+
+Status na 1 kwietnia 2026:
+- czesciowo wdrozone
+- istnieje juz wspolny panel `Inspektor arkusza`
+- obecna wersja nadal korzysta z trzech osobnych rendererow pod spodem, ale scala je w jeden bardziej spojny UX
+- do dalszego dopracowania: odchudzenie duplikatow, lepsze priorytety sekcji i mocniejsze wspolne akcje
 
 Etapy:
-1. modul flag jakosci danych
-2. panel "Problemy" z licznikami
-3. klik w problem => automatyczny filtr widoku
-4. konfiguracja "waznych kolumn"
-5. eksport raportu problemow
+1. zaprojektowac wspolny model danych dla tych trzech paneli
+2. ograniczyc duplikowanie informacji
+3. zrobic 1 glowny panel + ewentualnie 1 pomocniczy
+4. uporzadkowac akcje typu `Skocz`, `Ustaw naglowek`, `Skocz do kolumny`
+5. zostawic droge do dalszych rozszerzen
 
 Definition of done:
-- uzytkownik moze jednym kliknieciem przejsc od wykrycia problemu do listy problematycznych rekordow
+- uzytkownik szybciej rozumie arkusz, a sidebar jest krotszy i bardziej spojny
 
 ### 4. Formula Workbench
 
 Dlaczego:
 - formuly to jeden z najbardziej upierdliwych obszarow Excela
 - tu mozna zrobic realnie lepszy workflow niz w samym Excelu
+
+Status na 1 kwietnia 2026:
+- zaczete
+- pierwsza wersja ma osobny panel z lista formul, filtrem, wyszukiwaniem i skokiem do komorki
+- do dalszego dopracowania: lepsze wykrywanie wzorcow formul, filtry po funkcjach i mocniejsza analiza bledow
 
 Zakres:
 - lista wszystkich formul
@@ -164,41 +182,21 @@ Etapy:
 Definition of done:
 - uzytkownik moze szybko znalezc i przeanalizowac problematyczne formuly bez klikania po komorkach
 
-### 5. Compare / Diff
-
-Dlaczego:
-- to jedna z najbardziej wartosciowych funkcji workbenchowych
-- bardzo potrzebne przy pracy miesiac do miesiaca albo wersja do wersji
-
-Zakres:
-- porownanie 2 arkuszy z jednego pliku
-- porownanie 2 plikow
-- roznice w naglowkach
-- roznice w danych po kluczu
-- roznice w formulach
-
-Etapy:
-1. porownanie naglowkow i struktury
-2. porownanie rekordow po wybranym kluczu
-3. widok tylko zmian
-4. raport dodane / usuniete / zmienione
-5. porownanie formul i typow danych
-
-Definition of done:
-- uzytkownik potrafi znalezc roznice miedzy dwoma wersjami arkusza bez recznego przeklikiwania
-
 ## Kolejnosc Realizacji
 
 Proponowana kolejnosc pracy:
 1. column profiler
 2. multi-sort + presety
-3. data quality scanner
+3. sheet / workbench inspector
 4. formula workbench
-5. compare / diff
+5. KPI Extractor
+6. Cross-Sheet Dependency Explorer
+7. Key Compare / Formula Compare (lekka wersja, tylko jesli bedzie realna potrzeba)
 
 Powod:
 - pierwsze trzy funkcje najszybciej podniosa codzienna uzytecznosc
-- formula workbench i diff dadza najmocniejszy efekt "tego Excel sam dobrze nie daje"
+- trzeci krok dodatkowo uporzadkuje sam interfejs
+- formula workbench dalej daje najmocniejszy efekt "tego Excel sam dobrze nie daje"
 
 ## Najblizszy Etap
 
@@ -215,3 +213,4 @@ Cel etapu 1:
 - Pomysly pod harmonogram pras filtracyjnych zapisano w [NOTES-filter-press-workbench.md](./NOTES-filter-press-workbench.md).
 - Wnioski z analizy realnych workbookow zapisano w [NOTES-workbook-patterns-from-real-files.md](./NOTES-workbook-patterns-from-real-files.md).
 - Biezaca tabela priorytetow rozwoju jest w [NOTES-priority-plan.md](./NOTES-priority-plan.md).
+- Audyt duplikacji modulow 2-5 jest w [NOTES-module-overlap-audit.md](./NOTES-module-overlap-audit.md).

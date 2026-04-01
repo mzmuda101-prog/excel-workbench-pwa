@@ -48,6 +48,23 @@ Rozpoznawanie arkuszy, gdzie nad tabela sa karty podsumowujace:
 
 Workbench moglby pokazac je jako osobne karty, zamiast zmuszac do czytania komorek po layoutcie.
 
+Wazna obserwacja praktyczna:
+- KPI i podsumowania nie zawsze siedza tylko nad glowna tabela
+- w realnych arkuszach bardzo czesto sa:
+  - nad tabela
+  - pod tabela
+  - obok tabeli
+  - przy mniejszych podtabelach / blokach danych
+- to znaczy, ze lepszy model heurystyki to nie "szukaj KPI na gorze arkusza", tylko:
+  - wykryj blok danych / tabelke
+  - szukaj podsumowan wokol tego bloku
+
+Dodatkowa obserwacja z kosztorysu:
+- etykieta KPI moze byc odsunieta o kilka pustych komorek od wyniku
+- bardziej ludzka etykieta typu `Calkowity koszt na samochod` powinna wygrywac z technicznym albo ogolnym aliasem typu `SUMA`
+- jesli kilka etykiet prowadzi do tego samego wyniku, workbench nie powinien ich dublowac
+- zamiast duplikatow lepiej pokazac jedna glowna karte i informacje, ze ten sam wynik wystepuje rowniez jako inna etykieta
+
 #### 2. Budget Mode
 
 Specjalny tryb dla kosztorysow:

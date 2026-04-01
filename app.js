@@ -93,9 +93,17 @@ const quickSearchPopupBtn = document.getElementById("quickSearchPopupBtn");
 const workbookInsightsEl = document.getElementById("workbookInsights");
 const sheetInsightsEl = document.getElementById("sheetInsights");
 const insightFlagsEl = document.getElementById("insightFlags");
+const kpiSummaryEl = document.getElementById("kpiSummary");
+const kpiListEl = document.getElementById("kpiList");
+const sheetInspectorSummaryEl = document.getElementById("sheetInspectorSummary");
 const columnProfilerEl = document.getElementById("columnProfiler");
 const sectionNavigatorEl = document.getElementById("sectionNavigator");
 const repeatBlockDetectorEl = document.getElementById("repeatBlockDetector");
+const formulaSearchEl = document.getElementById("formulaSearch");
+const formulaFilterEl = document.getElementById("formulaFilter");
+const formulaFunctionFilterEl = document.getElementById("formulaFunctionFilter");
+const formulaWorkbenchSummaryEl = document.getElementById("formulaWorkbenchSummary");
+const formulaWorkbenchListEl = document.getElementById("formulaWorkbenchList");
 
 const quickRangeButtons = Array.from(document.querySelectorAll(".chip[data-range]"));
 
@@ -113,9 +121,12 @@ let currentSheetColWidths = [];
 let currentSheetRowHeights = {};
 let currentWorkbookStats = null;
 let currentSheetStats = null;
+let currentKpiEntries = [];
+let currentKpiAnchorRow = 1;
 let currentColumnProfiles = [];
 let currentSections = [];
 let currentRepeatingBlocks = [];
+let currentFormulaEntries = [];
 let currentDisplayModel = null;
 let tableViewMode = "wide";
 const columnSelections = {
@@ -411,6 +422,89 @@ function renderSections() {
   });
 }
 
+function renderSheetInspectorSummary() {
+  if (!sheetInspectorSummaryEl) return;
+  sheetInspectorSummaryEl.innerHTML = "";
+
+  if (!currentHeaders.length || !baseRows.length) {
+    sheetInspectorSummaryEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby zobaczyc szybkie podsumowanie struktury i najwazniejszych sygnalow."));
+    return;
+  }
+
+  const blockCount = currentRepeatingBlocks.reduce((sum, group) => sum + (Array.isArray(group.blocks) ? group.blocks.length : 0), 0);
+  const flaggedProfiles = currentColumnProfiles.filter((profile) => Array.isArray(profile.flags) && profile.flags.length).length;
+  const chips = [
+    { label: "Kolumny", value: String(currentHeaders.length) },
+    { label: "Sekcje", value: String(currentSections.length), tone: currentSections.length ? "" : "info" },
+    { label: "Bloki", value: String(blockCount), tone: blockCount ? "info" : "" },
+    { label: "Kolumny z flagami", value: String(flaggedProfiles), tone: flaggedProfiles ? "warning" : "" },
+  ];
+
+  const topProfile = currentColumnProfiles[0];
+  if (topProfile) {
+    chips.push({
+      label: "Top sygnal",
+      value: topProfile.flags.length ? `${topProfile.header} • ${topProfile.flags[0]}` : `${topProfile.header} • ${topProfile.type}`,
+      tone: topProfile.flags.length ? "warning" : "info",
+      wide: true,
+    });
+  }
+
+  chips.forEach((chip) => {
+    const item = document.createElement("div");
+    item.className = `sheet-inspector-chip${chip.tone ? ` ${chip.tone}` : ""}${chip.wide ? " wide" : ""}`;
+
+    const label = document.createElement("div");
+    label.className = "sheet-inspector-chip-label";
+    label.textContent = chip.label;
+
+    const value = document.createElement("div");
+    value.className = "sheet-inspector-chip-value";
+    value.textContent = chip.value;
+
+    item.appendChild(label);
+    item.appendChild(value);
+    sheetInspectorSummaryEl.appendChild(item);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "sheet-inspector-actions";
+
+  const suggestedHeader = currentSections.find((section) => section.action === "set-header" && section.headerRow && section.headerRow !== currentHeaderRow);
+  if (suggestedHeader) {
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.inspectorAction = "set-header";
+    btn.dataset.inspectorHeaderRow = String(suggestedHeader.headerRow);
+    btn.textContent = `Ustaw naglowek: ${suggestedHeader.headerRow}`;
+    actions.appendChild(btn);
+  }
+
+  if (canUseLongView()) {
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.inspectorAction = "toggle-long";
+    btn.textContent = tableViewMode === "long" ? "Wroc do widoku klasycznego" : "Przelacz na Wide-to-Long";
+    actions.appendChild(btn);
+  }
+
+  if (topProfile) {
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.inspectorAction = "focus-col";
+    btn.dataset.profileColIndex = String(topProfile.colIdx);
+    btn.textContent = `Skocz do kolumny: ${topProfile.header}`;
+    actions.appendChild(btn);
+  }
+
+  if (actions.childNodes.length) {
+    sheetInspectorSummaryEl.appendChild(actions);
+  }
+}
+
 function focusSection(section) {
   if (!section) return;
   if (section.action === "set-header" && section.headerRow) {
@@ -471,6 +565,74 @@ function buildMergedLabelMap(merges, sheet, tableStartCol, tableEndCol, headerAb
       labels.set(startIndex, label);
     });
   return labels;
+}
+
+function isMeaningfulSheetCell(cell) {
+  if (!cell || typeof cell !== "object") return false;
+  if (cell.f) return true;
+  if (cell.l && (cell.l.Target || cell.l.target)) return true;
+  if (Array.isArray(cell.c) && cell.c.length) return true;
+  if (cell.v instanceof Date) return true;
+  if (typeof cell.v === "number" && Number.isFinite(cell.v)) return true;
+  if (typeof cell.v === "boolean") return true;
+  if (typeof cell.v === "string" && cell.v.trim() !== "") return true;
+  if (typeof cell.w === "string" && cell.w.trim() !== "") return true;
+  return false;
+}
+
+function computeEffectiveSheetRange(sheet, headerRow) {
+  const fallback = XLSX.utils.decode_range(sheet["!ref"]);
+  const headerIndex0 = Math.max(0, (headerRow || 1) - 1);
+  let minCol = fallback.e.c;
+  let maxCol = fallback.s.c;
+  let maxRow = headerIndex0;
+  let found = false;
+
+  Object.keys(sheet).forEach((key) => {
+    if (!key || key[0] === "!") return;
+    const cell = sheet[key];
+    if (!isMeaningfulSheetCell(cell)) return;
+    const ref = XLSX.utils.decode_cell(key);
+    if (ref.r < headerIndex0) {
+      minCol = Math.min(minCol, ref.c);
+      maxCol = Math.max(maxCol, ref.c);
+      found = true;
+      return;
+    }
+    minCol = Math.min(minCol, ref.c);
+    maxCol = Math.max(maxCol, ref.c);
+    maxRow = Math.max(maxRow, ref.r);
+    found = true;
+  });
+
+  for (let c = fallback.s.c; c <= fallback.e.c; c++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r: headerIndex0, c })];
+    if (!isMeaningfulSheetCell(cell)) continue;
+    minCol = Math.min(minCol, c);
+    maxCol = Math.max(maxCol, c);
+    found = true;
+  }
+
+  if (!found) {
+    return fallback;
+  }
+
+  const merges = Array.isArray(sheet["!merges"]) ? sheet["!merges"] : [];
+  merges.forEach((merge) => {
+    if (!merge || !merge.s || !merge.e) return;
+    const anchor = sheet[XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
+    if (!isMeaningfulSheetCell(anchor)) return;
+    minCol = Math.min(minCol, merge.s.c);
+    maxCol = Math.max(maxCol, merge.e.c);
+    if (merge.e.r >= headerIndex0) {
+      maxRow = Math.max(maxRow, merge.e.r);
+    }
+  });
+
+  return {
+    s: { r: fallback.s.r, c: Math.max(fallback.s.c, minCol) },
+    e: { r: Math.max(headerIndex0, maxRow), c: Math.max(Math.max(fallback.s.c, minCol), maxCol) },
+  };
 }
 
 function buildGroupFromSignature(headers, startIndex, span, repeatCount, tableStartCol, mergedLabels) {
@@ -836,6 +998,362 @@ function collectSheetInsights() {
     rows: sheetItems,
     flags,
   };
+}
+
+function isKpiLabelCandidate(text) {
+  const label = cleanSectionLabel(text);
+  if (!label || label.length < 3 || label.length > 48) return false;
+  if (/^\d+$/.test(label)) return false;
+  const lowered = label.toLowerCase();
+  const keywords = [
+    "suma",
+    "razem",
+    "wartosc",
+    "wartość",
+    "koszt",
+    "budzet",
+    "budżet",
+    "roznica",
+    "różnica",
+    "saldo",
+    "marza",
+    "marża",
+    "przychod",
+    "przychód",
+    "wynik",
+    "netto",
+    "brutto",
+    "plan",
+    "wykonanie",
+    "liczba",
+    "ilosc",
+    "ilość",
+    "procent",
+    "udzial",
+    "udział",
+    "kpi",
+  ];
+  return keywords.some((keyword) => lowered.includes(keyword)) || /[:\-]$/.test(label);
+}
+
+function isKpiValueCandidate(cell, displayText) {
+  if (!cell) return false;
+  const display = cleanSectionLabel(displayText);
+  if (!display) return false;
+  if (typeof cell.v === "number" && Number.isFinite(cell.v)) return true;
+  if (cell.v instanceof Date) return true;
+  if (/%|zl|zł|pln|eur|usd/i.test(display)) return true;
+  if (/^-?\d[\d\s,.\u00A0]*$/.test(display)) return true;
+  return false;
+}
+
+function normalizeKpiLabel(label) {
+  const raw = cleanSectionLabel(label).toLowerCase();
+  if (!raw) return "";
+  return raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(na|do|od|i|oraz|jeszcze|samochod|samochodu|wartosc|wartosc)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferKpiSemanticBucket(label) {
+  const normalized = normalizeKpiLabel(label);
+  if (!normalized) return "";
+  if (/budzet/.test(normalized)) return "budget";
+  if (/koszt|suma|razem|subtotal/.test(normalized)) return "total";
+  if (/roznic|saldo|wynik/.test(normalized)) return "difference";
+  if (/marz|procent|udzial|wykonanie/.test(normalized)) return "ratio";
+  return normalized;
+}
+
+function scoreKpiLabelQuality(label) {
+  const clean = cleanSectionLabel(label);
+  const normalized = normalizeKpiLabel(label);
+  if (!clean || !normalized) return 0;
+  let score = normalized.length;
+  if (normalized.includes(" ")) score += 4;
+  if (clean.length >= 16) score += 4;
+  if (/^(suma|razem|subtotal|wynik)$/i.test(normalized)) score -= 8;
+  if (/koszt|budzet|roznic|saldo|marza|wykonanie|przychod|brutto|netto/i.test(normalized)) score += 6;
+  return score;
+}
+
+function dedupeKpiEntries(entries) {
+  const bestByKey = new Map();
+  entries.forEach((entry) => {
+    const semantic = inferKpiSemanticBucket(entry.label);
+    const valueKey = cleanSectionLabel(entry.value);
+    const key = `${semantic}|${valueKey}`;
+    const existing = bestByKey.get(key);
+    if (!existing) {
+      bestByKey.set(key, {
+        ...entry,
+        aliases: [],
+      });
+      return;
+    }
+    if (entry.label !== existing.label && !existing.aliases.includes(entry.label)) {
+      existing.aliases.push(entry.label);
+    }
+    const existingCompositeScore = existing.score + scoreKpiLabelQuality(existing.label);
+    const entryCompositeScore = entry.score + scoreKpiLabelQuality(entry.label);
+    if (entryCompositeScore > existingCompositeScore) {
+      bestByKey.set(key, {
+        ...entry,
+        aliases: Array.from(new Set([existing.label, ...existing.aliases])),
+      });
+    }
+  });
+  return Array.from(bestByKey.values());
+}
+
+function pushKpiEntry(entries, seen, labelText, valueText, valueRef, labelRef, valueCell, scoreExtras = 0) {
+  const cleanLabel = cleanSectionLabel(labelText).replace(/[:\-]\s*$/, "");
+  const cleanValue = cleanSectionLabel(valueText);
+  if (!cleanLabel || !cleanValue) return;
+  const seenKey = `${normalizeKpiLabel(cleanLabel)}|${valueRef}`;
+  if (seen.has(seenKey)) return;
+  seen.add(seenKey);
+
+  const decoded = XLSX.utils.decode_cell(valueRef);
+  let score = scoreExtras;
+  if (typeof valueCell?.v === "number") score += 3;
+  if (valueCell?.f) score += 2;
+  if (/%|zl|zł|pln|eur|usd/i.test(cleanValue)) score += 2;
+  if (isKpiLabelCandidate(cleanLabel)) score += 2;
+
+  entries.push({
+    label: cleanLabel,
+    value: cleanValue,
+    address: valueRef,
+    labelAddress: labelRef,
+    rowIndex0: decoded.r,
+    colAbs: decoded.c,
+    score,
+  });
+}
+
+function findDistantSameRowKpiTarget(sheet, rowIndex0, labelColAbs, endColAbs) {
+  if (!sheet) return null;
+  const farCandidates = [];
+  const maxOffset = Math.min(6, endColAbs - labelColAbs);
+  for (let offset = 3; offset <= maxOffset; offset++) {
+    const candidateCol = labelColAbs + offset;
+    let gapHasContent = false;
+    for (let mid = labelColAbs + 1; mid < candidateCol; mid++) {
+      if (getCellDisplayText(sheet, rowIndex0, mid)) {
+        gapHasContent = true;
+        break;
+      }
+    }
+    if (gapHasContent) continue;
+    const valueRef = XLSX.utils.encode_cell({ r: rowIndex0, c: candidateCol });
+    const valueCell = sheet[valueRef];
+    const valueDisplay = cleanSectionLabel(getCellDisplayText(sheet, rowIndex0, candidateCol));
+    if (!isKpiValueCandidate(valueCell, valueDisplay)) continue;
+    farCandidates.push({
+      valueRef,
+      valueCell,
+      valueDisplay,
+      colAbs: candidateCol,
+    });
+  }
+  return farCandidates.length === 1 ? farCandidates[0] : null;
+}
+
+function scanKpiZone(sheet, entries, seen, rowStart, rowEnd, colStart, colEnd) {
+  for (let r = rowStart; r <= rowEnd; r++) {
+    for (let c = colStart; c <= colEnd; c++) {
+      const labelText = getCellDisplayText(sheet, r, c);
+      if (!isKpiLabelCandidate(labelText)) continue;
+
+      const candidates = [
+        { row: r, col: c + 1 },
+        { row: r, col: c + 2 },
+        { row: r + 1, col: c },
+      ];
+
+      candidates.forEach((candidate) => {
+        if (candidate.row > rowEnd || candidate.col > colEnd) return;
+        const valueRef = XLSX.utils.encode_cell({ r: candidate.row, c: candidate.col });
+        const valueCell = sheet[valueRef];
+        const valueDisplay = cleanSectionLabel(getCellDisplayText(sheet, candidate.row, candidate.col));
+        if (!isKpiValueCandidate(valueCell, valueDisplay)) return;
+        let score = 0;
+        if (candidate.row === r) score += 2;
+        if (candidate.col === c + 1) score += 1;
+        pushKpiEntry(
+          entries,
+          seen,
+          labelText,
+          valueDisplay,
+          valueRef,
+          XLSX.utils.encode_cell({ r, c }),
+          valueCell,
+          score
+        );
+      });
+
+      const distantTarget = findDistantSameRowKpiTarget(sheet, r, c, colEnd);
+      if (distantTarget) {
+        pushKpiEntry(
+          entries,
+          seen,
+          labelText,
+          distantTarget.valueDisplay,
+          distantTarget.valueRef,
+          XLSX.utils.encode_cell({ r, c }),
+          distantTarget.valueCell,
+          4
+        );
+      }
+    }
+  }
+
+  for (let r = rowStart; r <= rowEnd; r++) {
+    for (let c = colStart; c <= colEnd; c++) {
+      const valueRef = XLSX.utils.encode_cell({ r, c });
+      const valueCell = sheet[valueRef];
+      const valueDisplay = cleanSectionLabel(getCellDisplayText(sheet, r, c));
+      if (!isKpiValueCandidate(valueCell, valueDisplay)) continue;
+
+      const leftLabel = c > colStart ? getCellDisplayText(sheet, r, c - 1) : "";
+      const twoLeftLabel = c - 2 >= colStart ? getCellDisplayText(sheet, r, c - 2) : "";
+      const aboveLabel = r > rowStart ? getCellDisplayText(sheet, r - 1, c) : "";
+      const diagLabel = (r > rowStart && c > colStart) ? getCellDisplayText(sheet, r - 1, c - 1) : "";
+      const candidates = [
+        { label: leftLabel, ref: c > colStart ? XLSX.utils.encode_cell({ r, c: c - 1 }) : valueRef, bonus: 2 },
+        { label: twoLeftLabel, ref: c - 2 >= colStart ? XLSX.utils.encode_cell({ r, c: c - 2 }) : valueRef, bonus: 1 },
+        { label: aboveLabel, ref: r > rowStart ? XLSX.utils.encode_cell({ r: r - 1, c }) : valueRef, bonus: 1 },
+        { label: diagLabel, ref: (r > rowStart && c > colStart) ? XLSX.utils.encode_cell({ r: r - 1, c: c - 1 }) : valueRef, bonus: 0 },
+      ];
+
+      candidates.forEach((candidate) => {
+        if (!isKpiLabelCandidate(candidate.label)) return;
+        pushKpiEntry(
+          entries,
+          seen,
+          candidate.label,
+          valueDisplay,
+          valueRef,
+          candidate.ref,
+          valueCell,
+          candidate.bonus
+        );
+      });
+    }
+  }
+}
+
+function collectKpiEntries(sheet, headerRow) {
+  if (!sheet) return { entries: [], anchorRow: headerRow || 1 };
+  const inferredAnchorRow = Math.max(1, detectHeaderRowSimple(sheet));
+  const anchorRow = Math.max(1, headerRow || 1, inferredAnchorRow);
+  if (anchorRow <= 1) return { entries: [], anchorRow };
+  const entries = [];
+  const seen = new Set();
+  const effectiveRange = computeEffectiveSheetRange(sheet, anchorRow);
+  const startRow = Math.max(effectiveRange.s.r, anchorRow - 8);
+  const endRow = Math.max(startRow, anchorRow - 1);
+  const endCol = effectiveRange.e.c;
+
+  scanKpiZone(sheet, entries, seen, startRow, endRow, effectiveRange.s.c, endCol);
+
+  const bottomStartRow = Math.max(anchorRow, effectiveRange.e.r - 4);
+  if (bottomStartRow <= effectiveRange.e.r) {
+    scanKpiZone(sheet, entries, seen, bottomStartRow, effectiveRange.e.r, effectiveRange.s.c, endCol);
+  }
+
+  return {
+    anchorRow,
+    entries: dedupeKpiEntries(entries).sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.address.localeCompare(b.address, "pl");
+    })
+    .slice(0, 8),
+  };
+}
+
+function renderKpiExtractor() {
+  if (!kpiSummaryEl || !kpiListEl) return;
+  kpiSummaryEl.innerHTML = "";
+  kpiListEl.innerHTML = "";
+
+  if (!currentHeaders.length || !currentKpiEntries.length) {
+    renderInsightList(kpiSummaryEl, [], "Brak wykrytych KPI lub podsumowan dla aktualnego arkusza.");
+    kpiListEl.appendChild(createEmptyInsight("Nie wykryto wiarygodnych KPI nad aktualna tabela danych."));
+    return;
+  }
+
+  renderInsightList(kpiSummaryEl, [
+    { label: "Kandydaci KPI", value: String(currentKpiEntries.length), tone: "info" },
+    {
+      label: "Źródło",
+      value: currentKpiAnchorRow === currentHeaderRow
+        ? `Wiersze nad nagłówkiem ${currentHeaderRow}`
+        : `Wiersze nad wykrytym nagłówkiem ${currentKpiAnchorRow}`,
+      tone: currentKpiAnchorRow === currentHeaderRow ? "" : "info",
+    },
+  ], "Brak podsumowania KPI.");
+
+  currentKpiEntries.forEach((entry) => {
+    const item = document.createElement("div");
+    item.className = "kpi-card";
+
+    const label = document.createElement("div");
+    label.className = "kpi-label";
+    label.textContent = entry.label;
+
+    const value = document.createElement("div");
+    value.className = "kpi-value";
+    value.textContent = entry.value;
+    value.title = entry.aliases?.length
+      ? `${entry.label}: ${entry.value}\nRowniez jako: ${entry.aliases.join(", ")}`
+      : `${entry.label}: ${entry.value}`;
+
+    const meta = document.createElement("div");
+    meta.className = "kpi-meta";
+    meta.textContent = entry.aliases?.length
+      ? `${entry.address} • etykieta ${entry.labelAddress} • również jako: ${entry.aliases.slice(0, 2).join(", ")}${entry.aliases.length > 2 ? ` +${entry.aliases.length - 2}` : ""}`
+      : `${entry.address} • etykieta ${entry.labelAddress}`;
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.kpiAddress = entry.address;
+    btn.textContent = "Pokaż źródło";
+
+    actions.appendChild(btn);
+    item.appendChild(label);
+    item.appendChild(value);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    kpiListEl.appendChild(item);
+  });
+}
+
+function focusKpiEntry(address) {
+  const entry = currentKpiEntries.find((item) => item.address === address);
+  if (!entry) return;
+  const rowEl = tbodyEl.querySelector(`tr[data-row-index="${entry.rowIndex0}"]`);
+  if (rowEl) {
+    rowEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  } else {
+    toast(`Źródło KPI jest nad aktualną tabelą: wiersz ${entry.rowIndex0 + 1}`, "info");
+    if (tableWrapEl) {
+      tableWrapEl.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+  const relativeColIdx = entry.colAbs - currentStartCol;
+  if (Number.isFinite(relativeColIdx) && relativeColIdx >= 0) {
+    focusColumnProfile(relativeColIdx);
+  }
 }
 
 function inferColumnProfileType(stats) {
@@ -1594,9 +2112,11 @@ function applyCurrentSort() {
   sortRows();
   renderActiveTable();
   renderInsights();
+  renderSheetInspectorSummary();
   renderColumnProfiles();
   renderSections();
   renderRepeatingBlocks();
+  renderFormulaWorkbench();
 }
 
 function applyFilters() {
@@ -2238,7 +2758,8 @@ function renderTable(modelOrHeaders, maybeRows) {
 }
 
 function buildRows(sheet, headerRow, wb) {
-  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const originalRange = XLSX.utils.decode_range(sheet["!ref"]);
+  const range = computeEffectiveSheetRange(sheet, headerRow);
   const colMeta = sheet["!cols"] || [];
   const rowMeta = sheet["!rows"] || [];
   const merges = Array.isArray(sheet["!merges"]) ? sheet["!merges"] : [];
@@ -2300,10 +2821,277 @@ function buildRows(sheet, headerRow, wb) {
       mergedCells: merges.reduce((sum, merge) => sum + ((merge.e.r - merge.s.r + 1) * (merge.e.c - merge.s.c + 1)), 0),
       hiddenColumns: colMeta.filter((meta) => meta && meta.hidden).length,
       hiddenRows: rowMeta.filter((meta) => meta && meta.hidden).length,
+      trimmedColumns: Math.max(0, (originalRange.e.c - originalRange.s.c + 1) - (range.e.c - range.s.c + 1)),
+      trimmedRows: Math.max(0, (originalRange.e.r - originalRange.s.r + 1) - (range.e.r - range.s.r + 1)),
     },
     colWidths: headers.map((_, idx) => colMeta[range.s.c + idx] || null),
     rowHeights: rowMeta,
   };
+}
+
+function extractFormulaFunctionName(formulaText) {
+  const text = String(formulaText || "").replace(/^=/, "").trim();
+  const match = text.match(/^([A-Z_][A-Z0-9\._]*)\s*\(/i);
+  return match ? match[1].toUpperCase() : "INNE";
+}
+
+function collectFormulaEntries(sheet, data, headerRow) {
+  if (!sheet || !data || !Array.isArray(data.headers) || !data.headers.length) return [];
+  const entries = [];
+  const range = computeEffectiveSheetRange(sheet, headerRow);
+
+  Object.keys(sheet).forEach((key) => {
+    if (!key || key[0] === "!") return;
+    const cell = sheet[key];
+    if (!cell || !cell.f) return;
+    const ref = XLSX.utils.decode_cell(key);
+    if (ref.r < range.s.r || ref.r > range.e.r || ref.c < range.s.c || ref.c > range.e.c) return;
+
+    const formulaText = `=${cell.f}`;
+    const functionName = extractFormulaFunctionName(formulaText);
+    const resultText = cell.w != null ? String(cell.w) : toDisplay(cell.v);
+    const missingResult = cell.v == null && cell.w == null;
+    const hasError = String(resultText || "").trim().startsWith("#");
+    const colIdx = ref.c - data.startCol;
+    const inTable = ref.r >= headerRow && colIdx >= 0 && colIdx < data.headers.length;
+
+    entries.push({
+      address: key,
+      formulaText,
+      functionName,
+      resultText,
+      missingResult,
+      hasError,
+      rowIndex0: ref.r,
+      colAbs: ref.c,
+      colIdx,
+      inTable,
+      header: inTable ? data.headers[colIdx] : XLSX.utils.encode_col(ref.c),
+    });
+  });
+
+  return entries.sort((a, b) => {
+    if (a.missingResult !== b.missingResult) return a.missingResult ? -1 : 1;
+    if (a.hasError !== b.hasError) return a.hasError ? -1 : 1;
+    if (a.functionName !== b.functionName) return a.functionName.localeCompare(b.functionName, "pl");
+    return a.address.localeCompare(b.address, "pl");
+  });
+}
+
+function getFilteredFormulaEntries() {
+  const search = String(formulaSearchEl?.value || "").trim().toLowerCase();
+  const filter = formulaFilterEl?.value || "all";
+  const functionFilter = String(formulaFunctionFilterEl?.value || "").trim().toUpperCase();
+  return currentFormulaEntries.filter((entry) => {
+    if (filter === "missing" && !entry.missingResult) return false;
+    if (filter === "error" && !entry.hasError) return false;
+    if (functionFilter && entry.functionName !== functionFilter) return false;
+    if (!search) return true;
+    const haystack = [
+      entry.address,
+      entry.header,
+      entry.functionName,
+      entry.formulaText,
+      entry.resultText,
+    ].join(" ").toLowerCase();
+    return haystack.includes(search);
+  });
+}
+
+function renderFormulaFunctionFilter() {
+  if (!formulaFunctionFilterEl) return;
+  const previous = formulaFunctionFilterEl.value;
+  const names = Array.from(new Set(currentFormulaEntries.map((entry) => entry.functionName))).sort((a, b) => a.localeCompare(b, "pl"));
+  formulaFunctionFilterEl.innerHTML = "";
+
+  const allOpt = document.createElement("option");
+  allOpt.value = "";
+  allOpt.textContent = "Wszystkie funkcje";
+  formulaFunctionFilterEl.appendChild(allOpt);
+
+  names.forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    formulaFunctionFilterEl.appendChild(opt);
+  });
+
+  formulaFunctionFilterEl.value = names.includes(previous) ? previous : "";
+}
+
+function truncateFormulaPreview(text, maxLength = 120) {
+  const raw = String(text || "").trim();
+  if (raw.length <= maxLength) return raw;
+  const head = Math.max(36, Math.floor(maxLength * 0.55));
+  const tail = Math.max(18, maxLength - head - 3);
+  return `${raw.slice(0, head)}...${raw.slice(-tail)}`;
+}
+
+function formatFormulaAddressSample(entries, limit = 4) {
+  const sample = entries.slice(0, limit).map((entry) => entry.address);
+  if (entries.length <= limit) return sample.join(", ");
+  return `${sample.join(", ")} +${entries.length - limit}`;
+}
+
+function aggregateFormulaEntries(entries) {
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const key = [
+      entry.functionName,
+      entry.formulaText,
+      entry.header,
+      entry.missingResult ? "1" : "0",
+      entry.hasError ? "1" : "0",
+      entry.inTable ? "1" : "0",
+    ].join("||");
+    const existing = groups.get(key);
+    if (existing) {
+      existing.entries.push(entry);
+      return;
+    }
+    groups.set(key, {
+      key,
+      functionName: entry.functionName,
+      formulaText: entry.formulaText,
+      header: entry.header,
+      missingResult: entry.missingResult,
+      hasError: entry.hasError,
+      inTable: entry.inTable,
+      resultText: entry.resultText,
+      entries: [entry],
+      firstEntry: entry,
+    });
+  });
+  return Array.from(groups.values()).sort((a, b) => {
+    if (a.missingResult !== b.missingResult) return a.missingResult ? -1 : 1;
+    if (a.hasError !== b.hasError) return a.hasError ? -1 : 1;
+    if (b.entries.length !== a.entries.length) return b.entries.length - a.entries.length;
+    if (a.functionName !== b.functionName) return a.functionName.localeCompare(b.functionName, "pl");
+    return a.firstEntry.address.localeCompare(b.firstEntry.address, "pl");
+  });
+}
+
+function renderFormulaWorkbench() {
+  if (!formulaWorkbenchSummaryEl || !formulaWorkbenchListEl) return;
+  formulaWorkbenchSummaryEl.innerHTML = "";
+  formulaWorkbenchListEl.innerHTML = "";
+  renderFormulaFunctionFilter();
+
+  if (!currentHeaders.length || !currentFormulaEntries.length) {
+    renderInsightList(
+      formulaWorkbenchSummaryEl,
+      [],
+      "Aktualny arkusz nie ma wykrytych formuł albo nie został jeszcze wczytany."
+    );
+    formulaWorkbenchListEl.appendChild(createEmptyInsight("Brak formuł do pokazania dla aktualnego arkusza."));
+    return;
+  }
+
+  const filtered = getFilteredFormulaEntries();
+  const grouped = aggregateFormulaEntries(filtered);
+  const functionCounts = new Map();
+  currentFormulaEntries.forEach((entry) => {
+    functionCounts.set(entry.functionName, (functionCounts.get(entry.functionName) || 0) + 1);
+  });
+  const topFunction = Array.from(functionCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+  const summaryItems = [
+    { label: "Formuły", value: String(currentFormulaEntries.length) },
+    {
+      label: "Bez wyniku",
+      value: String(currentFormulaEntries.filter((entry) => entry.missingResult).length),
+      tone: currentFormulaEntries.some((entry) => entry.missingResult) ? "warning" : "",
+    },
+    {
+      label: "Z błędem",
+      value: String(currentFormulaEntries.filter((entry) => entry.hasError).length),
+      tone: currentFormulaEntries.some((entry) => entry.hasError) ? "warning" : "",
+    },
+    {
+      label: "Top funkcja",
+      value: topFunction ? `${topFunction[0]} ×${topFunction[1]}` : "Brak",
+      tone: topFunction ? "info" : "",
+    },
+    {
+      label: "Widoczne po filtrze",
+      value: String(filtered.length),
+      tone: filtered.length !== currentFormulaEntries.length ? "info" : "",
+    },
+    {
+      label: "Grupy",
+      value: String(grouped.length),
+      tone: grouped.length < filtered.length ? "info" : "",
+    },
+  ];
+
+  renderInsightList(formulaWorkbenchSummaryEl, summaryItems, "Brak podsumowania formuł.");
+
+  if (!filtered.length) {
+    formulaWorkbenchListEl.appendChild(createEmptyInsight("Brak formuł pasujących do bieżącego filtru."));
+    return;
+  }
+
+  grouped.slice(0, 60).forEach((group) => {
+    const item = document.createElement("div");
+    item.className = "formula-item";
+
+    const top = document.createElement("div");
+    top.className = "formula-item-top";
+
+    const title = document.createElement("div");
+    title.className = "formula-item-title";
+    title.textContent = group.entries.length > 1
+      ? `${group.header} • ${group.entries.length} takich samych`
+      : `${group.firstEntry.address} • ${group.header}`;
+
+    const kind = document.createElement("div");
+    kind.className = `formula-item-kind${group.missingResult || group.hasError ? " warning" : ""}`;
+    kind.textContent = group.functionName;
+
+    top.appendChild(title);
+    top.appendChild(kind);
+
+    const formula = document.createElement("div");
+    formula.className = "formula-item-formula";
+    formula.textContent = truncateFormulaPreview(group.formulaText);
+    formula.title = group.formulaText;
+
+    const meta = document.createElement("div");
+    meta.className = "formula-item-meta";
+    const resultLabel = group.missingResult ? "brak wyniku" : (group.resultText || "pusty wynik");
+    const addressLabel = formatFormulaAddressSample(group.entries);
+    const outsideTable = group.inTable ? "" : " • poza tabela";
+    meta.textContent = `Adresy: ${addressLabel} • wynik: ${resultLabel}${outsideTable}`;
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.formulaAddress = group.firstEntry.address;
+    btn.textContent = group.entries.length > 1 ? "Skocz do pierwszej komórki" : "Skocz do komórki";
+
+    actions.appendChild(btn);
+    item.appendChild(top);
+    item.appendChild(formula);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    formulaWorkbenchListEl.appendChild(item);
+  });
+}
+
+function focusFormulaEntry(address) {
+  const entry = currentFormulaEntries.find((item) => item.address === address);
+  if (!entry) return;
+  if (!entry.inTable) {
+    toast("Ta formuła jest poza głównym zakresem aktualnej tabeli", "info");
+    return;
+  }
+  const rowEl = tbodyEl.querySelector(`tr[data-row-index="${entry.rowIndex0}"]`);
+  if (rowEl) {
+    rowEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  }
+  focusColumnProfile(entry.colIdx);
 }
 
 function hexToRgba(hex, alpha = 0.35) {
@@ -2320,26 +3108,41 @@ function markSubheaderRows(rows, maxCheck = 10) {
     const row = rows[i];
     let nonEmpty = 0;
     let textLike = 0;
+    let numericLike = 0;
     row.values.forEach((v) => {
       if (v != null && String(v).trim() !== "") {
         nonEmpty += 1;
         if (typeof v === "string") textLike += 1;
+        else if (typeof v === "number" || v instanceof Date) numericLike += 1;
         else if (!(v instanceof Date) && typeof v !== "number") textLike += 1;
       }
     });
     const n = row.values.length;
     if (n === 0) continue;
-    if (nonEmpty >= n * 0.5 && textLike >= n * 0.5) row.isSubheader = true;
+    const textRatio = nonEmpty ? textLike / nonEmpty : 0;
+    const numericRatio = nonEmpty ? numericLike / nonEmpty : 0;
+    if (
+      nonEmpty >= 2
+      && textRatio >= 0.8
+      && numericRatio === 0
+      && nonEmpty <= Math.max(6, Math.ceil(n * 0.75))
+    ) {
+      row.isSubheader = true;
+    }
   }
   return rows;
 }
 
 function detectHeaderRowSimple(sheet) {
-  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const range = computeEffectiveSheetRange(sheet, 1);
   const maxRow = Math.min(range.e.r, range.s.r + 100);
+  let bestRow = range.s.r;
+  let bestScore = -Infinity;
   for (let r = range.s.r; r <= maxRow; r++) {
     let filled = 0;
     let stringCount = 0;
+    let numericCount = 0;
+    let formulaCount = 0;
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       if (!cell) continue;
@@ -2347,12 +3150,23 @@ function detectHeaderRowSimple(sheet) {
       if (v === null || v === "") continue;
       filled += 1;
       if (typeof v === "string") stringCount += 1;
-      if (filled >= 2 || (filled >= 1 && stringCount >= 1)) {
-        return r + 1;
-      }
+      if (typeof v === "number" || v instanceof Date) numericCount += 1;
+      if (cell.f) formulaCount += 1;
+    }
+    if (!filled) continue;
+    const textRatio = stringCount / filled;
+    const numericRatio = numericCount / filled;
+    let score = (filled * 5) + (stringCount * 4) - (numericCount * 3) - formulaCount;
+    if (filled >= 4) score += 10;
+    if (textRatio >= 0.7) score += 10;
+    if (numericRatio === 0) score += 4;
+    if (r > range.s.r) score += Math.min(4, r - range.s.r);
+    if (score > bestScore) {
+      bestScore = score;
+      bestRow = r;
     }
   }
-  return 1;
+  return bestRow + 1;
 }
 
 function applyAutoHeaderRowIfEnabled() {
@@ -2688,6 +3502,8 @@ async function handleFile(file) {
   });
     currentWorkbookStats = collectWorkbookStats(workbook, file.name);
     currentSheetStats = null;
+    currentKpiEntries = [];
+    currentKpiAnchorRow = 1;
     currentColumnProfiles = [];
     currentSections = [];
     currentRepeatingBlocks = [];
@@ -2707,6 +3523,7 @@ async function handleFile(file) {
     setDirtyState(false);
     setStatus("Plik wczytany");
     renderInsights();
+    renderKpiExtractor();
     renderColumnProfiles();
     renderSections();
     renderRepeatingBlocks();
@@ -2837,9 +3654,13 @@ loadBtn.addEventListener("click", () => {
       currentSheetRowHeights = data.rowHeights || {};
       currentSheetStats = data.stats || null;
       baseRows = markSubheaderRows(data.rows);
+      const kpiData = collectKpiEntries(sheet, headerRow);
+      currentKpiEntries = Array.isArray(kpiData?.entries) ? kpiData.entries : [];
+      currentKpiAnchorRow = Number(kpiData?.anchorRow) || headerRow;
       currentColumnProfiles = collectColumnProfiles();
       currentSections = detectSections(sheet, headerRow, data);
       currentRepeatingBlocks = detectRepeatingBlocks(sheet, headerRow, data);
+      currentFormulaEntries = collectFormulaEntries(sheet, data, headerRow);
       if (!canUseLongView()) tableViewMode = "wide";
       viewRows = baseRows.slice();
       multiSortState = [];
@@ -2853,10 +3674,16 @@ loadBtn.addEventListener("click", () => {
       populateSortColumnSelect();
       renderActiveTable();
       renderInsights();
+      renderKpiExtractor();
+      renderSheetInspectorSummary();
       renderColumnProfiles();
       renderSections();
       renderRepeatingBlocks();
+      renderFormulaWorkbench();
       setDirtyState(false);
+      if ((currentSheetStats?.trimmedColumns || 0) > 0) {
+        log(`Przycięto puste kolumny poza realnym zakresem danych: ${currentSheetStats.trimmedColumns}`, "info");
+      }
       if (currentSheetStats?.duplicateHeaderCount) {
         toast(`Zdublowane naglowki rozrozniono (${currentSheetStats.duplicateHeaderCount})`, "warning");
       }
@@ -2874,6 +3701,8 @@ applyFilterBtn.addEventListener("click", () => {
   sortRows();
   renderActiveTable();
   renderInsights();
+  renderKpiExtractor();
+  renderSheetInspectorSummary();
   renderColumnProfiles();
   renderSections();
   renderRepeatingBlocks();
@@ -2894,6 +3723,7 @@ function applyQuickSearch() {
   sortRows();
   renderActiveTable();
   renderInsights();
+  renderSheetInspectorSummary();
   renderColumnProfiles();
   renderSections();
   renderRepeatingBlocks();
@@ -3369,6 +4199,51 @@ if (columnProfilerEl) {
     focusColumnProfile(colIdx);
   });
 }
+if (sheetInspectorSummaryEl) {
+  sheetInspectorSummaryEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-inspector-action]");
+    if (!btn) return;
+    const action = btn.dataset.inspectorAction;
+
+    if (action === "set-header") {
+      const headerRow = parseInt(btn.dataset.inspectorHeaderRow || "", 10);
+      if (!Number.isFinite(headerRow)) return;
+      if (autoHeaderRowEl) autoHeaderRowEl.checked = false;
+      headerRowEl.value = String(headerRow);
+      loadBtn.click();
+      return;
+    }
+
+    if (action === "toggle-long" && canUseLongView()) {
+      tableViewMode = tableViewMode === "long" ? "wide" : "long";
+      manualColumnWidths = {};
+      renderActiveTable();
+      renderSheetInspectorSummary();
+      toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
+      return;
+    }
+
+    if (action === "focus-col") {
+      const colIdx = parseInt(btn.dataset.profileColIndex || "", 10);
+      if (!Number.isFinite(colIdx)) return;
+      focusColumnProfile(colIdx);
+    }
+  });
+}
+if (formulaWorkbenchListEl) {
+  formulaWorkbenchListEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-formula-address]");
+    if (!btn) return;
+    focusFormulaEntry(btn.dataset.formulaAddress || "");
+  });
+}
+if (kpiListEl) {
+  kpiListEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-kpi-address]");
+    if (!btn) return;
+    focusKpiEntry(btn.dataset.kpiAddress || "");
+  });
+}
 if (wideLongToggleEl) {
   wideLongToggleEl.addEventListener("click", () => {
     if (!canUseLongView()) return;
@@ -3384,6 +4259,11 @@ if (readingToggle) {
     setReadingMode(enabled);
   });
 }
+[formulaSearchEl, formulaFilterEl, formulaFunctionFilterEl].forEach((el) => {
+  if (!el) return;
+  el.addEventListener("input", renderFormulaWorkbench);
+  el.addEventListener("change", renderFormulaWorkbench);
+});
 
 document.addEventListener("click", (e) => {
   if (!isSidebarOpen()) return;
@@ -3496,9 +4376,12 @@ syncQuickSearchInputs();
 setSidebarOpen(true);
 syncSidebarHandle();
 renderInsights();
+renderKpiExtractor();
+renderSheetInspectorSummary();
 renderColumnProfiles();
 renderSections();
 renderRepeatingBlocks();
+renderFormulaWorkbench();
 populateSortColumnSelect();
 renderSortPresets();
 updateWideLongToggle();
@@ -3520,7 +4403,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260325-4").then((registration) => {
+  navigator.serviceWorker.register("sw.js?v=20260402-7").then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }
