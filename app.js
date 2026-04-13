@@ -86,6 +86,7 @@ const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
 const cellTooltipEl = document.getElementById("cellTooltip");
+const sheetInspectorPanelEl = document.getElementById("panel-sheet-inspector");
 const quickSearchPopupEl = document.getElementById("quickSearchPopup");
 const quickSearchPopupInput = document.getElementById("quickSearchPopupInput");
 const quickSearchPopupColumnsBtn = document.getElementById("quickSearchPopupColumnsBtn");
@@ -99,6 +100,8 @@ const sheetInspectorSummaryEl = document.getElementById("sheetInspectorSummary")
 const columnProfilerEl = document.getElementById("columnProfiler");
 const sectionNavigatorEl = document.getElementById("sectionNavigator");
 const repeatBlockDetectorEl = document.getElementById("repeatBlockDetector");
+const durationAnalysisSummaryEl = document.getElementById("durationAnalysisSummary");
+const durationAnalysisListEl = document.getElementById("durationAnalysisList");
 const formulaSearchEl = document.getElementById("formulaSearch");
 const formulaFilterEl = document.getElementById("formulaFilter");
 const formulaFunctionFilterEl = document.getElementById("formulaFunctionFilter");
@@ -142,6 +145,13 @@ let manualColumnWidths = {};
 let hasUnsavedChanges = false;
 let syncingHorizontalScroll = false;
 let tooltipHideTimer = null;
+let durationAnalysisState = {
+  statusFilter: "all",
+  sortMetric: "avg",
+  expanded: false,
+  showCount: 14,
+};
+const APP_BUILD_VERSION = "20260413-5";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -551,6 +561,639 @@ function parseRepeatedHeader(header) {
   const order = Number(match[2]);
   if (!base || !Number.isFinite(order)) return { base: raw, order: 1 };
   return { base, order };
+}
+
+function normalizeAnalysisKey(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function pluralizeDays(days) {
+  const n = Math.abs(days);
+  if (n === 1) return "dzien";
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "dni";
+  return "dni";
+}
+
+function formatDurationDays(days) {
+  if (!Number.isFinite(days)) return "brak";
+  const rounded = Math.max(0, Math.round(days));
+  const months = Math.floor(rounded / 30);
+  const restDays = rounded % 30;
+  const parts = [];
+  if (months > 0) parts.push(`${months} mies.`);
+  if (restDays > 0 || !parts.length) parts.push(`${restDays} ${pluralizeDays(restDays)}`);
+  return parts.join(" ");
+}
+
+function pluralizeEntityLabel(label) {
+  if (label === "Osoba") return "Osoby";
+  if (label === "Pracownik") return "Pracownicy";
+  if (label === "Wlasciciel") return "Wlasciciele";
+  return `${label}y`;
+}
+
+function computeMedian(values) {
+  const nums = values.filter((value) => Number.isFinite(value)).slice().sort((a, b) => a - b);
+  if (!nums.length) return null;
+  const mid = Math.floor(nums.length / 2);
+  if (nums.length % 2 === 1) return nums[mid];
+  return (nums[mid - 1] + nums[mid]) / 2;
+}
+
+function diffDays(start, end) {
+  if (!(start instanceof Date) || !(end instanceof Date)) return null;
+  const a = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const b = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const ms = b.getTime() - a.getTime();
+  if (!Number.isFinite(ms)) return null;
+  const days = Math.round(ms / 86400000);
+  return days >= 0 ? days : null;
+}
+
+function parseDurationDaysFlexible(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value >= 0 ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const text = normalizeAnalysisKey(value);
+  if (!text) return null;
+  const monthMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(m|mies|miesiac|miesiace|miesiecy|month|months)\b/);
+  const dayMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(d|dzien|dni|day|days)\b/);
+  if (!monthMatch && !dayMatch) {
+    if (/^\d+(?:[.,]\d+)?$/.test(text)) {
+      const numeric = Number(text.replace(",", "."));
+      return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+    }
+    return null;
+  }
+  const months = monthMatch ? Number(monthMatch[1].replace(",", ".")) : 0;
+  const days = dayMatch ? Number(dayMatch[1].replace(",", ".")) : 0;
+  const total = (months * 30) + days;
+  return Number.isFinite(total) && total >= 0 ? total : null;
+}
+
+function findAnalysisColumnIndex(candidates, matchers) {
+  for (const matcher of matchers) {
+    const hit = candidates.find((candidate) => matcher(candidate.norm, candidate.base));
+    if (hit) return hit.idx;
+  }
+  return -1;
+}
+
+function collectDurationBlockStats(group) {
+  const firstBlock = group && Array.isArray(group.blocks) ? group.blocks[0] : null;
+  if (!firstBlock || !Array.isArray(firstBlock.headers) || !firstBlock.headers.length) return [];
+
+  const stats = firstBlock.headers.map((header, idx) => ({
+    idx,
+    header,
+    nonEmptyCount: 0,
+    dateCount: 0,
+    durationCount: 0,
+    textCount: 0,
+    uniqueText: new Set(),
+  }));
+
+  const rowSample = viewRows.slice(0, 400);
+  rowSample.forEach((row) => {
+    group.blocks.forEach((block) => {
+      stats.forEach((entry) => {
+        const absIdx = block.startIndex + entry.idx;
+        const raw = row.values[absIdx] ?? getDisplayValue(row, absIdx);
+        const text = String(raw ?? "").trim();
+        if (!text) return;
+        entry.nonEmptyCount += 1;
+
+        const asDate = parseDateFlexible(raw);
+        if (asDate instanceof Date) {
+          entry.dateCount += 1;
+          return;
+        }
+
+        const asDuration = parseDurationDaysFlexible(raw);
+        if (asDuration !== null) {
+          entry.durationCount += 1;
+          return;
+        }
+
+        entry.textCount += 1;
+        entry.uniqueText.add(normalizeAnalysisKey(text));
+      });
+    });
+  });
+
+  return stats.map((entry) => ({
+    ...entry,
+    uniqueTextCount: entry.uniqueText.size,
+  }));
+}
+
+function inferDurationAnalysisConfigFromData(group) {
+  const stats = collectDurationBlockStats(group);
+  if (!stats.length) return null;
+
+  const entityCandidate = stats
+    .filter((entry) => entry.textCount > 0)
+    .sort((a, b) => {
+      const scoreA = (a.textCount * 5) + Math.min(a.uniqueTextCount, 25);
+      const scoreB = (b.textCount * 5) + Math.min(b.uniqueTextCount, 25);
+      return scoreB - scoreA || a.idx - b.idx;
+    })[0];
+
+  const dateCandidates = stats
+    .filter((entry) => entry.dateCount > 0)
+    .sort((a, b) => b.dateCount - a.dateCount || a.idx - b.idx);
+
+  const durationCandidate = stats
+    .filter((entry) => entry.durationCount > 0)
+    .sort((a, b) => b.durationCount - a.durationCount || a.idx - b.idx)[0];
+
+  if (!entityCandidate) return null;
+  if (!dateCandidates.length && !durationCandidate) return null;
+
+  const orderedDateCandidates = dateCandidates.slice().sort((a, b) => a.idx - b.idx);
+  const startCandidate = orderedDateCandidates[0] || null;
+  const endCandidate = orderedDateCandidates[1] || null;
+
+  return {
+    entityIdx: entityCandidate.idx,
+    startIdx: startCandidate ? startCandidate.idx : -1,
+    endIdx: endCandidate ? endCandidate.idx : -1,
+    durationIdx: durationCandidate ? durationCandidate.idx : -1,
+    entityLabel: "Osoba",
+    entityHeader: entityCandidate.header || "Osoba",
+    inferred: true,
+  };
+}
+
+function detectDurationAnalysisConfig(group) {
+  const firstBlock = group && Array.isArray(group.blocks) ? group.blocks[0] : null;
+  if (!firstBlock || !Array.isArray(firstBlock.headers) || !firstBlock.headers.length) return null;
+
+  const candidates = firstBlock.headers.map((header, idx) => {
+    const base = parseRepeatedHeader(header)?.base || cleanSectionLabel(header) || String(header || "");
+    return {
+      idx,
+      header,
+      base,
+      norm: normalizeAnalysisKey(base),
+    };
+  });
+
+  const entityIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => /\b(imie|nazwisko|osoba|pracownik|opiekun|wlasciciel|owner|assignee|user|agent|operator)\b/.test(norm),
+    (norm) => norm.includes("imie") || norm.includes("nazwisk"),
+  ]);
+  const startIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => norm === "od" || norm === "data od",
+    (norm) => /\b(start|from|poczatek|rozpoczecie|rozpoczecia)\b/.test(norm),
+  ]);
+  const endIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => norm === "do" || norm === "data do",
+    (norm) => /\b(koniec|zakonczenie|end|to|until)\b/.test(norm),
+  ]);
+  const durationIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => norm.includes("dlugosc") || norm.includes("czas"),
+    (norm) => /\b(duration|age|days)\b/.test(norm),
+  ]);
+
+  const inferred = inferDurationAnalysisConfigFromData(group);
+
+  const resolvedEntityIdx = entityIdx >= 0 ? entityIdx : (inferred?.entityIdx ?? -1);
+  const resolvedStartIdx = startIdx >= 0 ? startIdx : (inferred?.startIdx ?? -1);
+  const resolvedEndIdx = endIdx >= 0 ? endIdx : (inferred?.endIdx ?? -1);
+  const resolvedDurationIdx = durationIdx >= 0 ? durationIdx : (inferred?.durationIdx ?? -1);
+
+  if (resolvedEntityIdx < 0 || (resolvedStartIdx < 0 && resolvedDurationIdx < 0)) return null;
+
+  const entityBase = candidates[resolvedEntityIdx]?.base || inferred?.entityHeader || "Wartosc";
+  const normEntity = normalizeAnalysisKey(entityBase);
+  let entityLabel = "Wartosc";
+  if (normEntity.includes("imie") || normEntity.includes("nazwisk") || normEntity.includes("osoba")) entityLabel = "Osoba";
+  else if (normEntity.includes("pracownik")) entityLabel = "Pracownik";
+  else if (normEntity.includes("owner") || normEntity.includes("wlasciciel")) entityLabel = "Wlasciciel";
+  else if (inferred?.inferred) entityLabel = "Osoba";
+  else if (entityBase) entityLabel = entityBase;
+
+  return {
+    entityIdx: resolvedEntityIdx,
+    startIdx: resolvedStartIdx,
+    endIdx: resolvedEndIdx,
+    durationIdx: resolvedDurationIdx,
+    entityLabel,
+    entityHeader: entityBase,
+    inferred: !!(inferred && (entityIdx < 0 || startIdx < 0 || endIdx < 0 || durationIdx < 0)),
+  };
+}
+
+function buildDurationAnalysisFromRows(group, rows, meta = {}) {
+  const config = detectDurationAnalysisConfig(group);
+  if (!config) {
+    return { status: "no-config", group, ...meta };
+  }
+
+  const today = new Date();
+  const records = [];
+  const aggregate = new Map();
+
+  rows.forEach((row) => {
+    group.blocks.forEach((block, blockIndex) => {
+      const entityCol = block.startIndex + config.entityIdx;
+      const startCol = config.startIdx >= 0 ? block.startIndex + config.startIdx : -1;
+      const endCol = config.endIdx >= 0 ? block.startIndex + config.endIdx : -1;
+      const durationCol = config.durationIdx >= 0 ? block.startIndex + config.durationIdx : -1;
+
+      const entityValue = String(row.values[entityCol] ?? "").trim();
+      if (!entityValue) return;
+
+      const startDate = startCol >= 0 ? parseDateFlexible(row.values[startCol] ?? getDisplayValue(row, startCol)) : null;
+      const endDate = endCol >= 0 ? parseDateFlexible(row.values[endCol] ?? getDisplayValue(row, endCol)) : null;
+      let durationDays = null;
+      let isOpen = false;
+
+      if (startDate instanceof Date) {
+        if (endDate instanceof Date) {
+          durationDays = diffDays(startDate, endDate);
+        } else {
+          durationDays = diffDays(startDate, today);
+          isOpen = durationDays !== null;
+        }
+      }
+
+      if (durationDays === null && durationCol >= 0) {
+        durationDays = parseDurationDaysFlexible(row.values[durationCol] ?? getDisplayValue(row, durationCol));
+      }
+
+      records.push({
+        entity: entityValue,
+        durationDays,
+        isOpen,
+        isClosed: durationDays !== null && !isOpen,
+        blockLabel: block.label,
+        blockIndex: blockIndex + 1,
+        rowIndex0: row.rowIndex0,
+      });
+    });
+  });
+
+  const filteredRecords = records.filter((record) => {
+    if (!Number.isFinite(record.durationDays)) return false;
+    if (durationAnalysisState.statusFilter === "open") return record.isOpen;
+    if (durationAnalysisState.statusFilter === "closed") return !record.isOpen;
+    return true;
+  });
+
+  filteredRecords.forEach((record) => {
+    const key = normalizeAnalysisKey(record.entity);
+    const entry = aggregate.get(key) || {
+      entity: record.entity,
+      durations: [],
+      openCount: 0,
+      minDays: null,
+      maxDays: null,
+      blocks: new Set(),
+      rowIndexes: new Set(),
+    };
+    entry.durations.push(record.durationDays);
+    if (record.isOpen) entry.openCount += 1;
+    entry.minDays = entry.minDays === null ? record.durationDays : Math.min(entry.minDays, record.durationDays);
+    entry.maxDays = entry.maxDays === null ? record.durationDays : Math.max(entry.maxDays, record.durationDays);
+    entry.blocks.add(record.blockLabel);
+    entry.rowIndexes.add(record.rowIndex0);
+    aggregate.set(key, entry);
+  });
+
+  const entries = Array.from(aggregate.values())
+    .map((entry) => ({
+      entity: entry.entity,
+      averageDays: entry.durations.length ? entry.durations.reduce((sum, value) => sum + value, 0) / entry.durations.length : null,
+      medianDays: computeMedian(entry.durations),
+      count: entry.durations.length,
+      openCount: entry.openCount,
+      minDays: entry.minDays,
+      maxDays: entry.maxDays,
+      blockCount: entry.blocks.size,
+      rowCount: entry.rowIndexes.size,
+    }))
+    .sort((a, b) => {
+      const metricMap = {
+        avg: "averageDays",
+        median: "medianDays",
+        count: "count",
+        min: "minDays",
+        max: "maxDays",
+      };
+      const metric = metricMap[durationAnalysisState.sortMetric] || "averageDays";
+      const left = Number(a[metric] || 0);
+      const right = Number(b[metric] || 0);
+      const diff = right - left;
+      if (Math.abs(diff) > 0.001) return diff;
+      const countDiff = b.count - a.count;
+      if (countDiff) return countDiff;
+      return a.entity.localeCompare(b.entity, "pl");
+    });
+
+  if (!entries.length) {
+    return { status: "no-records", config, group, records, filteredRecords, ...meta };
+  }
+
+  const totalDurationRecords = filteredRecords.length;
+  const totalOpen = filteredRecords.filter((record) => record.isOpen).length;
+  const totalClosed = filteredRecords.filter((record) => !record.isOpen).length;
+  const allDurations = filteredRecords.map((record) => record.durationDays).filter((value) => Number.isFinite(value));
+  const totalDays = allDurations.reduce((sum, value) => sum + value, 0);
+
+  return {
+    status: "ok",
+    config,
+    group,
+    entries,
+    records,
+    filteredRecords,
+    ...meta,
+    summary: {
+      uniqueEntities: entries.length,
+      totalDurationRecords,
+      totalOpen,
+      totalClosed,
+      averageDays: totalDurationRecords ? totalDays / totalDurationRecords : null,
+      medianDays: computeMedian(allDurations),
+      minDays: allDurations.length ? Math.min(...allDurations) : null,
+      maxDays: allDurations.length ? Math.max(...allDurations) : null,
+      visibleRows: rows.length,
+      sourceRows: rows.length,
+    },
+  };
+}
+
+function tryBuildDurationAnalysisFromAlternateHeaders() {
+  if (!workbook || !currentSheetName) return null;
+  const sheet = workbook.Sheets[currentSheetName];
+  if (!sheet) return null;
+
+  const candidateRows = [];
+  const seen = new Set();
+  const minHeader = 1;
+  const maxHeader = Math.max(minHeader, currentHeaderRow + 4);
+
+  for (let row = Math.max(minHeader, currentHeaderRow - 3); row <= maxHeader; row++) {
+    if (row === currentHeaderRow) continue;
+    if (seen.has(row)) continue;
+    seen.add(row);
+    candidateRows.push(row);
+  }
+
+  let best = null;
+
+  candidateRows.forEach((headerRow) => {
+    try {
+      const data = buildRows(sheet, headerRow, workbook);
+      const groups = detectRepeatingBlocks(sheet, headerRow, data);
+      const group = Array.isArray(groups) && groups.length ? groups[0] : null;
+      if (!group || !Array.isArray(group.blocks) || group.blocks.length < 2) return;
+
+      const shadowRows = markSubheaderRows(data.rows.slice());
+      const result = buildDurationAnalysisFromRows(group, shadowRows, {
+        helperHeaderRow: headerRow,
+        helperMode: true,
+      });
+      if (!result || result.status !== "ok") return;
+
+      const score = (result.summary.totalDurationRecords * 10) + result.summary.uniqueEntities;
+      if (!best || score > best.score) {
+        best = { ...result, score };
+      }
+    } catch {
+      // Ignore helper header candidates that fail to parse well.
+    }
+  });
+
+  return best;
+}
+
+function buildDurationAnalysis() {
+  const group = getActiveRepeatingGroup();
+  if (!group || !Array.isArray(group.blocks) || group.blocks.length < 2) {
+    const fallback = tryBuildDurationAnalysisFromAlternateHeaders();
+    return fallback || { status: "no-group" };
+  }
+
+  const currentResult = buildDurationAnalysisFromRows(group, viewRows, {
+    helperHeaderRow: currentHeaderRow,
+    helperMode: false,
+  });
+
+  if (currentResult.status === "ok") {
+    return currentResult;
+  }
+
+  const fallback = tryBuildDurationAnalysisFromAlternateHeaders();
+  return fallback || currentResult;
+}
+
+function renderDurationAnalysis() {
+  if (!durationAnalysisSummaryEl || !durationAnalysisListEl) return;
+  durationAnalysisSummaryEl.innerHTML = "";
+  durationAnalysisListEl.innerHTML = "";
+
+  const analysis = buildDurationAnalysis();
+
+  if (analysis.status === "no-group") {
+    durationAnalysisSummaryEl.appendChild(createEmptyInsight("Wykryj najpierw powtarzalne bloki kolumn. Ten panel najlepiej dziala na arkuszach z cyklami albo seriami podobnych pol."));
+    return;
+  }
+
+  if (analysis.status === "no-config") {
+    durationAnalysisSummaryEl.appendChild(createEmptyInsight("Wykryto bloki, ale nie udalo sie znalezc pary typu osoba + od/do albo osoba + dlugosc. Jesli naglowek jest nietypowy, modul probuje tez zgadywac po danych, ale tu to wciaz za malo."));
+    return;
+  }
+
+  if (analysis.status === "no-records") {
+    durationAnalysisSummaryEl.appendChild(createEmptyInsight("Bloki zostaly rozpoznane, ale w aktualnym widoku nie ma rekordow z pelnymi danymi czasu dla tej samej wartosci."));
+    return;
+  }
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "sheet-inspector-summary";
+  [
+    { label: pluralizeEntityLabel(analysis.config.entityLabel), value: String(analysis.summary.uniqueEntities) },
+    { label: "Rekordy czasu", value: String(analysis.summary.totalDurationRecords) },
+    { label: "Sredni czas", value: formatDurationDays(analysis.summary.averageDays) },
+    { label: "Mediana", value: formatDurationDays(analysis.summary.medianDays) },
+    { label: "Min", value: formatDurationDays(analysis.summary.minDays) },
+    { label: "Max", value: formatDurationDays(analysis.summary.maxDays) },
+    { label: "W toku", value: String(analysis.summary.totalOpen), tone: analysis.summary.totalOpen ? "info" : "" },
+    { label: "Zamkniete", value: String(analysis.summary.totalClosed) },
+  ].forEach((item) => {
+    const chip = document.createElement("div");
+    chip.className = `sheet-inspector-chip${item.tone ? ` ${item.tone}` : ""}`;
+
+    const label = document.createElement("div");
+    label.className = "sheet-inspector-chip-label";
+    label.textContent = item.label;
+
+    const value = document.createElement("div");
+    value.className = "sheet-inspector-chip-value";
+    value.textContent = item.value;
+
+    chip.appendChild(label);
+    chip.appendChild(value);
+    summaryGrid.appendChild(chip);
+  });
+  durationAnalysisSummaryEl.appendChild(summaryGrid);
+
+  const note = document.createElement("div");
+  note.className = "duration-analysis-note";
+  const filtered = analysis.summary.visibleRows !== analysis.summary.sourceRows;
+  note.textContent = filtered
+    ? `Analiza dotyczy aktualnie przefiltrowanego widoku (${analysis.summary.visibleRows} z ${analysis.summary.sourceRows} wierszy). Otwarte rekordy bez daty "do" sa liczone do dzisiaj.`
+    : 'Analiza dotyczy calego aktualnego widoku arkusza. Otwarte rekordy bez daty "do" sa liczone do dzisiaj.';
+  if (analysis.config.inferred) {
+    note.textContent += " Uklad kolumn zostal czesciowo odgadniety na podstawie danych, bo naglowek nie byl idealny.";
+  }
+  if (analysis.helperMode && Number.isFinite(analysis.helperHeaderRow) && analysis.helperHeaderRow !== currentHeaderRow) {
+    note.textContent += ` Do tej analizy uzyto pomocniczo wiersza naglowka ${analysis.helperHeaderRow}, bo lepiej pasowal niz aktualnie wybrany ${currentHeaderRow}.`;
+  }
+  durationAnalysisSummaryEl.appendChild(note);
+
+  const primaryActions = document.createElement("div");
+  primaryActions.className = "duration-analysis-primary-actions";
+
+  const expandBtn = document.createElement("button");
+  expandBtn.className = "btn full duration-expand-btn";
+  expandBtn.type = "button";
+  expandBtn.dataset.durationAction = "toggle-expand";
+  expandBtn.textContent = durationAnalysisState.expanded ? "Wroc do standardowej szerokosci" : "Poszerz panel analizy";
+  primaryActions.appendChild(expandBtn);
+
+  durationAnalysisSummaryEl.appendChild(primaryActions);
+
+  const controls = document.createElement("div");
+  controls.className = "duration-analysis-controls";
+
+  const statusField = document.createElement("label");
+  statusField.className = "field";
+  statusField.innerHTML = `Status
+    <select data-duration-control="status">
+      <option value="all">Wszystkie</option>
+      <option value="closed">Tylko zamkniete</option>
+      <option value="open">Tylko otwarte</option>
+    </select>`;
+  statusField.querySelector("select").value = durationAnalysisState.statusFilter;
+
+  const sortField = document.createElement("label");
+  sortField.className = "field";
+  sortField.innerHTML = `Sortuj po
+    <select data-duration-control="sort">
+      <option value="avg">Sredniej</option>
+      <option value="median">Medianie</option>
+      <option value="count">Liczbie rekordow</option>
+      <option value="max">Maksimum</option>
+      <option value="min">Minimum</option>
+    </select>`;
+  sortField.querySelector("select").value = durationAnalysisState.sortMetric;
+
+  const countField = document.createElement("label");
+  countField.className = "field";
+  countField.innerHTML = `Pokaz rekordow
+    <select data-duration-control="count">
+      <option value="14">14</option>
+      <option value="24">24</option>
+      <option value="40">40</option>
+      <option value="80">80</option>
+      <option value="999">Wszystkie</option>
+    </select>`;
+  countField.querySelector("select").value = String(durationAnalysisState.showCount);
+
+  controls.appendChild(statusField);
+  controls.appendChild(sortField);
+  controls.appendChild(countField);
+  durationAnalysisSummaryEl.appendChild(controls);
+
+  const actions = document.createElement("div");
+  actions.className = "section-nav-actions";
+  if (canUseLongView()) {
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn ghost btn-sm";
+    toggleBtn.type = "button";
+    toggleBtn.dataset.durationAction = "toggle-long";
+    toggleBtn.textContent = tableViewMode === "long" ? "Widok klasyczny" : "Wide-to-Long";
+    actions.appendChild(toggleBtn);
+  }
+  if (filtered) {
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "btn ghost btn-sm";
+    resetBtn.type = "button";
+    resetBtn.dataset.durationAction = "reset-filters";
+    resetBtn.textContent = "Pokaz calosc";
+    actions.appendChild(resetBtn);
+  }
+  durationAnalysisSummaryEl.appendChild(actions);
+
+  const listNote = document.createElement("div");
+  listNote.className = "duration-analysis-note";
+  const visibleCount = Math.min(durationAnalysisState.showCount, analysis.entries.length);
+  listNote.textContent = analysis.entries.length > visibleCount
+    ? `Pokazano ${visibleCount} z ${analysis.entries.length} wynikow.`
+    : `Pokazano wszystkie wyniki: ${analysis.entries.length}.`;
+  durationAnalysisListEl.appendChild(listNote);
+
+  analysis.entries.slice(0, durationAnalysisState.showCount).forEach((entry, index) => {
+    const item = document.createElement("div");
+    item.className = "duration-person-item";
+
+    const top = document.createElement("div");
+    top.className = "duration-person-top";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "duration-person-title-wrap";
+
+    const rank = document.createElement("div");
+    rank.className = "duration-person-rank";
+    rank.textContent = String(index + 1);
+
+    const title = document.createElement("div");
+    title.className = "duration-person-title";
+    title.textContent = entry.entity;
+
+    const value = document.createElement("div");
+    value.className = "duration-person-value";
+    value.textContent = formatDurationDays(entry.averageDays);
+
+    titleWrap.appendChild(rank);
+    titleWrap.appendChild(title);
+    top.appendChild(titleWrap);
+    top.appendChild(value);
+
+    const meta = document.createElement("div");
+    meta.className = "duration-person-meta";
+    const avgDaysText = entry.averageDays !== null ? `${Math.round(entry.averageDays * 10) / 10} dni` : "brak";
+    const medianDaysText = entry.medianDays !== null ? `${Math.round(entry.medianDays * 10) / 10} dni` : "brak";
+    meta.textContent = `Srednio ${avgDaysText} • mediana ${medianDaysText} • rekordy ${entry.count} • w toku ${entry.openCount} • zakres ${formatDurationDays(entry.minDays)} -> ${formatDurationDays(entry.maxDays)}`;
+
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "section-nav-actions";
+
+    const filterBtn = document.createElement("button");
+    filterBtn.className = "btn ghost btn-sm";
+    filterBtn.type = "button";
+    filterBtn.dataset.durationAction = "filter-entity";
+    filterBtn.dataset.durationEntity = entry.entity;
+    filterBtn.textContent = "Pokaz w tabeli";
+    actionsRow.appendChild(filterBtn);
+
+    item.appendChild(top);
+    item.appendChild(meta);
+    item.appendChild(actionsRow);
+    durationAnalysisListEl.appendChild(item);
+  });
 }
 
 function buildMergedLabelMap(merges, sheet, tableStartCol, tableEndCol, headerAbsRow) {
@@ -2116,6 +2759,7 @@ function applyCurrentSort() {
   renderColumnProfiles();
   renderSections();
   renderRepeatingBlocks();
+  renderDurationAnalysis();
   renderFormulaWorkbench();
 }
 
@@ -3265,6 +3909,8 @@ function setSidebarOpen(open) {
     panelToggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
     panelToggle.textContent = shouldOpen ? "Zamknij filtry" : "Filtry";
   }
+  requestAnimationFrame(() => syncSidebarHandle());
+  window.setTimeout(() => syncSidebarHandle(), 180);
 }
 
 function openColumnPicker(key) {
@@ -3482,6 +4128,27 @@ function updateNetworkBadge() {
   );
 }
 
+async function hardRefreshApp() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.update().catch(() => {})));
+    }
+
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      const appKeys = keys.filter((key) => key.startsWith("excel-wb-"));
+      await Promise.all(appKeys.map((key) => caches.delete(key).catch(() => false)));
+    }
+
+    toast("Czyszcze cache i odswiezam aplikacje...", "info");
+  } catch {
+    toast("Odswiezam aplikacje...", "info");
+  }
+
+  window.location.reload();
+}
+
 async function handleFile(file) {
   if (!file) return;
   if (!isXlsxAvailable(true)) return;
@@ -3527,6 +4194,7 @@ async function handleFile(file) {
     renderColumnProfiles();
     renderSections();
     renderRepeatingBlocks();
+    renderDurationAnalysis();
     populateSortColumnSelect();
     renderSortPresets();
     toast("Plik wczytany", "success");
@@ -3679,6 +4347,7 @@ loadBtn.addEventListener("click", () => {
       renderColumnProfiles();
       renderSections();
       renderRepeatingBlocks();
+      renderDurationAnalysis();
       renderFormulaWorkbench();
       setDirtyState(false);
       if ((currentSheetStats?.trimmedColumns || 0) > 0) {
@@ -3706,6 +4375,7 @@ applyFilterBtn.addEventListener("click", () => {
   renderColumnProfiles();
   renderSections();
   renderRepeatingBlocks();
+  renderDurationAnalysis();
   updateFilterBadge();
   toast("Zastosowano filtry", "info");
 });
@@ -3727,6 +4397,7 @@ function applyQuickSearch() {
   renderColumnProfiles();
   renderSections();
   renderRepeatingBlocks();
+  renderDurationAnalysis();
   updateFilterBadge();
   if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
     quickSearchPopupEl.classList.add("hidden");
@@ -3775,6 +4446,7 @@ tbodyEl.addEventListener("touchstart", (e) => {
 window.addEventListener("resize", () => {
   syncHorizontalScrollbar();
   hideCellTooltip();
+  syncSidebarHandle();
 });
 
 if (quickSearchBtn) {
@@ -3824,6 +4496,7 @@ resetFiltersBtn.addEventListener("click", () => {
   renderColumnProfiles();
   renderSections();
   renderRepeatingBlocks();
+  renderDurationAnalysis();
   toast("Reset filtrow", "info");
 });
 
@@ -4059,6 +4732,7 @@ tbodyEl.addEventListener("dblclick", (e) => {
     renderColumnProfiles();
     renderSections();
     renderRepeatingBlocks();
+    renderDurationAnalysis();
   };
 
   const cancel = () => {
@@ -4112,7 +4786,7 @@ themeToggle.addEventListener("click", () => {
 
 if (brandRefreshBtn) {
   brandRefreshBtn.addEventListener("click", () => {
-    window.location.reload();
+    hardRefreshApp();
   });
 
   const expandLogo = () => {
@@ -4153,6 +4827,14 @@ function syncSidebarHandle() {
     panelHandle.setAttribute("aria-expanded", isSidebarOpen() ? "true" : "false");
     panelHandle.setAttribute("aria-label", isSidebarOpen() ? "Zamknij panel filtrow" : "Otworz panel filtrow");
     panelHandle.setAttribute("title", isSidebarOpen() ? "Schowaj filtry" : "Pokaz filtry");
+    if (isSidebarOpen() && sidebarEl) {
+      const rect = sidebarEl.getBoundingClientRect();
+      const overlap = 8;
+      const nextLeft = Math.max(12, Math.round(rect.right - overlap));
+      panelHandle.style.left = `${nextLeft}px`;
+    } else {
+      panelHandle.style.left = "12px";
+    }
   }
 }
 
@@ -4190,6 +4872,80 @@ if (repeatBlockDetectorEl) {
     focusRepeatingBlock(groupIndex, blockIndex);
   });
 }
+if (durationAnalysisSummaryEl) {
+  durationAnalysisSummaryEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const btn = e.target.closest("button[data-duration-action]");
+    if (!btn) return;
+    const action = btn.dataset.durationAction;
+
+    if (action === "toggle-long" && canUseLongView()) {
+      tableViewMode = tableViewMode === "long" ? "wide" : "long";
+      manualColumnWidths = {};
+      renderActiveTable();
+      renderSheetInspectorSummary();
+      renderDurationAnalysis();
+      toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
+      return;
+    }
+
+    if (action === "reset-filters") {
+      resetFiltersBtn.click();
+    }
+
+    if (action === "toggle-expand") {
+      durationAnalysisState.expanded = !durationAnalysisState.expanded;
+      sidebarEl?.classList.toggle("duration-expanded", durationAnalysisState.expanded);
+      if (sheetInspectorPanelEl) {
+        sheetInspectorPanelEl.classList.toggle("duration-expanded", durationAnalysisState.expanded);
+        if (!sheetInspectorPanelEl.open) sheetInspectorPanelEl.open = true;
+      }
+      setSidebarOpen(true);
+      syncSidebarHandle();
+      requestAnimationFrame(() => syncSidebarHandle());
+      window.setTimeout(() => syncSidebarHandle(), 220);
+      renderDurationAnalysis();
+    }
+  });
+  durationAnalysisSummaryEl.addEventListener("change", (e) => {
+    e.stopPropagation();
+    const control = e.target.closest("[data-duration-control]");
+    if (!control) return;
+    const kind = control.dataset.durationControl;
+    if (kind === "status") {
+      durationAnalysisState.statusFilter = control.value || "all";
+    } else if (kind === "sort") {
+      durationAnalysisState.sortMetric = control.value || "avg";
+    } else if (kind === "count") {
+      const next = parseInt(control.value || "14", 10);
+      durationAnalysisState.showCount = Number.isFinite(next) && next > 0 ? next : 14;
+    }
+    renderDurationAnalysis();
+  });
+}
+if (durationAnalysisListEl) {
+  durationAnalysisListEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const btn = e.target.closest("button[data-duration-action='filter-entity']");
+    if (!btn) return;
+    const entity = (btn.dataset.durationEntity || "").trim();
+    if (!entity) return;
+    searchQueryEl.value = entity;
+    applyFilters();
+    sortRows();
+    renderActiveTable();
+    renderInsights();
+    renderKpiExtractor();
+    renderSheetInspectorSummary();
+    renderColumnProfiles();
+    renderSections();
+    renderRepeatingBlocks();
+    renderDurationAnalysis();
+    renderFormulaWorkbench();
+    updateFilterBadge();
+    toast(`Przefiltrowano widok dla: ${entity}`, "info");
+  });
+}
 if (columnProfilerEl) {
   columnProfilerEl.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-profile-col-index]");
@@ -4219,6 +4975,7 @@ if (sheetInspectorSummaryEl) {
       manualColumnWidths = {};
       renderActiveTable();
       renderSheetInspectorSummary();
+      renderDurationAnalysis();
       toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
       return;
     }
@@ -4250,6 +5007,7 @@ if (wideLongToggleEl) {
     tableViewMode = tableViewMode === "long" ? "wide" : "long";
     manualColumnWidths = {};
     renderActiveTable();
+    renderDurationAnalysis();
     toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
   });
 }
@@ -4381,6 +5139,7 @@ renderSheetInspectorSummary();
 renderColumnProfiles();
 renderSections();
 renderRepeatingBlocks();
+renderDurationAnalysis();
 renderFormulaWorkbench();
 populateSortColumnSelect();
 renderSortPresets();
@@ -4403,7 +5162,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260402-7").then((registration) => {
+  navigator.serviceWorker.register(`sw.js?v=${APP_BUILD_VERSION}`).then((registration) => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }

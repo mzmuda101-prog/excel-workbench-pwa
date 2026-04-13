@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260402-7" />
+    <link rel="stylesheet" href="styles.css?v=20260413-5" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -420,6 +420,11 @@
               <div class="panel-hint">Pomocniczy widok dla szerokich arkuszy z cyklami, turami albo powtarzalnymi sekcjami kolumn.</div>
               <div class="repeat-blocks-list" id="repeatBlockDetector"></div>
 
+              <div class="insight-subtitle">Analiza czasu / osob</div>
+              <div class="panel-hint">Lokalna analiza dla wykrytych blokow: laczenie tych samych osob lub innych wartosci w jednej kolumnie i liczenie srednich czasow na podstawie dat lub dlugosci.</div>
+              <div class="duration-analysis-summary" id="durationAnalysisSummary"></div>
+              <div class="duration-analysis-list" id="durationAnalysisList"></div>
+
               <div class="insight-subtitle">Profiler kolumn</div>
               <div class="panel-hint">Typ danych, puste, unikalne, top wartosci i sygnaly problemowosci.</div>
               <div class="column-profiler-list" id="columnProfiler"></div>
@@ -553,7 +558,7 @@
             </div>
 
             <div class="empty-state" id="emptyState">
-              <div class="empty-icon">XLS</div>
+              <div class="empty-icon">XLSX/M</div>
               <div class="empty-title" id="emptyTitle">Wysuń sidebar-a i wczytaj plik Excel</div>
               <div class="empty-sub" id="emptySub">możesz tam przeciągnąć plik lub wybrać go bezpośrednio z dysku</div>
             </div>
@@ -628,6 +633,6 @@
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260402-7"></script>
+    <script src="app.js?v=20260413-5"></script>
   </body>
 </html>

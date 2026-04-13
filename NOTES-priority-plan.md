@@ -26,6 +26,38 @@ Na podstawie ustalen:
 6. `Cross-Sheet Dependency Explorer`
 7. `Key Compare / Formula Compare` w lekkiej wersji, tylko jesli pojawi sie realna potrzeba
 
+## Dodatkowa decyzja produktowa - 13 kwietnia 2026
+
+W obszarze lekkiej analityki:
+
+1. najpierw `Duration Analyzer+`
+2. potem lekki `kreator agregacji`
+
+Co ma wejsc do `Duration Analyzer+`:
+- srednia
+- mediana
+- min / max
+- liczba rekordow
+- filtr `wszystkie / tylko zamkniete / tylko otwarte`
+- sortowanie po wybranej metryce
+
+Co ma wejsc pozniej do lekkiego `kreatora agregacji`:
+- `Grupuj po`
+- `Mierz`
+- `Agregacja`
+- `Zakres`
+
+Wazna uwaga UX dla tego etapu:
+- nie zakladamy, ze wszystko musi wyjsc z panelu bocznego
+- jesli pewne rzeczy z Etapu 2 dobrze mieszcza sie w sidebarze, to to jest w porzadku
+- na obecnym etapie limit wynikow ma sens, bo zmniejsza scrollowanie
+- ale jesli przy pelnym wykorzystaniu funkcji cos przestaje sie tam miescic albo robi sie nieludzkie w obsludze, trzeba to pokazac inaczej
+- docelowe umiejscowienie ma byc przyjemne, logiczne i wygodne, a nie wymuszone jedna sztywna regula layoutu
+
+Wazna zasada:
+- robimy to przez reuse obecnych mechanik workbencha
+- nie budujemy od razu duzego osobnego modulu pivot / BI
+
 ## Dlaczego Taka Kolejnosc
 
 - `column profiler`:

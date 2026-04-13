@@ -356,7 +356,11 @@ body.splashing {
   transform: translateX(calc(-100% - 24px));
   opacity: 0;
   pointer-events: none;
-  transition: transform var(--t-slow), opacity var(--t);
+  transition: transform var(--t-slow), opacity var(--t), width var(--t-slow);
+}
+
+.sidebar.duration-expanded {
+  width: min(680px, calc(100vw - 32px));
 }
 
 .sidebar > * {
@@ -393,15 +397,18 @@ body.splashing {
   transform: translateY(-50%);
   width: 46px;
   height: 112px;
-  border-radius: 19px;
+  border-radius: 20px;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel) 88%, white) 0%, var(--panel) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 72%, transparent) 0%, color-mix(in srgb, var(--panel) 82%, transparent) 100%);
   color: var(--accent);
   cursor: pointer;
   box-shadow:
-    0 18px 34px rgba(18, 30, 23, 0.14),
-    inset 0 1px 0 rgba(255,255,255,0.55);
+    0 18px 34px rgba(18, 30, 23, 0.10),
+    inset 0 1px 0 rgba(255,255,255,0.32);
+  opacity: 0.76;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 31;
   overflow: hidden;
   transition:
@@ -416,10 +423,11 @@ body.splashing {
 .sidebar-handle:hover {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--accent-light) 82%, white) 0%, var(--panel) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-light) 76%, white) 0%, color-mix(in srgb, var(--panel) 92%, white) 100%);
   box-shadow:
-    0 22px 42px rgba(18, 30, 23, 0.18),
-    inset 0 1px 0 rgba(255,255,255,0.65);
+    0 22px 42px rgba(18, 30, 23, 0.16),
+    inset 0 1px 0 rgba(255,255,255,0.52);
+  opacity: 0.92;
 }
 
 .sidebar-handle:focus-visible {
@@ -439,7 +447,7 @@ body.splashing {
   padding: 0 4px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  background: color-mix(in srgb, var(--panel) 82%, white);
+  background: color-mix(in srgb, var(--panel) 68%, white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -447,7 +455,7 @@ body.splashing {
   font-weight: 700;
   line-height: 1;
   color: var(--accent);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.46);
   pointer-events: none;
 }
 
@@ -463,10 +471,6 @@ body.splashing {
   text-transform: uppercase;
   font-weight: 700;
   white-space: nowrap;
-}
-
-.sidebar-open .sidebar-handle {
-  left: min(376px, calc(100vw - 32px));
 }
 
 .sidebar-open .sidebar-handle::after {
@@ -989,6 +993,132 @@ details.panel[open] > summary {
   border: 1px solid var(--border);
 }
 
+.duration-analysis-summary,
+.duration-analysis-list {
+  display: grid;
+  gap: 8px;
+}
+
+.duration-analysis-primary-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.duration-expand-btn {
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.duration-analysis-controls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.duration-analysis-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.duration-person-item {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border-radius: var(--r-sm);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-light) 40%, white) 0%, var(--surface) 100%);
+  border: 1px solid color-mix(in srgb, var(--accent-border) 55%, var(--border));
+}
+
+.duration-person-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.duration-person-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.duration-person-rank {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.duration-person-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.duration-person-value {
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+  text-align: right;
+}
+
+.duration-person-meta {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+#panel-sheet-inspector.duration-expanded .duration-analysis-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+#panel-sheet-inspector.duration-expanded .duration-analysis-list .duration-analysis-note {
+  grid-column: 1 / -1;
+}
+
+#panel-sheet-inspector.duration-expanded .sheet-inspector-summary {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+#panel-sheet-inspector.duration-expanded .duration-person-item {
+  padding: 12px;
+}
+
+#panel-sheet-inspector.duration-expanded .duration-analysis-controls {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+@media (min-width: 1800px) {
+  .sidebar.duration-expanded {
+    width: min(760px, calc(100vw - 40px));
+  }
+}
+
+@media (max-width: 768px) {
+  .duration-analysis-controls {
+    grid-template-columns: 1fr;
+  }
+
+  #panel-sheet-inspector.duration-expanded .duration-analysis-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .column-profiler-list {
   display: grid;
   gap: 8px;
@@ -1426,6 +1556,9 @@ details.panel[open] > summary {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  /* flex: 1 1 auto;
+  min-width: 100px; */
 }
 
 .quick-search {
@@ -1506,7 +1639,7 @@ details.panel[open] > summary {
   gap: 10px;
   text-align: center;
   flex: 1;
-  min-height: 240px;
+  min-height: 280px;
 }
 
 .empty-icon {
@@ -2107,7 +2240,7 @@ kbd {
   .hero-title { font-size: 17px; }
   .hero-sub { display: none; }
   .row { grid-template-columns: 1fr; }
-  .table-panel { min-height: auto; }
+  .table-panel { min-height: calc(100dvh - 280px); }
   .table-wrap { min-height: 200px; }
   .toast-container { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: none; }
   .sidebar {
