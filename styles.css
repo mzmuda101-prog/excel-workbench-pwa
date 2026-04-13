@@ -664,7 +664,7 @@ details.panel[open] > summary {
 
 .sheet-inspector-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); */
   gap: 8px;
 }
 
@@ -1083,7 +1083,20 @@ details.panel[open] > summary {
 }
 
 #panel-sheet-inspector.duration-expanded .duration-analysis-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+#panel-sheet-inspector.duration-expanded .section-nav-list {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+#panel-sheet-inspector.duration-expanded .column-profiler-list {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+#panel-sheet-inspector.duration-expanded .repeat-blocks-list {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 10px;
 }
 

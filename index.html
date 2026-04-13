@@ -198,7 +198,7 @@
             </div>
           </details>
 
-          <details class="panel" id="panel-date-filter" open>
+          <details class="panel" id="panel-date-filter">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -548,6 +548,9 @@
                 <button class="btn btn-sm ghost hidden" id="wideLongToggle" type="button" aria-pressed="false" title="Przełącz widok blokowy na długi">
                   Wide-to-Long
                 </button>
+                <button class="btn btn-sm ghost" id="expandWidthToolbarBtn" type="button" title="Poszerz / przywróć panel analizy">
+                  Poszerz panel wysuwany
+                </button>
                 <button class="btn btn-sm ghost" id="excelLayoutToggle" type="button" aria-pressed="false" title="Przełącz widok !cols/!rows">
                   Widok Excel
                 </button>
@@ -634,5 +637,31 @@
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
     <script src="app.js?v=20260413-5"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        // Stały przycisk poszerzania panelu - zawsze dostępny
+        function toggleExpandWidth() {
+          const expanded = document.body.classList.contains('duration-expanded');
+          document.body.classList.toggle('duration-expanded', !expanded);
+          document.querySelector('.sidebar')?.classList.toggle('duration-expanded', !expanded);
+          document.querySelector('#panel-sheet-inspector')?.classList.toggle('duration-expanded', !expanded);
+          document.querySelector('#panel-sheet-inspector').open = true;
+          
+          // Aktualizuj tekst przycisków
+          const newText = expanded ? "Poszerz panel wysuwany analizy" : "Wróć do standardowej szerokości panelu";
+          const newTextSmall = expanded ? "Poszerz panel wysuwany" : "Standardowa szerokość panelu";
+          
+          document.querySelectorAll('#expandWidthBtn, #expandWidthToolbarBtn').forEach(btn => {
+            if (btn) btn.textContent = btn.id === 'expandWidthToolbarBtn' ? newTextSmall : newText;
+          });
+        }
+        
+        // Podepnij zdarzenia
+        ['expandWidthBtn', 'expandWidthToolbarBtn'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) btn.addEventListener('click', toggleExpandWidth);
+        });
+      });
+      </script>
   </body>
 </html>
