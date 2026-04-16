@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260416-11" />
+    <link rel="stylesheet" href="styles.css?v=20260416-12" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -536,6 +536,11 @@
             </summary>
             <div class="panel-body">
               <div class="shortcut-hint">
+              <div class="shortcut-row"><kbd>Strzałki</kbd> <span>przemieszczanie się fokusem wiersza po kliknięciu</span></div>
+              <div class="shortcut-row"><kbd>Esc</kbd> <span>LUB</span> <kbd>Q</kbd> <span>Odznacz fokus wiersza</span></div>
+              <div class="shortcut-row"><kbd>Shift</kbd> (po wczesniejszym kliknieciu na komorke) =<span> pojawienie się zaznaczenia komórki</span></div>
+              <div class="shortcut-row"><kbd>Shift</kbd> <span>+</span> <kbd>Strzałki</kbd> = <span>przemieszczanie zaznaczeniem komórki</span></div>
+              <div class="shortcut-row"><kbd>Shift</kbd> <span>+</span> <kbd>Esc</kbd> <span>LUB</span> <kbd>Q</kbd> <span>Odznacz komórkę</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>F</kbd> <span>Szybkie szukanie</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Enter</kbd> <span>Filtruj</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>E</kbd> <span>Eksport CSV</span></div>
@@ -544,7 +549,7 @@
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>W</kbd> <span>Reset szerokości</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>K</kbd> <span>Kolumny</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>/</kbd> <span>Motyw</span></div>
-              <div class="shortcut-row"><kbd>Esc</kbd> <span>Zamknij modal</span></div>
+              <div class="shortcut-row"><kbd>Esc</kbd> <span>Zamknij modal / panel</span></div>
             </div>
             </div>
           </details>
@@ -582,9 +587,6 @@
               <div class="table-actions">
                 <button class="btn btn-sm ghost hidden" id="wideLongToggle" type="button" aria-pressed="false" title="Przełącz widok blokowy na długi">
                   Wide-to-Long
-                </button>
-                <button class="btn btn-sm ghost" id="expandWidthToolbarBtn" type="button" title="Poszerz / przywróć panel analizy">
-                  Poszerz panel wysuwany
                 </button>
                 <button class="btn btn-sm ghost" id="excelLayoutToggle" type="button" aria-pressed="false" title="Przełącz widok !cols/!rows">
                   Widok Excel
@@ -675,32 +677,6 @@
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260416-11"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', () => {
-        // Stały przycisk poszerzania panelu - zawsze dostępny
-        function toggleExpandWidth() {
-          const expanded = document.body.classList.contains('duration-expanded');
-          document.body.classList.toggle('duration-expanded', !expanded);
-          document.querySelector('.sidebar')?.classList.toggle('duration-expanded', !expanded);
-          document.querySelector('#panel-sheet-inspector')?.classList.toggle('duration-expanded', !expanded);
-          document.querySelector('#panel-aggregation-workbench')?.classList.toggle('duration-expanded', !expanded);
-          
-          // Aktualizuj tekst przycisków
-          const newText = expanded ? "Poszerz panel wysuwany analizy" : "Wróć do standardowej szerokości panelu";
-          const newTextSmall = expanded ? "Poszerz panel wysuwany" : "Standardowa szerokość panelu";
-          
-          document.querySelectorAll('#expandWidthBtn, #expandWidthToolbarBtn').forEach(btn => {
-            if (btn) btn.textContent = btn.id === 'expandWidthToolbarBtn' ? newTextSmall : newText;
-          });
-        }
-        
-        // Podepnij zdarzenia
-        ['expandWidthBtn', 'expandWidthToolbarBtn'].forEach(id => {
-          const btn = document.getElementById(id);
-          if (btn) btn.addEventListener('click', toggleExpandWidth);
-        });
-      });
-      </script>
+    <script src="app.js?v=20260416-12"></script>
   </body>
 </html>

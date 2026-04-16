@@ -87,8 +87,6 @@ const loadingOverlayEl = document.getElementById("loadingOverlay");
 const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
 const cellTooltipEl = document.getElementById("cellTooltip");
-const sheetInspectorPanelEl = document.getElementById("panel-sheet-inspector");
-const aggregationWorkbenchPanelEl = document.getElementById("panel-aggregation-workbench");
 const quickSearchPopupEl = document.getElementById("quickSearchPopup");
 const quickSearchPopupInput = document.getElementById("quickSearchPopupInput");
 const quickSearchPopupModeEl = document.getElementById("quickSearchPopupMode");
@@ -155,7 +153,6 @@ let tooltipHideTimer = null;
 let durationAnalysisState = {
   statusFilter: "all",
   sortMetric: "avg",
-  expanded: false,
   showCount: 14,
 };
 let aggregationWorkbenchState = {
@@ -169,7 +166,7 @@ let aggregationWorkbenchState = {
   matchMode: "contains",
   showCount: 20,
 };
-const APP_BUILD_VERSION = "20260416-11";
+const APP_BUILD_VERSION = "20260416-12";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -252,7 +249,7 @@ function createEmptyInsight(text) {
 
 function renderInsightList(container, items, emptyText) {
   if (!container) return;
-  container.innerHTML = "";
+  container.replaceChildren();
   if (!items || !items.length) {
     container.appendChild(createEmptyInsight(emptyText));
     return;
@@ -277,7 +274,7 @@ function renderInsightList(container, items, emptyText) {
 
 function renderInsightFlags(items) {
   if (!insightFlagsEl) return;
-  insightFlagsEl.innerHTML = "";
+  insightFlagsEl.replaceChildren();
   if (!items || !items.length) {
     insightFlagsEl.appendChild(createEmptyInsight("Brak istotnych flag dla aktualnego pliku."));
     return;
@@ -404,7 +401,7 @@ function detectSections(sheet, headerRow, data) {
 
 function renderSections() {
   if (!sectionNavigatorEl) return;
-  sectionNavigatorEl.innerHTML = "";
+  sectionNavigatorEl.replaceChildren();
   if (!currentSections.length) {
     sectionNavigatorEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby wykryc sekcje i bloki layoutu."));
     return;
@@ -452,7 +449,7 @@ function renderSections() {
 
 function renderSheetInspectorSummary() {
   if (!sheetInspectorSummaryEl) return;
-  sheetInspectorSummaryEl.innerHTML = "";
+  sheetInspectorSummaryEl.replaceChildren();
 
   if (!currentHeaders.length || !baseRows.length) {
     sheetInspectorSummaryEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby zobaczyc szybkie podsumowanie struktury i najwazniejszych sygnalow."));
@@ -1018,8 +1015,8 @@ function buildDurationAnalysis() {
 
 function renderDurationAnalysis() {
   if (!durationAnalysisSummaryEl || !durationAnalysisListEl) return;
-  durationAnalysisSummaryEl.innerHTML = "";
-  durationAnalysisListEl.innerHTML = "";
+  durationAnalysisSummaryEl.replaceChildren();
+  durationAnalysisListEl.replaceChildren();
 
   const analysis = buildDurationAnalysis();
 
@@ -1081,54 +1078,60 @@ function renderDurationAnalysis() {
   }
   durationAnalysisSummaryEl.appendChild(note);
 
-  const primaryActions = document.createElement("div");
-  primaryActions.className = "duration-analysis-primary-actions";
-
-  const expandBtn = document.createElement("button");
-  expandBtn.className = "btn full duration-expand-btn";
-  expandBtn.type = "button";
-  expandBtn.dataset.durationAction = "toggle-expand";
-  expandBtn.textContent = durationAnalysisState.expanded ? "Wroc do standardowej szerokosci" : "Poszerz panel analizy";
-  primaryActions.appendChild(expandBtn);
-
-  durationAnalysisSummaryEl.appendChild(primaryActions);
-
   const controls = document.createElement("div");
   controls.className = "duration-analysis-controls";
 
   const statusField = document.createElement("label");
   statusField.className = "field";
-  statusField.innerHTML = `Status
-    <select data-duration-control="status">
-      <option value="all">Wszystkie</option>
-      <option value="closed">Tylko zamkniete</option>
-      <option value="open">Tylko otwarte</option>
-    </select>`;
-  statusField.querySelector("select").value = durationAnalysisState.statusFilter;
+  statusField.append("Status");
+  const statusSelect = document.createElement("select");
+  statusSelect.dataset.durationControl = "status";
+  [
+    { value: "all", label: "Wszystkie" },
+    { value: "closed", label: "Tylko zamkniete" },
+    { value: "open", label: "Tylko otwarte" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    statusSelect.appendChild(option);
+  });
+  statusSelect.value = durationAnalysisState.statusFilter;
+  statusField.appendChild(statusSelect);
 
   const sortField = document.createElement("label");
   sortField.className = "field";
-  sortField.innerHTML = `Sortuj po
-    <select data-duration-control="sort">
-      <option value="avg">Sredniej</option>
-      <option value="median">Medianie</option>
-      <option value="count">Liczbie rekordow</option>
-      <option value="max">Maksimum</option>
-      <option value="min">Minimum</option>
-    </select>`;
-  sortField.querySelector("select").value = durationAnalysisState.sortMetric;
+  sortField.append("Sortuj po");
+  const sortSelect = document.createElement("select");
+  sortSelect.dataset.durationControl = "sort";
+  [
+    { value: "avg", label: "Sredniej" },
+    { value: "median", label: "Medianie" },
+    { value: "count", label: "Liczbie rekordow" },
+    { value: "max", label: "Maksimum" },
+    { value: "min", label: "Minimum" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    sortSelect.appendChild(option);
+  });
+  sortSelect.value = durationAnalysisState.sortMetric;
+  sortField.appendChild(sortSelect);
 
   const countField = document.createElement("label");
   countField.className = "field";
-  countField.innerHTML = `Pokaz rekordow
-    <select data-duration-control="count">
-      <option value="14">14</option>
-      <option value="24">24</option>
-      <option value="40">40</option>
-      <option value="80">80</option>
-      <option value="999">Wszystkie</option>
-    </select>`;
-  countField.querySelector("select").value = String(durationAnalysisState.showCount);
+  countField.append("Pokaz rekordow");
+  const countSelect = document.createElement("select");
+  countSelect.dataset.durationControl = "count";
+  ["14", "24", "40", "80", "999"].forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value === "999" ? "Wszystkie" : value;
+    countSelect.appendChild(option);
+  });
+  countSelect.value = String(durationAnalysisState.showCount);
+  countField.appendChild(countSelect);
 
   controls.appendChild(statusField);
   controls.appendChild(sortField);
@@ -1554,8 +1557,8 @@ function buildAggregationWorkbenchResult() {
 
 function renderAggregationWorkbench() {
   if (!aggregationWorkbenchSummaryEl || !aggregationWorkbenchListEl) return;
-  aggregationWorkbenchSummaryEl.innerHTML = "";
-  aggregationWorkbenchListEl.innerHTML = "";
+  aggregationWorkbenchSummaryEl.replaceChildren();
+  aggregationWorkbenchListEl.replaceChildren();
 
   const result = buildAggregationWorkbenchResult();
   if (result.status === "empty") {
@@ -1609,32 +1612,56 @@ function renderAggregationWorkbench() {
 
   const sourceField = document.createElement("label");
   sourceField.className = "field";
-  sourceField.innerHTML = `Zrodlo
-    <select data-aggregation-control="source">
-      <option value="auto">Auto</option>
-      <option value="wide">Widok klasyczny</option>
-      ${result.longAvailable ? '<option value="long">Wide-to-Long</option>' : ""}
-    </select>`;
-  sourceField.querySelector("select").value = aggregationWorkbenchState.sourceMode;
+  sourceField.append("Zrodlo");
+  const sourceSelect = document.createElement("select");
+  sourceSelect.dataset.aggregationControl = "source";
+  [
+    { value: "auto", label: "Auto" },
+    { value: "wide", label: "Widok klasyczny" },
+    ...(result.longAvailable ? [{ value: "long", label: "Wide-to-Long" }] : []),
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    sourceSelect.appendChild(option);
+  });
+  sourceSelect.value = aggregationWorkbenchState.sourceMode;
+  sourceField.appendChild(sourceSelect);
 
   const scopeField = document.createElement("label");
   scopeField.className = "field";
-  scopeField.innerHTML = `Zakres
-    <select data-aggregation-control="scope">
-      <option value="filtered">Aktualny widok</option>
-      <option value="all">Caly arkusz</option>
-    </select>`;
-  scopeField.querySelector("select").value = aggregationWorkbenchState.scopeMode;
+  scopeField.append("Zakres");
+  const scopeSelect = document.createElement("select");
+  scopeSelect.dataset.aggregationControl = "scope";
+  [
+    { value: "filtered", label: "Aktualny widok" },
+    { value: "all", label: "Caly arkusz" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    scopeSelect.appendChild(option);
+  });
+  scopeSelect.value = aggregationWorkbenchState.scopeMode;
+  scopeField.appendChild(scopeSelect);
 
   const headerField = document.createElement("label");
   headerField.className = "field";
-  headerField.innerHTML = `Naglowek agregacji
-    <div class="aggregation-header-row">
-      <select data-aggregation-control="header"></select>
-      <input data-aggregation-control="header-number" type="number" min="1" step="1" inputmode="numeric" placeholder="nr wiersza" />
-    </div>`;
-  const headerSelect = headerField.querySelector("select");
-  const headerNumberInput = headerField.querySelector("input");
+  headerField.append("Naglowek agregacji");
+  const headerRowWrap = document.createElement("div");
+  headerRowWrap.className = "aggregation-header-row";
+  const headerSelect = document.createElement("select");
+  headerSelect.dataset.aggregationControl = "header";
+  const headerNumberInput = document.createElement("input");
+  headerNumberInput.dataset.aggregationControl = "header-number";
+  headerNumberInput.type = "number";
+  headerNumberInput.min = "1";
+  headerNumberInput.step = "1";
+  headerNumberInput.inputMode = "numeric";
+  headerNumberInput.placeholder = "nr wiersza";
+  headerRowWrap.appendChild(headerSelect);
+  headerRowWrap.appendChild(headerNumberInput);
+  headerField.appendChild(headerRowWrap);
   const autoOpt = document.createElement("option");
   autoOpt.value = "auto";
   autoOpt.textContent = `Auto (najlepszy: ${result.resolvedHeaderRow})`;
@@ -1649,9 +1676,10 @@ function renderAggregationWorkbench() {
 
   const groupField = document.createElement("label");
   groupField.className = "field";
-  groupField.innerHTML = `Grupuj po
-    <select data-aggregation-control="group"></select>`;
-  const groupSelect = groupField.querySelector("select");
+  groupField.append("Grupuj po");
+  const groupSelect = document.createElement("select");
+  groupSelect.dataset.aggregationControl = "group";
+  groupField.appendChild(groupSelect);
   result.groupOptions.forEach((option) => {
     const opt = document.createElement("option");
     opt.value = option.value;
@@ -1662,9 +1690,10 @@ function renderAggregationWorkbench() {
 
   const measureField = document.createElement("label");
   measureField.className = "field";
-  measureField.innerHTML = `Mierz
-    <select data-aggregation-control="measure"></select>`;
-  const measureSelect = measureField.querySelector("select");
+  measureField.append("Mierz");
+  const measureSelect = document.createElement("select");
+  measureSelect.dataset.aggregationControl = "measure";
+  measureField.appendChild(measureSelect);
   result.measures.forEach((candidate) => {
     const opt = document.createElement("option");
     opt.value = candidate.key;
@@ -1675,9 +1704,10 @@ function renderAggregationWorkbench() {
 
   const aggregationField = document.createElement("label");
   aggregationField.className = "field";
-  aggregationField.innerHTML = `Agregacja
-    <select data-aggregation-control="aggregation"></select>`;
-  const aggregationSelect = aggregationField.querySelector("select");
+  aggregationField.append("Agregacja");
+  const aggregationSelect = document.createElement("select");
+  aggregationSelect.dataset.aggregationControl = "aggregation";
+  aggregationField.appendChild(aggregationSelect);
   result.allowedAggregations.forEach((key) => {
     const opt = document.createElement("option");
     opt.value = key;
@@ -1688,24 +1718,34 @@ function renderAggregationWorkbench() {
 
   const matchField = document.createElement("label");
   matchField.className = "field";
-  matchField.innerHTML = `Dopasowanie tekstu
-    <select data-aggregation-control="match">
-      <option value="contains">Zawiera</option>
-      <option value="exact">Dokladnie</option>
-    </select>`;
-  matchField.querySelector("select").value = aggregationWorkbenchState.matchMode;
+  matchField.append("Dopasowanie tekstu");
+  const matchSelect = document.createElement("select");
+  matchSelect.dataset.aggregationControl = "match";
+  [
+    { value: "contains", label: "Zawiera" },
+    { value: "exact", label: "Dokladnie" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    matchSelect.appendChild(option);
+  });
+  matchSelect.value = aggregationWorkbenchState.matchMode;
+  matchField.appendChild(matchSelect);
 
   const showCountField = document.createElement("label");
   showCountField.className = "field";
-  showCountField.innerHTML = `Pokaz wynikow
-    <select data-aggregation-control="count">
-      <option value="10">10</option>
-      <option value="20">20</option>
-      <option value="40">40</option>
-      <option value="80">80</option>
-      <option value="999">Wszystkie</option>
-    </select>`;
-  showCountField.querySelector("select").value = String(aggregationWorkbenchState.showCount);
+  showCountField.append("Pokaz wynikow");
+  const showCountSelect = document.createElement("select");
+  showCountSelect.dataset.aggregationControl = "count";
+  ["10", "20", "40", "80", "999"].forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value === "999" ? "Wszystkie" : value;
+    showCountSelect.appendChild(option);
+  });
+  showCountSelect.value = String(aggregationWorkbenchState.showCount);
+  showCountField.appendChild(showCountSelect);
 
   [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, showCountField].forEach((field) => controls.appendChild(field));
   aggregationWorkbenchSummaryEl.appendChild(controls);
@@ -2032,7 +2072,7 @@ function detectRepeatingBlocks(sheet, headerRow, data) {
 
 function renderRepeatingBlocks() {
   if (!repeatBlockDetectorEl) return;
-  repeatBlockDetectorEl.innerHTML = "";
+  repeatBlockDetectorEl.replaceChildren();
   if (!currentRepeatingBlocks.length) {
     repeatBlockDetectorEl.appendChild(createEmptyInsight("Brak wyraznych powtarzalnych blokow dla aktualnego arkusza. Najlepiej dziala na szerokich tabelach z cyklami, etapami albo seriami podobnych kolumn."));
     return;
@@ -2500,8 +2540,8 @@ function collectKpiEntries(sheet, headerRow) {
 
 function renderKpiExtractor() {
   if (!kpiSummaryEl || !kpiListEl) return;
-  kpiSummaryEl.innerHTML = "";
-  kpiListEl.innerHTML = "";
+  kpiSummaryEl.replaceChildren();
+  kpiListEl.replaceChildren();
 
   if (!currentHeaders.length || !currentKpiEntries.length) {
     renderInsightList(kpiSummaryEl, [], "Brak wykrytych KPI lub podsumowan dla aktualnego arkusza.");
@@ -2718,7 +2758,7 @@ function collectColumnProfiles() {
 
 function renderColumnProfiles() {
   if (!columnProfilerEl) return;
-  columnProfilerEl.innerHTML = "";
+  columnProfilerEl.replaceChildren();
   if (!currentColumnProfiles.length) {
     columnProfilerEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby zobaczyc profil kolumn i szybkie sygnaly problemowosci."));
     return;
@@ -3207,7 +3247,7 @@ function setPrimarySort(col, dir = "asc") {
 
 function populateSortColumnSelect() {
   if (!sortColumnSelectEl) return;
-  sortColumnSelectEl.innerHTML = "";
+  sortColumnSelectEl.replaceChildren();
   if (!currentHeaders.length) {
     const opt = document.createElement("option");
     opt.value = "";
@@ -3229,7 +3269,7 @@ function populateSortColumnSelect() {
 
 function renderSortRules() {
   if (!sortRulesListEl) return;
-  sortRulesListEl.innerHTML = "";
+  sortRulesListEl.replaceChildren();
   if (!multiSortState.length) {
     sortRulesListEl.appendChild(createEmptyInsight("Brak aktywnych sortowan. Kliknij naglowek tabeli albo dodaj regule tutaj."));
     return;
@@ -3308,7 +3348,7 @@ function saveSortPresets(presets) {
 function renderSortPresets() {
   if (!sortPresetSelectEl) return;
   const presets = loadSortPresets();
-  sortPresetSelectEl.innerHTML = "";
+  sortPresetSelectEl.replaceChildren();
   if (!presets.length) {
     const opt = document.createElement("option");
     opt.value = "";
@@ -4093,8 +4133,8 @@ function renderTable(modelOrHeaders, maybeRows) {
   }
 
   showTable();
-  theadEl.innerHTML = "";
-  tbodyEl.innerHTML = "";
+  theadEl.replaceChildren();
+  tbodyEl.replaceChildren();
 
   const useExcelLayout = isExcelLayoutEnabled();
   const widths = computeColumnWidths(headers, rows, useExcelLayout);
@@ -4110,7 +4150,7 @@ function renderTable(modelOrHeaders, maybeRows) {
     col.style.width = `${w}px`;
     colgroup.appendChild(col);
   });
-  tableEl.innerHTML = "";
+  tableEl.replaceChildren();
   tableEl.appendChild(colgroup);
   tableEl.appendChild(theadEl);
   tableEl.appendChild(tbodyEl);
@@ -4385,7 +4425,7 @@ function renderFormulaFunctionFilter() {
   if (!formulaFunctionFilterEl) return;
   const previous = formulaFunctionFilterEl.value;
   const names = Array.from(new Set(currentFormulaEntries.map((entry) => entry.functionName))).sort((a, b) => a.localeCompare(b, "pl"));
-  formulaFunctionFilterEl.innerHTML = "";
+  formulaFunctionFilterEl.replaceChildren();
 
   const allOpt = document.createElement("option");
   allOpt.value = "";
@@ -4456,8 +4496,8 @@ function aggregateFormulaEntries(entries) {
 
 function renderFormulaWorkbench() {
   if (!formulaWorkbenchSummaryEl || !formulaWorkbenchListEl) return;
-  formulaWorkbenchSummaryEl.innerHTML = "";
-  formulaWorkbenchListEl.innerHTML = "";
+  formulaWorkbenchSummaryEl.replaceChildren();
+  formulaWorkbenchListEl.replaceChildren();
   renderFormulaFunctionFilter();
 
   if (!currentHeaders.length || !currentFormulaEntries.length) {
@@ -4782,7 +4822,7 @@ function openColumnPicker(key) {
         ? "Kolumny filtru tekstowego 2"
         : "Kolumny filtru dat";
   }
-  columnListEl.innerHTML = "";
+  columnListEl.replaceChildren();
   columnSearchEl.value = "";
   const currentSet = columnSelections[key];
   const isAll = currentSet.size === 0;
@@ -4960,14 +5000,59 @@ function initIntroSplash() {
   }
 }
 
+function createThemeIcon(isDark) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "18");
+  svg.setAttribute("height", "18");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  if (isDark) {
+    // Sun icon for dark mode active (click to switch to light)
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "12");
+    circle.setAttribute("cy", "12");
+    circle.setAttribute("r", "5");
+    svg.appendChild(circle);
+
+    const rays = [
+      { x1: "12", y1: "1", x2: "12", y2: "3" },
+      { x1: "12", y1: "21", x2: "12", y2: "23" },
+      { x1: "4.22", y1: "4.22", x2: "5.64", y2: "5.64" },
+      { x1: "18.36", y1: "18.36", x2: "19.78", y2: "19.78" },
+      { x1: "1", y1: "12", x2: "3", y2: "12" },
+      { x1: "21", y1: "12", x2: "23", y2: "12" },
+      { x1: "4.22", y1: "19.78", x2: "5.64", y2: "18.36" },
+      { x1: "18.36", y1: "5.64", x2: "19.78", y2: "4.22" },
+    ];
+
+    rays.forEach(ray => {
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      Object.entries(ray).forEach(([attr, val]) => line.setAttribute(attr, val));
+      svg.appendChild(line);
+    });
+  } else {
+    // Moon icon for light mode active (click to switch to dark)
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z");
+    svg.appendChild(path);
+  }
+
+  return svg;
+}
+
 function setTheme(theme, persist = true) {
   rootEl.setAttribute("data-theme", theme);
   themeToggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
   if (persist) localStorage.setItem(THEME_KEY, theme);
-  themeToggle.innerHTML =
-    theme === "dark"
-      ? "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"5\"/><line x1=\"12\" y1=\"1\" x2=\"12\" y2=\"3\"/><line x1=\"12\" y1=\"21\" x2=\"12\" y2=\"23\"/><line x1=\"4.22\" y1=\"4.22\" x2=\"5.64\" y2=\"5.64\"/><line x1=\"18.36\" y1=\"18.36\" x2=\"19.78\" y2=\"19.78\"/><line x1=\"1\" y1=\"12\" x2=\"3\" y2=\"12\"/><line x1=\"21\" y1=\"12\" x2=\"23\" y2=\"12\"/><line x1=\"4.22\" y1=\"19.78\" x2=\"5.64\" y2=\"18.36\"/><line x1=\"18.36\" y1=\"5.64\" x2=\"19.78\" y2=\"4.22\"/></svg>"
-      : "<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z\"/></svg>";
+  
+  // Clear existing content and append safe SVG element
+  themeToggle.textContent = "";
+  themeToggle.appendChild(createThemeIcon(theme === "dark"));
 }
 
 function updateNetworkBadge() {
@@ -5016,7 +5101,7 @@ async function handleFile(file) {
     } catch {
       workbook = XLSX.read(data, { cellDates: true });
     }
-    sheetSelect.innerHTML = "";
+    sheetSelect.replaceChildren();
     workbook.SheetNames.forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s;
@@ -5653,10 +5738,10 @@ function syncSidebarHandle() {
     if (isSidebarOpen() && sidebarEl) {
       const rect = sidebarEl.getBoundingClientRect();
       const overlap = 8;
-      const nextLeft = Math.max(12, Math.round(rect.right - overlap));
+      const nextLeft = Math.max(8, Math.round(rect.right - overlap)); // [EN] Allow tighter edge on narrow viewports; CSS handles closed state
       panelHandle.style.left = `${nextLeft}px`;
     } else {
-      panelHandle.style.left = "12px";
+      panelHandle.style.removeProperty("left"); // [EN] Let .sidebar-handle use fluid clamp() when closed
     }
   }
 }
@@ -5676,6 +5761,13 @@ function setReadingMode(enabled) {
 panelToggle.addEventListener("click", toggleSidebar);
 if (panelHandle) panelHandle.addEventListener("click", toggleSidebar);
 if (sidebarScrim) sidebarScrim.addEventListener("click", () => setSidebarOpen(false));
+document.querySelectorAll("details.panel").forEach((det) => {
+  det.addEventListener("toggle", () => {
+    if (!isSidebarOpen()) return;
+    requestAnimationFrame(() => syncSidebarHandle()); // [EN] :has() width changes — no resize event; keep handle aligned
+    window.setTimeout(() => syncSidebarHandle(), 260);
+  });
+});
 if (sectionNavigatorEl) {
   sectionNavigatorEl.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-section-index]");
@@ -5715,23 +5807,6 @@ if (durationAnalysisSummaryEl) {
 
     if (action === "reset-filters") {
       resetFiltersBtn.click();
-    }
-
-    if (action === "toggle-expand") {
-      durationAnalysisState.expanded = !durationAnalysisState.expanded;
-      sidebarEl?.classList.toggle("duration-expanded", durationAnalysisState.expanded);
-      if (sheetInspectorPanelEl) {
-        sheetInspectorPanelEl.classList.toggle("duration-expanded", durationAnalysisState.expanded);
-      }
-      if (aggregationWorkbenchPanelEl) {
-        aggregationWorkbenchPanelEl.classList.toggle("duration-expanded", durationAnalysisState.expanded);
-      }
-      setSidebarOpen(true);
-      syncSidebarHandle();
-      requestAnimationFrame(() => syncSidebarHandle());
-      window.setTimeout(() => syncSidebarHandle(), 220);
-      renderDurationAnalysis();
-      renderAggregationWorkbench();
     }
   });
   durationAnalysisSummaryEl.addEventListener("change", (e) => {
@@ -6036,6 +6111,34 @@ document.addEventListener("keydown", (e) => {
       toast("Wczytaj arkusz, żeby szukać", "info");
     }
   }
+  // Dodatkowo umożliwiam użycie klawisza "Q" zamiast Escape (np. dla klawiatur bez klawisza Escape)
+
+  // Wersja z nowym const (pierwotna)
+ /*  const isEscapeOrQ = (key) => key === "Escape" || key.toLowerCase() === "q";
+
+  if (e.shiftKey && isEscapeOrQ(e.key) && selectedCellState) {
+    e.preventDefault();
+    setSelectedCell("", -1);
+    return;
+  }
+  if (!e.shiftKey && isEscapeOrQ(e.key) && focusedCellState) {
+    e.preventDefault();
+    setFocusedCell("", -1);
+    return;
+  }
+ */
+  if (e.shiftKey && (e.key === "Escape" || e.key.toLowerCase() === "q") && selectedCellState) {
+    e.preventDefault();
+    setSelectedCell("", -1);
+    return;
+  }
+  if (!e.shiftKey && (e.key === "Escape" || e.key.toLowerCase() === "q") && focusedCellState) {
+    e.preventDefault();
+    setFocusedCell("", -1);
+    return;
+  }
+
+
   if (e.key === "Escape" && !columnPickerEl.classList.contains("hidden")) {
     closeColumnPicker();
   }

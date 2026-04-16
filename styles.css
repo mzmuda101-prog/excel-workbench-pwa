@@ -343,24 +343,116 @@ body.splashing {
 .sidebar {
   position: fixed;
   top: 86px;
-  left: 16px;
+  left: clamp(10px, 1.2vw + 6px, 18px); /* [EN] Align inset with fluid handle / small viewports */
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(360px, calc(100vw - 24px));
+  /* [EN] Fluid default width: ~280px on narrow tablets, up to 360px on large screens, capped by viewport */
+  width: min(
+    clamp(280px, 5.5vw + 255px, 360px),
+    calc(100vw - 24px)
+  );
   max-width: none;
-  max-height: calc(100vh - 108px);
+  max-height: calc(100vh - 95px);
   overflow-y: auto;
   padding-right: 2px;
   z-index: 30;
-  transform: translateX(calc(-100% - 24px));
+  transform: translateX(calc(-100% - clamp(16px, 2.4vw, 28px)));
   opacity: 0;
   pointer-events: none;
   transition: transform var(--t-slow), opacity var(--t), width var(--t-slow);
 }
 
-.sidebar.duration-expanded {
-  width: min(680px, calc(100vw - 32px));
+/* [EN] Auto-widen when a dense accordion is open + room exists — no JS; :has() skips always-open file/actions */
+@media (min-width: 840px) { 
+  .sidebar:has(#panel-sheet-inspector[open]),
+  .sidebar:has(#panel-aggregation-workbench[open]),
+  .sidebar:has(#panel-formula-workbench[open]),
+  .sidebar:has(#panel-workbench-analysis[open]),
+  .sidebar:has(#panel-kpi-extractor[open]),
+  .sidebar:has(#panel-sort-workbench[open]) {
+    width: min(
+      clamp(392px, 20vw + 260px, 620px),
+      calc(100vw - 28px)
+    );
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .inspector-map-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .duration-analysis-controls {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .duration-analysis-list {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .duration-analysis-list .duration-analysis-note {
+    grid-column: 1 / -1;
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .section-nav-list,
+  .sidebar:has(#panel-sheet-inspector[open]) .column-profiler-list,
+  .sidebar:has(#panel-sheet-inspector[open]) .repeat-blocks-list {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+  }
+
+  .sidebar:has(#panel-aggregation-workbench[open]) .aggregation-controls {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .sidebar:has(#panel-sheet-inspector[open]),
+  .sidebar:has(#panel-aggregation-workbench[open]),
+  .sidebar:has(#panel-formula-workbench[open]) {
+    width: min(
+      clamp(460px, 26vw + 200px, 960px),
+      calc(100vw - 32px)
+    );
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .inspector-map-grid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .duration-analysis-list {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .duration-person-item {
+    padding: 12px;
+  }
+
+  .sidebar:has(#panel-aggregation-workbench[open]) .aggregation-workbench-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .sidebar:has(#panel-aggregation-workbench[open]) .aggregation-workbench-list .duration-analysis-note {
+    grid-column: 1 / -1;
+  }
+
+  .sidebar:has(#panel-formula-workbench[open]) .formula-list {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  .sidebar:has(#panel-kpi-extractor[open]) .kpi-list {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .sidebar:has(#panel-workbench-analysis[open]) .insight-list {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .sidebar:has(#panel-sheet-inspector[open]) .sheet-inspector-summary {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
 }
 
 .sidebar > * {
@@ -393,11 +485,11 @@ body.splashing {
 .sidebar-handle {
   position: fixed;
   top: 50%;
-  left: 12px;
+  left: clamp(8px, 1.2vw + 6px, 15px); /* [EN] Closed position; open state set inline from sidebar rect */
   transform: translateY(-50%);
-  width: 46px;
-  height: 112px;
-  border-radius: 20px;
+  width: clamp(40px, 2.6vw + 34px, 52px);
+  height: clamp(96px, 11vh + 36px, 120px);
+  border-radius: clamp(16px, 2vw + 10px, 22px);
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--panel) 72%, transparent) 0%, color-mix(in srgb, var(--panel) 82%, transparent) 100%);
@@ -1027,16 +1119,6 @@ details.panel[open] > summary {
   color: var(--muted);
 }
 
-.duration-analysis-primary-actions {
-  display: grid;
-  gap: 8px;
-}
-
-.duration-expand-btn {
-  justify-content: center;
-  box-shadow: var(--shadow-sm);
-}
-
 .duration-analysis-controls {
   display: grid;
   gap: 10px;
@@ -1132,64 +1214,6 @@ details.panel[open] > summary {
   border: 1px solid color-mix(in srgb, var(--info) 18%, var(--border));
 }
 
-#panel-sheet-inspector.duration-expanded .duration-analysis-list {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 10px;
-}
-
-#panel-sheet-inspector.duration-expanded .inspector-map-grid {
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  align-items: start;
-}
-
-#panel-sheet-inspector.duration-expanded .section-nav-list {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-}
-#panel-sheet-inspector.duration-expanded .column-profiler-list {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-}
-#panel-sheet-inspector.duration-expanded .repeat-blocks-list {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-}
-
-#panel-sheet-inspector.duration-expanded .duration-analysis-list .duration-analysis-note {
-  grid-column: 1 / -1;
-}
-
-#panel-sheet-inspector.duration-expanded .sheet-inspector-summary {
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-}
-
-#panel-sheet-inspector.duration-expanded .duration-person-item {
-  padding: 12px;
-}
-
-#panel-sheet-inspector.duration-expanded .duration-analysis-controls {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
-#panel-aggregation-workbench.duration-expanded .aggregation-controls {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
-#panel-aggregation-workbench.duration-expanded .aggregation-workbench-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-#panel-aggregation-workbench.duration-expanded .aggregation-workbench-list .duration-analysis-note {
-  grid-column: 1 / -1;
-}
-
-@media (min-width: 1800px) {
-  .sidebar.duration-expanded {
-    width: min(760px, calc(100vw - 40px));
-  }
-}
-
 @media (max-width: 768px) {
   .duration-analysis-controls {
     grid-template-columns: 1fr;
@@ -1199,15 +1223,16 @@ details.panel[open] > summary {
     grid-template-columns: 1fr;
   }
 
-  #panel-sheet-inspector.duration-expanded .duration-analysis-list {
+  /* [EN] Below :has() min-width rules — force single column on phones if fluid sidebar still shows grids */
+  .sidebar:has(#panel-sheet-inspector[open]) .duration-analysis-list {
     grid-template-columns: 1fr;
   }
 
-  #panel-sheet-inspector.duration-expanded .inspector-map-grid {
+  .sidebar:has(#panel-sheet-inspector[open]) .inspector-map-grid {
     grid-template-columns: 1fr;
   }
 
-  #panel-aggregation-workbench.duration-expanded .aggregation-workbench-list {
+  .sidebar:has(#panel-aggregation-workbench[open]) .aggregation-workbench-list {
     grid-template-columns: 1fr;
   }
 }
@@ -1905,6 +1930,9 @@ tbody td.cell-has-fill:not([style*="background"]) {
 
 tbody tr.row-focused td {
   background: color-mix(in srgb, var(--accent-light) 54%, white) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 tbody tr.row-focused td:first-child {
@@ -1913,20 +1941,22 @@ tbody tr.row-focused td:first-child {
 
 [data-theme="dark"] tbody tr.row-focused td {
   background: color-mix(in srgb, var(--accent-light) 74%, var(--panel)) !important;
-}
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 20%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent) 20%, transparent)}
 
 [data-theme="dark"] tbody tr.row-focused td:first-child {
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
-tbody td.cell-selected {
+tbody td.cell-selected.cell-selected { /* Te powtórzenie to podbicie specyficzności, by komórka była nad wierszem - taki trick ;) */
   background: color-mix(in srgb, var(--accent-light) 72%, white) !important;
   box-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--accent-h) 58%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 4px;
 }
-
-[data-theme="dark"] tbody td.cell-selected {
+[data-theme="dark"] tbody td.cell-selected.cell-selected { /* Te powtórzenie to podbicie specyficzności, by komórka była nad wierszem - taki trick ;) */
   background: color-mix(in srgb, var(--accent-light) 82%, var(--panel)) !important;
   box-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--accent) 52%, transparent),
@@ -1941,6 +1971,17 @@ tbody td.cell-selected {
   font-size: 12.5px;
   font-family: inherit;
 }
+
+/* zaznaczony wiersz - też dajemy transition, żeby tło zmieniało się spójnie z komórką */
+tbody tr.row-focused td{
+  transition: box-shadow 0.1s ease, border-radius 0.1s ease;
+  /* ... reszta twoich styli dla wiersza ... */
+}
+tbody td.cell-selected {
+  transition: box-shadow 0.1s ease, border-radius 0.1s ease;
+  /* ... reszta twoich styli dla wiersza ... */
+}
+
 
 tbody tr { transition: background var(--t-fast); }
 tbody tr:hover td { background: rgba(47,111,92,.04); }
@@ -2405,7 +2446,8 @@ kbd {
     height: 96px;
   }
   .sidebar-open .sidebar-handle {
-    left: calc(100vw - 47px);
+    /* [EN] Fallback when inline position absent; match ~handle width + margin */
+    left: calc(100vw - 48px);
   }
   .quick-search {
     width: 100%;
