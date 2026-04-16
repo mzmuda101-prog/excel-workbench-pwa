@@ -1,70 +1,123 @@
 # Excel Workbench PWA
 
-Lekka PWA do lokalnego przegladania, filtrowania i edycji arkuszy Excel.
-Dziala w przegladarce (iPad i macOS), bez backendu. Pliki sa wybierane przez systemowy picker.
+Local, offline-first workbook workbench for exploring, filtering, restructuring, and lightly editing Excel files in the browser.
 
-## Dla rekrutera (krotko)
+It is built for the moments when classic Excel feels too heavy, too awkward, or simply unavailable, especially on tablets and PWA-style workflows where macros are not a realistic option.
 
-Projekt pokazuje:
-- PWA offline-first (Service Worker + manifest)
-- Przetwarzanie .xlsx lokalnie w przegladarce (bez backendu)
-- UX narzedziowy: filtry wielokolumnowe, zakresy dat, sortowanie, edycja
-- Organizacja kodu pod dalszy rozwoj (czytelne warstwy UI/logic)
+## Screenshots
 
-## Start lokalny
+![Excel Workbench PWA screenshot 1](./docs/images/excel-workbench-pwa-screenshot-1.png)
+Main view with the sidebar collapsed.
 
-Uzyj dowolnego prostego serwera statycznego, np.:
+![Excel Workbench PWA screenshot 2](./docs/images/excel-workbench-pwa-screenshot-2.png)
+Main view with the sidebar expanded.
+
+## Why This Exists
+
+This project came out of a real workflow need, not from a generic idea for "Excel in the browser".
+
+In practice, there are many situations where Excel starts to break down for everyday work:
+
+- the file is hard to understand quickly
+- the workflow is awkward on tablet or in a browser
+- the task would normally push you toward macros or complicated multi-step manual work
+- the data needs inspection, restructuring, or repeated analysis more than classic spreadsheet authoring
+
+This project exists because a lot of real Excel work is not really about spreadsheet authoring. It is about:
+
+- understanding messy workbooks quickly
+- filtering and comparing data faster than in standard Excel flows
+- working safely on iPad or in the browser
+- replacing some macro-shaped workflows with simpler local tools
+
+The goal is not to clone Excel.
+
+The goal is to build a workbench around Excel files:
+
+- local-first
+- safe for source files
+- useful on desktop and tablet
+- better at inspection, filtering, structure discovery, and lightweight analysis
+- able to handle some tasks that normally require macros, VBA, or overly complicated Excel workflows
+
+## What It Already Does
+
+- open `.xlsx` and `.xlsm` files locally in the browser
+- work without a backend
+- support offline usage through a service worker
+- choose sheet and header row
+- filter by text and date
+- sort and save working views
+- inspect workbook structure
+- detect repeated column blocks
+- switch some wide sheets into `Wide-to-Long`
+- run lightweight aggregation and duration analysis
+- browse formulas in a dedicated workbench
+- export CSV and save edited files
+
+## Product Direction
+
+Excel Workbench PWA is intentionally focused on:
+
+- browsing and understanding workbooks
+- workbench-style filtering and analysis
+- lightweight transformations that are safe in a browser
+- features that still make sense without VBA/macros
+
+It intentionally does not try to become a full Excel replacement.
+
+## Start Locally
+
+Use any simple static server, for example:
 
 ```bash
 python3 -m http.server 8001
 ```
 
-Potem wejdz na:
-```
+Then open:
+
+```text
 http://127.0.0.1:8001/
 ```
 
-## Deploy na Vercel
+## Deploy
 
-To jest statyczna strona. Na Vercel ustaw:
+This is a static app.
+
+For Vercel:
+
 - Framework: `Other`
-- Build: brak
-- Output: root repo
+- Build command: none
+- Output directory: repo root
 
-## Dodanie na ekran glowny (iPad / iOS)
+## Add To Home Screen
 
-1. Otworz strone w Safari.
-2. Kliknij ikone udostepniania.
-3. Wybierz "Dodaj do ekranu poczatkowego".
+On iPad / iPhone:
 
-## Bezpieczenstwo danych
+1. Open the app in Safari.
+2. Tap Share.
+3. Choose `Add to Home Screen`.
 
-Ta aplikacja nie wysyla plikow .xlsx na serwer — wszystko dzieje sie lokalnie w przegladarce.
-Bezpieczenstwo zalezy od uruchamiania zaufanej wersji strony (bez dodatkowego kodu wysylajacego dane).
+## Privacy And Data Safety
+
+Workbook files are processed locally in the browser.
+
+The app is designed so the Excel file does not need to leave the device. In practice, safety still depends on running a trusted version of the app.
 
 ## Offline
 
-Aplikacja ma prosty Service Worker. Po pierwszym uruchomieniu moze dzialac offline.
-Uzywa **xlsx-js-style** (SheetJS + style); domyslnie z CDN. Dla pelnego offline skopiuj
-`node_modules/xlsx-js-style/dist/xlsx.bundle.js` do `vendor/` i w `index.html` ustaw `<script src="vendor/xlsx.bundle.js">`.
+The app ships with a service worker and can work offline after the first successful load.
 
-## Funkcje
+## Public Roadmap
 
-- Wczytanie .xlsx/.xlsm przez picker
-- Wybor arkusza i wiersza naglowka
-- Filtry tekstowe (2 niezalezne, wiele kolumn)
-- Filtr dat (pomiedzy / przed / po / ostatnie N dni)
-- Sortowanie
-- Auto-szerokosc kolumn + reczne dopasowanie
-- Edycja komorek (blokada formul)
-- Zapis i Zapis jako...
-- Eksport CSV
-- Wykrywanie koloru komorek (fill) i subtelne podswietlenie w podgladzie
+Planned work and longer-term ideas are in [ROADMAP.md](./ROADMAP.md).
 
-## Roadmap
+## Contributing
 
-Plan dalszego rozwoju jest w [ROADMAP.md](./ROADMAP.md).
+Contributions, bug reports, UX suggestions, and workbook-based edge cases are welcome.
 
-## Zapis a wersja Python (openpyxl)
+If you want to contribute, please read [CONTRIBUTING.md](./CONTRIBUTING.md) first.
 
-W PWA zapis dziala tak: edytujesz komorki w pamieci (obiekt `workbook`), potem `XLSX.writeFile(workbook, plik)` zapisuje caly skoroszyt. Formuly i niezmienione komorki sa w obiekcie, wiec trafiaja do pliku. **Roznica:** W Pythonie openpyxl daje pelna wiernosc pliku (otwierasz → edytujesz obiekt → save() = ten sam plik + zmiany). W JS biblioteka przy odczycie i zapisie moze czegos nie odtworzyc 1:1 (np. skomplikowane formatowanie, nisze formuly). Da sie zblizyc do Pythona: uzywamy xlsx-js-style (zachowanie stylow), edytujemy tylko wartosci komorek (formul nie ruszamy) — round-trip jest wtedy lepszy. Pelna rownowaznosc z openpyxl w samej przegladarce nie jest mozliwa bez backendu (Node + openpyxl lub Excel).
+## Notes
+
+Some deeper product and research notes are kept in separate files in this repo. They are useful for development context, but `README.md` and `ROADMAP.md` are the main public-facing entry points.
