@@ -7,7 +7,7 @@
     <title>Excel Workbench</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=20260413-5" />
+    <link rel="stylesheet" href="styles.css?v=20260416-6" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -409,18 +409,27 @@
                 <path d="M7 12h10" />
                 <path d="M7 16h6" />
               </svg>
-              <span class="panel-title">Inspektor arkusza</span>
+              <span class="panel-title">Uklad arkusza</span>
               <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </summary>
             <div class="panel-body">
-              <div class="panel-hint">Jedno miejsce na strukturę arkusza: sekcje, powtarzalne bloki i szybki profil kolumn.</div>
+              <div class="panel-hint">Jedno miejsce na orientacje w arkuszu: sekcje, kolumny, powtarzalne bloki i szybkie sygnaly o ukladzie danych.</div>
               <div class="sheet-inspector-summary" id="sheetInspectorSummary"></div>
 
-              <div class="insight-subtitle">Nawigator sekcji</div>
-              <div class="panel-hint">Szybkie skoki po sekcjach, nagłówkach i podsekcjach wykrytych w arkuszu.</div>
-              <div class="section-nav-list" id="sectionNavigator"></div>
+              <div class="insight-subtitle">Mapa arkusza i kolumn</div>
+              <div class="panel-hint">Tu masz jednoczesnie szybkie skoki po sekcjach oraz profil kolumn, zeby latwiej rozumiec uklad arkusza bez przeskakiwania miedzy dwoma podobnymi blokami.</div>
+              <div class="inspector-map-grid">
+                <div class="inspector-map-section">
+                  <div class="insight-mini-title">Sekcje i skoki</div>
+                  <div class="section-nav-list" id="sectionNavigator"></div>
+                </div>
+                <div class="inspector-map-section">
+                  <div class="insight-mini-title">Kolumny i sygnaly</div>
+                  <div class="column-profiler-list" id="columnProfiler"></div>
+                </div>
+              </div>
 
               <div class="insight-subtitle">Wykrywacz bloków</div>
               <div class="panel-hint">Pomocniczy widok dla szerokich arkuszy z cyklami, turami albo powtarzalnymi sekcjami kolumn.</div>
@@ -430,10 +439,26 @@
               <div class="panel-hint">Lokalna analiza dla wykrytych blokow: laczenie tych samych osob lub innych wartosci w jednej kolumnie i liczenie srednich czasow na podstawie dat lub dlugosci.</div>
               <div class="duration-analysis-summary" id="durationAnalysisSummary"></div>
               <div class="duration-analysis-list" id="durationAnalysisList"></div>
+            </div>
+          </details>
 
-              <div class="insight-subtitle">Profiler kolumn</div>
-              <div class="panel-hint">Typ danych, puste, unikalne, top wartosci i sygnaly problemowosci.</div>
-              <div class="column-profiler-list" id="columnProfiler"></div>
+          <details class="panel" id="panel-aggregation-workbench">
+            <summary>
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19h16" />
+                <path d="M7 16V9" />
+                <path d="M12 16V5" />
+                <path d="M17 16v-4" />
+              </svg>
+              <span class="panel-title">Agregacje</span>
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="panel-body stack">
+              <div class="panel-hint">Lekki kreator typu grupuj / mierz / agreguj. Dziala na aktualnym widoku albo calym arkuszu, z opcja pracy na Wide-to-Long tam, gdzie ma to sens.</div>
+              <div class="aggregation-workbench-summary" id="aggregationWorkbenchSummary"></div>
+              <div class="aggregation-workbench-list" id="aggregationWorkbenchList"></div>
             </div>
           </details>
 
@@ -539,6 +564,10 @@
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input id="quickSearch" type="text" placeholder="Szybkie szukanie..." />
+                <select id="quickSearchMode" aria-label="Tryb szybkiego szukania">
+                  <option value="contains">Zawiera</option>
+                  <option value="exact">Dokladnie</option>
+                </select>
                 <button class="btn btn-sm ghost" id="quickSearchColumnsBtn" type="button" title="Wybierz kolumny dla szybkiego szukania">
                   Kolumny
                 </button>
@@ -621,6 +650,10 @@
         <label class="quick-search-popup-label" for="quickSearchPopupInput">Szukaj w tabeli</label>
         <div class="quick-search-popup-row">
           <input id="quickSearchPopupInput" type="text" placeholder="np. faktura..." />
+          <select id="quickSearchPopupMode" aria-label="Tryb szybkiego szukania w oknie">
+            <option value="contains">Zawiera</option>
+            <option value="exact">Dokladnie</option>
+          </select>
           <button class="btn btn-sm ghost" id="quickSearchPopupColumnsBtn" type="button">Kolumny</button>
           <button class="btn btn-sm" id="quickSearchPopupBtn" type="button">Filtruj</button>
         </div>
@@ -642,7 +675,7 @@
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260413-5"></script>
+    <script src="app.js?v=20260416-6"></script>
     <script>
       document.addEventListener('DOMContentLoaded', () => {
         // Stały przycisk poszerzania panelu - zawsze dostępny
@@ -651,7 +684,7 @@
           document.body.classList.toggle('duration-expanded', !expanded);
           document.querySelector('.sidebar')?.classList.toggle('duration-expanded', !expanded);
           document.querySelector('#panel-sheet-inspector')?.classList.toggle('duration-expanded', !expanded);
-          document.querySelector('#panel-sheet-inspector').open = true;
+          document.querySelector('#panel-aggregation-workbench')?.classList.toggle('duration-expanded', !expanded);
           
           // Aktualizuj tekst przycisków
           const newText = expanded ? "Poszerz panel wysuwany analizy" : "Wróć do standardowej szerokości panelu";

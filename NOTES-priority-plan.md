@@ -47,6 +47,17 @@ Co ma wejsc pozniej do lekkiego `kreatora agregacji`:
 - `Agregacja`
 - `Zakres`
 
+Notatka po pierwszym wdrozeniu:
+- obecna wersja Etapu 2 jest dobra jako `v1`
+- nie traktujemy jej jako zamknietej, tylko jako bazy pod dalsza rozbudowe
+- kluczowa decyzja techniczna: rozwijac to tak, by kolejne funkcje dalo sie dokladac przez ogolny model danych i agregacji, a nie przez osobne specjal-case'y
+
+Kierunek dalszego rozwoju:
+- wieksza mozliwosc recznej kustomizacji
+- wieksza kontrola nad grupa / miara / sposobem liczenia
+- rozwijanie tego w strone narzedzia, ktore zastapi czesc workflow opartych dzis w Excelu o makra
+- szczegolnie wazne dla pracy na tablecie i w PWA, gdzie makra nie sa realnym rozwiazaniem
+
 Wazna uwaga UX dla tego etapu:
 - nie zakladamy, ze wszystko musi wyjsc z panelu bocznego
 - jesli pewne rzeczy z Etapu 2 dobrze mieszcza sie w sidebarze, to to jest w porzadku

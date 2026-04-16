@@ -61,6 +61,7 @@ const resetSortBtn = document.getElementById("resetSortBtn");
 const readingToggle = document.getElementById("readingToggle");
 const quickSearchWrap = document.getElementById("quickSearchWrap");
 const quickSearchEl = document.getElementById("quickSearch");
+const quickSearchModeEl = document.getElementById("quickSearchMode");
 const quickSearchColumnsBtn = document.getElementById("quickSearchColumnsBtn");
 const quickSearchBtn = document.getElementById("quickSearchBtn");
 const wideLongToggleEl = document.getElementById("wideLongToggle");
@@ -87,8 +88,10 @@ const loadingTextEl = document.getElementById("loadingText");
 const toastContainerEl = document.getElementById("toastContainer");
 const cellTooltipEl = document.getElementById("cellTooltip");
 const sheetInspectorPanelEl = document.getElementById("panel-sheet-inspector");
+const aggregationWorkbenchPanelEl = document.getElementById("panel-aggregation-workbench");
 const quickSearchPopupEl = document.getElementById("quickSearchPopup");
 const quickSearchPopupInput = document.getElementById("quickSearchPopupInput");
+const quickSearchPopupModeEl = document.getElementById("quickSearchPopupMode");
 const quickSearchPopupColumnsBtn = document.getElementById("quickSearchPopupColumnsBtn");
 const quickSearchPopupBtn = document.getElementById("quickSearchPopupBtn");
 const workbookInsightsEl = document.getElementById("workbookInsights");
@@ -102,6 +105,8 @@ const sectionNavigatorEl = document.getElementById("sectionNavigator");
 const repeatBlockDetectorEl = document.getElementById("repeatBlockDetector");
 const durationAnalysisSummaryEl = document.getElementById("durationAnalysisSummary");
 const durationAnalysisListEl = document.getElementById("durationAnalysisList");
+const aggregationWorkbenchSummaryEl = document.getElementById("aggregationWorkbenchSummary");
+const aggregationWorkbenchListEl = document.getElementById("aggregationWorkbenchList");
 const formulaSearchEl = document.getElementById("formulaSearch");
 const formulaFilterEl = document.getElementById("formulaFilter");
 const formulaFunctionFilterEl = document.getElementById("formulaFunctionFilter");
@@ -151,7 +156,18 @@ let durationAnalysisState = {
   expanded: false,
   showCount: 14,
 };
-const APP_BUILD_VERSION = "20260413-5";
+let aggregationWorkbenchState = {
+  sourceMode: "auto",
+  scopeMode: "filtered",
+  headerRowChoice: "auto",
+  customHeaderRow: 1,
+  groupBy: "",
+  measure: "count_rows",
+  aggregation: "count",
+  matchMode: "contains",
+  showCount: 20,
+};
+const APP_BUILD_VERSION = "20260416-6";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -1193,6 +1209,566 @@ function renderDurationAnalysis() {
     item.appendChild(meta);
     item.appendChild(actionsRow);
     durationAnalysisListEl.appendChild(item);
+  });
+}
+
+function inferAggregationValueKind(header, profile) {
+  const norm = normalizeAnalysisKey(header);
+  if (profile?.measureType === "date_range") return "duration";
+  if (profile?.durationCount > 0 || norm.includes("dlugosc") || norm.includes("czas")) return "duration";
+  if (profile?.numericCount > 0) return "number";
+  return "text";
+}
+
+function formatAggregationMetricValue(value, kind = "number") {
+  if (!Number.isFinite(value)) return "brak";
+  if (kind === "duration") return formatDurationDays(value);
+  const rounded = Math.round(value * 100) / 100;
+  return String(rounded).replace(".", ",");
+}
+
+function collectAggregationProfiles(model) {
+  if (!model || !Array.isArray(model.headers) || !Array.isArray(model.rows)) return [];
+  return model.headers.map((header, idx) => {
+    const profile = {
+      header,
+      idx,
+      nonEmptyCount: 0,
+      numericCount: 0,
+      durationCount: 0,
+      dateCount: 0,
+      textCount: 0,
+      uniqueValues: new Set(),
+    };
+
+    model.rows.forEach((row) => {
+      const raw = row.values?.[idx];
+      const display = getDisplayValue(row, idx);
+      const text = String(display ?? raw ?? "").trim();
+      if (!text) return;
+      profile.nonEmptyCount += 1;
+      profile.uniqueValues.add(normalizeAnalysisKey(text));
+
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        profile.numericCount += 1;
+        return;
+      }
+
+      const duration = parseDurationDaysFlexible(raw ?? display);
+      if (duration !== null) {
+        profile.durationCount += 1;
+        return;
+      }
+
+      const asDate = parseDateFlexible(raw ?? display);
+      if (asDate instanceof Date) {
+        profile.dateCount += 1;
+        return;
+      }
+
+      profile.textCount += 1;
+    });
+
+    profile.uniqueCount = profile.uniqueValues.size;
+    return profile;
+  });
+}
+
+function detectAggregationDateRangeCandidates(model, profiles) {
+  const candidates = [];
+  const startRegex = /\b(od|start|data od|from|poczatek|rozpoczecie)\b/;
+  const endRegex = /\b(do|end|data do|to|until|koniec|zakonczenie)\b/;
+
+  profiles.forEach((profile, idx) => {
+    if (profile.dateCount <= 0) return;
+    const base = parseRepeatedHeader(model.headers[idx])?.base || cleanSectionLabel(model.headers[idx]) || model.headers[idx];
+    const norm = normalizeAnalysisKey(base);
+    if (!startRegex.test(norm)) return;
+
+    let endIdx = -1;
+    for (let next = idx + 1; next < profiles.length; next++) {
+      if (profiles[next].dateCount <= 0) continue;
+      const nextBase = parseRepeatedHeader(model.headers[next])?.base || cleanSectionLabel(model.headers[next]) || model.headers[next];
+      const nextNorm = normalizeAnalysisKey(nextBase);
+      if (endRegex.test(nextNorm)) {
+        endIdx = next;
+        break;
+      }
+      if (next > idx + 2) break;
+    }
+    if (endIdx < 0) return;
+
+    candidates.push({
+      key: `date_range:${idx}:${endIdx}`,
+      label: `${model.headers[idx]} -> ${model.headers[endIdx]}`,
+      kind: "duration",
+      measureType: "date_range",
+      startIdx: idx,
+      endIdx,
+      getValue: (row) => {
+        const start = parseDateFlexible(row.values?.[idx] ?? getDisplayValue(row, idx));
+        const end = parseDateFlexible(row.values?.[endIdx] ?? getDisplayValue(row, endIdx));
+        if (!(start instanceof Date) || !(end instanceof Date)) return null;
+        return diffDays(start, end);
+      },
+    });
+  });
+
+  return candidates;
+}
+
+function detectAggregationMeasureCandidates(model, profiles) {
+  const candidates = [{
+    key: "count_rows",
+    label: "Liczba wierszy",
+    kind: "count",
+    measureType: "count_rows",
+    getValue: () => 1,
+  }];
+
+  detectAggregationDateRangeCandidates(model, profiles).forEach((candidate) => {
+    candidates.push(candidate);
+  });
+
+  profiles.forEach((profile) => {
+    if (profile.nonEmptyCount <= 0) return;
+    if (profile.numericCount <= 0 && profile.durationCount <= 0) return;
+    const kind = inferAggregationValueKind(profile.header, profile);
+    candidates.push({
+      key: `column:${profile.idx}`,
+      label: profile.header,
+      kind,
+      measureType: "column",
+      colIdx: profile.idx,
+      getValue: (row) => {
+        const raw = row.values?.[profile.idx];
+        if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+        return parseDurationDaysFlexible(raw ?? getDisplayValue(row, profile.idx));
+      },
+    });
+  });
+
+  return candidates;
+}
+
+function resolveAggregationGroupOptions(profiles) {
+  return profiles
+    .filter((profile) => profile.nonEmptyCount > 0)
+    .sort((a, b) => {
+      const aTextScore = a.textCount > 0 ? 1 : 0;
+      const bTextScore = b.textCount > 0 ? 1 : 0;
+      if (aTextScore !== bTextScore) return bTextScore - aTextScore;
+      return a.idx - b.idx;
+    })
+    .map((profile) => ({
+      value: profile.header,
+      label: profile.header,
+      idx: profile.idx,
+    }));
+}
+
+function chooseDefaultAggregationGroup(groupOptions) {
+  if (!groupOptions.length) return "";
+  const preferred = groupOptions.find((option) => /\b(imie|nazwisko|osoba|pracownik|owner|assignee|blok)\b/.test(normalizeAnalysisKey(option.label)));
+  return preferred ? preferred.value : groupOptions[0].value;
+}
+
+function chooseDefaultAggregationMeasure(measures) {
+  if (!measures.length) return "count_rows";
+  const dateRange = measures.find((candidate) => candidate.measureType === "date_range");
+  if (dateRange) return dateRange.key;
+  const duration = measures.find((candidate) => candidate.kind === "duration");
+  if (duration) return duration.key;
+  const numeric = measures.find((candidate) => candidate.measureType === "column");
+  return numeric ? numeric.key : "count_rows";
+}
+
+function chooseDefaultAggregationMethod(measure) {
+  if (!measure || measure.measureType === "count_rows") return "count";
+  return "avg";
+}
+
+function getNormalizedAggregationWorkbenchContext() {
+  const headerCandidates = getAggregationHeaderCandidateRows();
+  let resolvedHeaderRow = currentHeaderRow;
+  let context = null;
+
+  if (aggregationWorkbenchState.headerRowChoice === "auto") {
+    headerCandidates.forEach((candidateRow) => {
+      const candidateContext = collectAggregationContextForHeaderRow(
+        candidateRow,
+        aggregationWorkbenchState.sourceMode,
+        aggregationWorkbenchState.scopeMode
+      );
+      const score = scoreAggregationContext(candidateContext);
+      if (!context || score > context.score) {
+        context = { ...candidateContext, score };
+        resolvedHeaderRow = candidateRow;
+      }
+    });
+  } else {
+    const explicitRow = Number.isFinite(aggregationWorkbenchState.customHeaderRow)
+      ? aggregationWorkbenchState.customHeaderRow
+      : currentHeaderRow;
+    resolvedHeaderRow = explicitRow > 0 ? explicitRow : currentHeaderRow;
+    context = collectAggregationContextForHeaderRow(
+      resolvedHeaderRow,
+      aggregationWorkbenchState.sourceMode,
+      aggregationWorkbenchState.scopeMode
+    );
+  }
+
+  if (!context) {
+    context = collectAggregationContextForHeaderRow(
+      currentHeaderRow,
+      aggregationWorkbenchState.sourceMode,
+      aggregationWorkbenchState.scopeMode
+    );
+    resolvedHeaderRow = currentHeaderRow;
+  }
+
+  const { model, profiles, groupOptions, measures, longAvailable } = context;
+
+  const nextGroupBy = groupOptions.some((option) => option.value === aggregationWorkbenchState.groupBy)
+    ? aggregationWorkbenchState.groupBy
+    : chooseDefaultAggregationGroup(groupOptions);
+  const nextMeasure = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure)
+    ? aggregationWorkbenchState.measure
+    : chooseDefaultAggregationMeasure(measures);
+  const measure = measures.find((candidate) => candidate.key === nextMeasure) || measures[0] || null;
+  const allowedAggregations = measure?.measureType === "count_rows"
+    ? ["count"]
+    : ["avg", "median", "min", "max", "sum", "count"];
+  const nextAggregation = allowedAggregations.includes(aggregationWorkbenchState.aggregation)
+    ? aggregationWorkbenchState.aggregation
+    : chooseDefaultAggregationMethod(measure);
+
+  aggregationWorkbenchState.groupBy = nextGroupBy;
+  aggregationWorkbenchState.measure = nextMeasure;
+  aggregationWorkbenchState.aggregation = nextAggregation;
+  if (aggregationWorkbenchState.sourceMode === "long" && !longAvailable) {
+    aggregationWorkbenchState.sourceMode = "auto";
+  }
+
+  return {
+    ...context,
+    model,
+    profiles,
+    groupOptions,
+    measures,
+    measure,
+    longAvailable,
+    allowedAggregations,
+    headerCandidates,
+    resolvedHeaderRow,
+  };
+}
+
+function computeAggregateMetric(values, aggregation) {
+  const nums = values.filter((value) => Number.isFinite(value));
+  if (aggregation === "count") return nums.length;
+  if (!nums.length) return null;
+  if (aggregation === "sum") return nums.reduce((sum, value) => sum + value, 0);
+  if (aggregation === "avg") return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+  if (aggregation === "median") return computeMedian(nums);
+  if (aggregation === "min") return Math.min(...nums);
+  if (aggregation === "max") return Math.max(...nums);
+  return null;
+}
+
+function buildAggregationWorkbenchResult() {
+  const context = getNormalizedAggregationWorkbenchContext();
+  const { model, groupOptions, measures, measure } = context;
+  if (!model?.headers?.length || !model?.rows?.length) {
+    return { status: "empty", ...context };
+  }
+  if (!groupOptions.length || !measure) {
+    return { status: "no-options", ...context };
+  }
+
+  const groupIdx = model.headers.indexOf(aggregationWorkbenchState.groupBy);
+  if (groupIdx < 0) {
+    return { status: "no-options", ...context };
+  }
+
+  const buckets = new Map();
+  model.rows.forEach((row) => {
+    const rawGroup = row.values?.[groupIdx];
+    const groupLabel = String(getDisplayValue(row, groupIdx) || rawGroup || "(puste)").trim() || "(puste)";
+    const key = normalizeAnalysisKey(groupLabel) || "(puste)";
+    const entry = buckets.get(key) || {
+      label: groupLabel,
+      values: [],
+      rowIndexes: new Set(),
+    };
+    const measureValue = measure.getValue(row);
+    if (measure.measureType === "count_rows") {
+      entry.values.push(1);
+    } else if (Number.isFinite(measureValue)) {
+      entry.values.push(measureValue);
+    }
+    entry.rowIndexes.add(row.rowIndex0);
+    buckets.set(key, entry);
+  });
+
+  const entries = Array.from(buckets.values())
+    .map((entry) => {
+      const count = entry.values.filter((value) => Number.isFinite(value)).length;
+      return {
+        label: entry.label,
+        count,
+        average: computeAggregateMetric(entry.values, "avg"),
+        median: computeAggregateMetric(entry.values, "median"),
+        min: computeAggregateMetric(entry.values, "min"),
+        max: computeAggregateMetric(entry.values, "max"),
+        sum: computeAggregateMetric(entry.values, "sum"),
+        primary: computeAggregateMetric(entry.values, aggregationWorkbenchState.aggregation),
+      };
+    })
+    .filter((entry) => entry.count > 0 || aggregationWorkbenchState.aggregation === "count")
+    .sort((a, b) => {
+      const diff = Number(b.primary || 0) - Number(a.primary || 0);
+      if (Math.abs(diff) > 0.001) return diff;
+      const countDiff = b.count - a.count;
+      if (countDiff) return countDiff;
+      return a.label.localeCompare(b.label, "pl");
+    });
+
+  if (!entries.length) {
+    return { status: "no-results", ...context };
+  }
+
+  return {
+    status: "ok",
+    ...context,
+    entries,
+    summary: {
+      groups: entries.length,
+      sourceRows: model.rows.length,
+      measuredRows: entries.reduce((sum, entry) => sum + entry.count, 0),
+    },
+  };
+}
+
+function renderAggregationWorkbench() {
+  if (!aggregationWorkbenchSummaryEl || !aggregationWorkbenchListEl) return;
+  aggregationWorkbenchSummaryEl.innerHTML = "";
+  aggregationWorkbenchListEl.innerHTML = "";
+
+  const result = buildAggregationWorkbenchResult();
+  if (result.status === "empty") {
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby uruchomic agregacje."));
+    return;
+  }
+  if (result.status === "no-options") {
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Brak sensownych opcji grupowania lub mierzenia dla aktualnego zrodla danych."));
+    return;
+  }
+  if (result.status === "no-results") {
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Aktualna kombinacja grupowania i mierzenia nie zwrocila zadnych wynikow."));
+    return;
+  }
+
+  const measure = result.measure;
+  const primaryKind = measure?.kind === "duration" ? "duration" : "number";
+  const aggregationLabels = {
+    count: "Liczebnosc",
+    avg: "Srednia",
+    median: "Mediana",
+    min: "Minimum",
+    max: "Maksimum",
+    sum: "Suma",
+  };
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "sheet-inspector-summary";
+  [
+    { label: "Grupy", value: String(result.summary.groups) },
+    { label: "Wiersze zrodla", value: String(result.summary.sourceRows) },
+    { label: "Zmierzonych rekordow", value: String(result.summary.measuredRows) },
+    { label: aggregationLabels[aggregationWorkbenchState.aggregation] || "Wynik", value: formatAggregationMetricValue(result.entries[0]?.primary, primaryKind), tone: "info" },
+  ].forEach((item) => {
+    const chip = document.createElement("div");
+    chip.className = `sheet-inspector-chip${item.tone ? ` ${item.tone}` : ""}`;
+    const label = document.createElement("div");
+    label.className = "sheet-inspector-chip-label";
+    label.textContent = item.label;
+    const value = document.createElement("div");
+    value.className = "sheet-inspector-chip-value";
+    value.textContent = item.value;
+    chip.appendChild(label);
+    chip.appendChild(value);
+    summaryGrid.appendChild(chip);
+  });
+  aggregationWorkbenchSummaryEl.appendChild(summaryGrid);
+
+  const controls = document.createElement("div");
+  controls.className = "aggregation-controls";
+
+  const sourceField = document.createElement("label");
+  sourceField.className = "field";
+  sourceField.innerHTML = `Zrodlo
+    <select data-aggregation-control="source">
+      <option value="auto">Auto</option>
+      <option value="wide">Widok klasyczny</option>
+      ${result.longAvailable ? '<option value="long">Wide-to-Long</option>' : ""}
+    </select>`;
+  sourceField.querySelector("select").value = aggregationWorkbenchState.sourceMode;
+
+  const scopeField = document.createElement("label");
+  scopeField.className = "field";
+  scopeField.innerHTML = `Zakres
+    <select data-aggregation-control="scope">
+      <option value="filtered">Aktualny widok</option>
+      <option value="all">Caly arkusz</option>
+    </select>`;
+  scopeField.querySelector("select").value = aggregationWorkbenchState.scopeMode;
+
+  const headerField = document.createElement("label");
+  headerField.className = "field";
+  headerField.innerHTML = `Naglowek agregacji
+    <div class="aggregation-header-row">
+      <select data-aggregation-control="header"></select>
+      <input data-aggregation-control="header-number" type="number" min="1" step="1" inputmode="numeric" placeholder="nr wiersza" />
+    </div>`;
+  const headerSelect = headerField.querySelector("select");
+  const headerNumberInput = headerField.querySelector("input");
+  const autoOpt = document.createElement("option");
+  autoOpt.value = "auto";
+  autoOpt.textContent = `Auto (najlepszy: ${result.resolvedHeaderRow})`;
+  headerSelect.appendChild(autoOpt);
+  const manualOpt = document.createElement("option");
+  manualOpt.value = "manual";
+  manualOpt.textContent = "Wlasny numer";
+  headerSelect.appendChild(manualOpt);
+  headerSelect.value = aggregationWorkbenchState.headerRowChoice;
+  headerNumberInput.value = String(aggregationWorkbenchState.customHeaderRow || currentHeaderRow);
+  headerNumberInput.disabled = aggregationWorkbenchState.headerRowChoice !== "manual";
+
+  const groupField = document.createElement("label");
+  groupField.className = "field";
+  groupField.innerHTML = `Grupuj po
+    <select data-aggregation-control="group"></select>`;
+  const groupSelect = groupField.querySelector("select");
+  result.groupOptions.forEach((option) => {
+    const opt = document.createElement("option");
+    opt.value = option.value;
+    opt.textContent = option.label;
+    groupSelect.appendChild(opt);
+  });
+  groupSelect.value = aggregationWorkbenchState.groupBy;
+
+  const measureField = document.createElement("label");
+  measureField.className = "field";
+  measureField.innerHTML = `Mierz
+    <select data-aggregation-control="measure"></select>`;
+  const measureSelect = measureField.querySelector("select");
+  result.measures.forEach((candidate) => {
+    const opt = document.createElement("option");
+    opt.value = candidate.key;
+    opt.textContent = candidate.label;
+    measureSelect.appendChild(opt);
+  });
+  measureSelect.value = aggregationWorkbenchState.measure;
+
+  const aggregationField = document.createElement("label");
+  aggregationField.className = "field";
+  aggregationField.innerHTML = `Agregacja
+    <select data-aggregation-control="aggregation"></select>`;
+  const aggregationSelect = aggregationField.querySelector("select");
+  result.allowedAggregations.forEach((key) => {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = aggregationLabels[key];
+    aggregationSelect.appendChild(opt);
+  });
+  aggregationSelect.value = aggregationWorkbenchState.aggregation;
+
+  const matchField = document.createElement("label");
+  matchField.className = "field";
+  matchField.innerHTML = `Dopasowanie tekstu
+    <select data-aggregation-control="match">
+      <option value="contains">Zawiera</option>
+      <option value="exact">Dokladnie</option>
+    </select>`;
+  matchField.querySelector("select").value = aggregationWorkbenchState.matchMode;
+
+  const showCountField = document.createElement("label");
+  showCountField.className = "field";
+  showCountField.innerHTML = `Pokaz wynikow
+    <select data-aggregation-control="count">
+      <option value="10">10</option>
+      <option value="20">20</option>
+      <option value="40">40</option>
+      <option value="80">80</option>
+      <option value="999">Wszystkie</option>
+    </select>`;
+  showCountField.querySelector("select").value = String(aggregationWorkbenchState.showCount);
+
+  [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, showCountField].forEach((field) => controls.appendChild(field));
+  aggregationWorkbenchSummaryEl.appendChild(controls);
+
+  const note = document.createElement("div");
+  note.className = "duration-analysis-note";
+  const headerModeText = aggregationWorkbenchState.headerRowChoice === "auto"
+    ? `auto -> wiersz ${result.resolvedHeaderRow}`
+    : `wiersz ${result.resolvedHeaderRow}`;
+  note.textContent = `Aktualne zrodlo: ${result.model.mode === "long" ? "Wide-to-Long" : "widok klasyczny"} • zakres: ${aggregationWorkbenchState.scopeMode === "all" ? "caly arkusz" : "aktualny widok"} • naglowek: ${headerModeText}${result.helperMode ? " (pomocniczy)" : ""} • dopasowanie: ${aggregationWorkbenchState.matchMode === "exact" ? "dokladnie" : "zawiera"}.`;
+  aggregationWorkbenchSummaryEl.appendChild(note);
+
+  const listNote = document.createElement("div");
+  listNote.className = "duration-analysis-note";
+  const visibleCount = Math.min(aggregationWorkbenchState.showCount, result.entries.length);
+  listNote.textContent = result.entries.length > visibleCount
+    ? `Pokazano ${visibleCount} z ${result.entries.length} grup.`
+    : `Pokazano wszystkie grupy: ${result.entries.length}.`;
+  aggregationWorkbenchListEl.appendChild(listNote);
+
+  result.entries.slice(0, aggregationWorkbenchState.showCount).forEach((entry, index) => {
+    const item = document.createElement("div");
+    item.className = "aggregation-item";
+
+    const top = document.createElement("div");
+    top.className = "duration-person-top";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "duration-person-title-wrap";
+
+    const rank = document.createElement("div");
+    rank.className = "duration-person-rank";
+    rank.textContent = String(index + 1);
+
+    const title = document.createElement("div");
+    title.className = "duration-person-title";
+    title.textContent = entry.label;
+
+    const value = document.createElement("div");
+    value.className = "duration-person-value";
+    value.textContent = formatAggregationMetricValue(entry.primary, primaryKind);
+
+    titleWrap.appendChild(rank);
+    titleWrap.appendChild(title);
+    top.appendChild(titleWrap);
+    top.appendChild(value);
+
+    const meta = document.createElement("div");
+    meta.className = "duration-person-meta";
+    meta.textContent = `Liczba ${entry.count} • srednia ${formatAggregationMetricValue(entry.average, primaryKind)} • mediana ${formatAggregationMetricValue(entry.median, primaryKind)} • zakres ${formatAggregationMetricValue(entry.min, primaryKind)} -> ${formatAggregationMetricValue(entry.max, primaryKind)}`;
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.aggregationAction = "filter-group";
+    btn.dataset.aggregationValue = entry.label;
+    btn.textContent = "Szukaj w tabeli";
+    actions.appendChild(btn);
+
+    item.appendChild(top);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    aggregationWorkbenchListEl.appendChild(item);
   });
 }
 
@@ -2760,6 +3336,7 @@ function applyCurrentSort() {
   renderSections();
   renderRepeatingBlocks();
   renderDurationAnalysis();
+  renderAggregationWorkbench();
   renderFormulaWorkbench();
 }
 
@@ -2844,30 +3421,38 @@ function updateWideLongToggle() {
     : "Przelacz wykryte bloki kolumn na dlugi widok analityczny";
 }
 
-function buildWideDisplayModel() {
+function buildWideDisplayModelFromRows(rows, options = {}) {
+  const headers = Array.isArray(options.headers) ? options.headers.slice() : currentHeaders.slice();
+  const startCol = Number.isFinite(options.startCol) ? options.startCol : currentStartCol;
+  const headerRow = Number.isFinite(options.headerRow) ? options.headerRow : currentHeaderRow;
   return {
     mode: "wide",
-    headers: currentHeaders.slice(),
-    rows: viewRows.slice(),
-    guideLabels: currentHeaders.map((_, i) => XLSX.utils.encode_col(i + currentStartCol)),
-    headerRowLabel: String(currentHeaderRow),
+    headers,
+    rows: rows.slice(),
+    guideLabels: headers.map((_, i) => XLSX.utils.encode_col(i + startCol)),
+    headerRowLabel: String(headerRow),
     rowHeadFormatter: (row) => String((row?.rowIndex0 ?? 0) + 1),
     editable: true,
   };
 }
 
-function buildLongViewModel() {
-  const group = getActiveRepeatingGroup();
-  if (!group || !Array.isArray(group.blocks) || !group.blocks.length) return buildWideDisplayModel();
+function buildWideDisplayModel() {
+  return buildWideDisplayModelFromRows(viewRows);
+}
+
+function buildLongViewModelFromRows(rows, group = getActiveRepeatingGroup(), options = {}) {
+  if (!group || !Array.isArray(group.blocks) || !group.blocks.length) return buildWideDisplayModelFromRows(rows);
 
   const firstBlock = group.blocks[0];
   const prefixCount = Math.max(0, Number(group.prefixCount) || 0);
-  const prefixHeaders = currentHeaders.slice(0, prefixCount);
+  const sourceHeaders = Array.isArray(options.headers) ? options.headers.slice() : currentHeaders.slice();
+  const headerRow = Number.isFinite(options.headerRow) ? options.headerRow : currentHeaderRow;
+  const prefixHeaders = sourceHeaders.slice(0, prefixCount);
   const repeatedHeaders = firstBlock.headers.map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header) || header);
   const headers = [...prefixHeaders, "Nr bloku", "Blok", ...repeatedHeaders];
-  const rows = [];
+  const nextRows = [];
 
-  viewRows.forEach((row) => {
+  rows.forEach((row) => {
     group.blocks.forEach((block, blockIndex) => {
       const blockValues = row.values.slice(block.startIndex, block.endIndex + 1);
       const blockDisplay = blockValues.map((_, idx) => getDisplayValue(row, block.startIndex + idx));
@@ -2879,7 +3464,7 @@ function buildLongViewModel() {
       const values = [...prefixValues, blockIndex + 1, block.label, ...blockValues];
       const display = [...prefixDisplay, String(blockIndex + 1), block.label, ...blockDisplay];
 
-      rows.push({
+      nextRows.push({
         values,
         rawValues: values.slice(),
         display,
@@ -2895,12 +3480,153 @@ function buildLongViewModel() {
   return {
     mode: "long",
     headers,
-    rows,
+    rows: nextRows,
     guideLabels: headers.map((_, idx) => `${idx + 1}`),
-    headerRowLabel: `${currentHeaderRow} -> long`,
+    headerRowLabel: `${headerRow} -> long`,
     rowHeadFormatter: (row) => `${(row?.sourceRowIndex0 ?? row?.rowIndex0 ?? 0) + 1}.${(row?.sourceBlockIndex ?? 0) + 1}`,
     editable: false,
   };
+}
+
+function buildLongViewModel() {
+  return buildLongViewModelFromRows(viewRows);
+}
+
+function getAggregationSourceRows(scopeMode) {
+  return scopeMode === "all" ? baseRows.slice() : viewRows.slice();
+}
+
+function getAggregationHeaderCandidateRows() {
+  const candidates = new Set([currentHeaderRow]);
+  currentSections.forEach((section) => {
+    if (section?.action === "set-header" && Number.isFinite(section.headerRow)) {
+      candidates.add(section.headerRow);
+    }
+  });
+  for (let row = Math.max(1, currentHeaderRow - 3); row <= currentHeaderRow + 4; row++) {
+    candidates.add(row);
+  }
+  return Array.from(candidates)
+    .filter((row) => Number.isFinite(row) && row > 0)
+    .sort((a, b) => a - b);
+}
+
+function getAggregationHeaderSourceData(headerRow = currentHeaderRow, scopeMode = aggregationWorkbenchState.scopeMode) {
+  if (!workbook || !currentSheetName || headerRow === currentHeaderRow) {
+    return {
+      headerRow: currentHeaderRow,
+      rows: getAggregationSourceRows(scopeMode),
+      headers: currentHeaders.slice(),
+      startCol: currentStartCol,
+      group: getActiveRepeatingGroup(),
+      longAvailable: canUseLongView(),
+      helperMode: false,
+    };
+  }
+
+  const sheet = workbook.Sheets[currentSheetName];
+  if (!sheet) {
+    return {
+      headerRow: currentHeaderRow,
+      rows: getAggregationSourceRows(scopeMode),
+      headers: currentHeaders.slice(),
+      startCol: currentStartCol,
+      group: getActiveRepeatingGroup(),
+      longAvailable: canUseLongView(),
+      helperMode: false,
+    };
+  }
+
+  try {
+    const data = buildRows(sheet, headerRow, workbook);
+    const rows = markSubheaderRows(data.rows.slice());
+    const visibleRowIndexes = scopeMode === "filtered"
+      ? new Set(viewRows.map((row) => row.rowIndex0))
+      : null;
+    const scopedRows = visibleRowIndexes
+      ? rows.filter((row) => visibleRowIndexes.has(row.rowIndex0))
+      : rows;
+    const groups = detectRepeatingBlocks(sheet, headerRow, data);
+    const group = Array.isArray(groups) && groups.length ? groups[0] : null;
+    return {
+      headerRow,
+      rows: scopedRows,
+      headers: data.headers.slice(),
+      startCol: data.startCol || 0,
+      group,
+      longAvailable: !!(group && Array.isArray(group.blocks) && group.blocks.length >= 2),
+      helperMode: headerRow !== currentHeaderRow,
+    };
+  } catch {
+    return {
+      headerRow: currentHeaderRow,
+      rows: getAggregationSourceRows(scopeMode),
+      headers: currentHeaders.slice(),
+      startCol: currentStartCol,
+      group: getActiveRepeatingGroup(),
+      longAvailable: canUseLongView(),
+      helperMode: false,
+    };
+  }
+}
+
+function collectAggregationContextForHeaderRow(headerRow, sourceMode = aggregationWorkbenchState.sourceMode, scopeMode = aggregationWorkbenchState.scopeMode) {
+  const source = getAggregationHeaderSourceData(headerRow, scopeMode);
+  const normalizedSource = sourceMode === "auto"
+    ? (source.longAvailable ? "long" : "wide")
+    : sourceMode;
+  const model = normalizedSource === "long" && source.longAvailable
+    ? buildLongViewModelFromRows(source.rows, source.group, {
+      headers: source.headers,
+      headerRow: source.headerRow,
+      startCol: source.startCol,
+    })
+    : buildWideDisplayModelFromRows(source.rows, {
+      headers: source.headers,
+      headerRow: source.headerRow,
+      startCol: source.startCol,
+    });
+  const profiles = collectAggregationProfiles(model);
+  const groupOptions = resolveAggregationGroupOptions(profiles);
+  const measures = detectAggregationMeasureCandidates(model, profiles);
+  return {
+    ...source,
+    model,
+    profiles,
+    groupOptions,
+    measures,
+    resolvedSourceMode: normalizedSource,
+  };
+}
+
+function scoreAggregationContext(context) {
+  if (!context?.model?.rows?.length) return -1;
+  const dateRangeBonus = context.measures.some((candidate) => candidate.measureType === "date_range") ? 30 : 0;
+  const textGroupBonus = context.groupOptions.some((option) => /\b(imie|nazwisko|osoba|pracownik|owner|assignee)\b/.test(normalizeAnalysisKey(option.label))) ? 12 : 0;
+  const currentHeaderBonus = context.headerRow === currentHeaderRow ? 4 : 0;
+  return (context.groupOptions.length * 8)
+    + (context.measures.length * 10)
+    + dateRangeBonus
+    + textGroupBonus
+    + currentHeaderBonus
+    + Math.min(context.model.rows.length, 500) * 0.02;
+}
+
+function isValidAggregationHeaderRow(headerRow) {
+  if (!Number.isFinite(headerRow) || headerRow < 1) return false;
+  if (!workbook || !currentSheetName) return false;
+  const sheet = workbook.Sheets[currentSheetName];
+  if (!sheet) return false;
+  try {
+    const data = buildRows(sheet, headerRow, workbook);
+    return Array.isArray(data?.headers) && data.headers.length > 0 && Array.isArray(data?.rows) && data.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function getAggregationSourceModel(sourceMode = aggregationWorkbenchState.sourceMode, scopeMode = aggregationWorkbenchState.scopeMode) {
+  return collectAggregationContextForHeaderRow(currentHeaderRow, sourceMode, scopeMode).model;
 }
 
 function getDisplayModel() {
@@ -3870,6 +4596,22 @@ function syncQuickSearchInputs() {
   if (quickSearchPopupInput) quickSearchPopupInput.value = searchQueryEl.value;
 }
 
+function getQuickSearchModeValue() {
+  return filterModeEl && filterModeEl.value === "Równa się" ? "exact" : "contains";
+}
+
+function syncQuickSearchModeControls() {
+  const mode = getQuickSearchModeValue();
+  if (quickSearchModeEl) quickSearchModeEl.value = mode;
+  if (quickSearchPopupModeEl) quickSearchPopupModeEl.value = mode;
+}
+
+function applyQuickSearchMode(mode) {
+  const normalized = mode === "exact" ? "Równa się" : "Zawiera";
+  if (filterModeEl) filterModeEl.value = normalized;
+  syncQuickSearchModeControls();
+}
+
 function updateQuickSearchColumnButtons() {
   const summary = columnSummary(columnSelections.filter1);
   const count = columnSelections.filter1.size;
@@ -3896,6 +4638,7 @@ function resetFilterInputs() {
   columnSelections.filter2.clear();
   columnSelections.date.clear();
   syncQuickSearchInputs();
+  syncQuickSearchModeControls();
   updateColumnSummary();
   updateDateChipsActive();
   updateFilterBadge();
@@ -4312,6 +5055,9 @@ loadBtn.addEventListener("click", () => {
       applyAutoHeaderRowIfEnabled();
       const headerRow = Math.max(1, parseInt(headerRowEl.value || "1", 10));
       currentHeaderRow = headerRow;
+      if (!Number.isFinite(aggregationWorkbenchState.customHeaderRow) || aggregationWorkbenchState.customHeaderRow < 1 || aggregationWorkbenchState.headerRowChoice === "auto") {
+        aggregationWorkbenchState.customHeaderRow = headerRow;
+      }
       currentSheetName = sheetName;
       const data = buildRows(sheet, headerRow, workbook);
       currentHeaders = data.headers;
@@ -4348,6 +5094,7 @@ loadBtn.addEventListener("click", () => {
       renderSections();
       renderRepeatingBlocks();
       renderDurationAnalysis();
+      renderAggregationWorkbench();
       renderFormulaWorkbench();
       setDirtyState(false);
       if ((currentSheetStats?.trimmedColumns || 0) > 0) {
@@ -4376,6 +5123,7 @@ applyFilterBtn.addEventListener("click", () => {
   renderSections();
   renderRepeatingBlocks();
   renderDurationAnalysis();
+  renderAggregationWorkbench();
   updateFilterBadge();
   toast("Zastosowano filtry", "info");
 });
@@ -4386,6 +5134,9 @@ function applyQuickSearch() {
   if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden") && quickSearchPopupInput) value = quickSearchPopupInput.value;
   else if (quickSearchEl) value = quickSearchEl.value;
   else value = searchQueryEl.value || "";
+  const popupActive = quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden");
+  if (popupActive && quickSearchPopupModeEl) applyQuickSearchMode(quickSearchPopupModeEl.value);
+  else if (quickSearchModeEl) applyQuickSearchMode(quickSearchModeEl.value);
   if (quickSearchPopupInput) quickSearchPopupInput.value = value;
   if (quickSearchEl) quickSearchEl.value = value;
   searchQueryEl.value = value;
@@ -4398,6 +5149,7 @@ function applyQuickSearch() {
   renderSections();
   renderRepeatingBlocks();
   renderDurationAnalysis();
+  renderAggregationWorkbench();
   updateFilterBadge();
   if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
     quickSearchPopupEl.classList.add("hidden");
@@ -4466,9 +5218,20 @@ if (quickSearchEl) {
   });
 }
 
+if (quickSearchModeEl) {
+  quickSearchModeEl.addEventListener("change", () => {
+    applyQuickSearchMode(quickSearchModeEl.value);
+  });
+}
+
 if (quickSearchPopupInput) {
   quickSearchPopupInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); applyQuickSearch(); }
+  });
+}
+if (quickSearchPopupModeEl) {
+  quickSearchPopupModeEl.addEventListener("change", () => {
+    applyQuickSearchMode(quickSearchPopupModeEl.value);
   });
 }
 if (quickSearchPopupBtn) {
@@ -4497,6 +5260,7 @@ resetFiltersBtn.addEventListener("click", () => {
   renderSections();
   renderRepeatingBlocks();
   renderDurationAnalysis();
+  renderAggregationWorkbench();
   toast("Reset filtrow", "info");
 });
 
@@ -4733,6 +5497,7 @@ tbodyEl.addEventListener("dblclick", (e) => {
     renderSections();
     renderRepeatingBlocks();
     renderDurationAnalysis();
+    renderAggregationWorkbench();
   };
 
   const cancel = () => {
@@ -4756,6 +5521,7 @@ tbodyEl.addEventListener("dblclick", (e) => {
 });
 
 searchQueryEl.addEventListener("input", syncQuickSearchInputs);
+filterModeEl.addEventListener("change", syncQuickSearchModeControls);
 
 maxRowsEl.addEventListener("change", () => {
   saveMaxRowsPreference();
@@ -4885,6 +5651,7 @@ if (durationAnalysisSummaryEl) {
       renderActiveTable();
       renderSheetInspectorSummary();
       renderDurationAnalysis();
+      renderAggregationWorkbench();
       toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
       return;
     }
@@ -4898,13 +5665,16 @@ if (durationAnalysisSummaryEl) {
       sidebarEl?.classList.toggle("duration-expanded", durationAnalysisState.expanded);
       if (sheetInspectorPanelEl) {
         sheetInspectorPanelEl.classList.toggle("duration-expanded", durationAnalysisState.expanded);
-        if (!sheetInspectorPanelEl.open) sheetInspectorPanelEl.open = true;
+      }
+      if (aggregationWorkbenchPanelEl) {
+        aggregationWorkbenchPanelEl.classList.toggle("duration-expanded", durationAnalysisState.expanded);
       }
       setSidebarOpen(true);
       syncSidebarHandle();
       requestAnimationFrame(() => syncSidebarHandle());
       window.setTimeout(() => syncSidebarHandle(), 220);
       renderDurationAnalysis();
+      renderAggregationWorkbench();
     }
   });
   durationAnalysisSummaryEl.addEventListener("change", (e) => {
@@ -4921,6 +5691,7 @@ if (durationAnalysisSummaryEl) {
       durationAnalysisState.showCount = Number.isFinite(next) && next > 0 ? next : 14;
     }
     renderDurationAnalysis();
+    renderAggregationWorkbench();
   });
 }
 if (durationAnalysisListEl) {
@@ -4941,9 +5712,80 @@ if (durationAnalysisListEl) {
     renderSections();
     renderRepeatingBlocks();
     renderDurationAnalysis();
+    renderAggregationWorkbench();
     renderFormulaWorkbench();
     updateFilterBadge();
     toast(`Przefiltrowano widok dla: ${entity}`, "info");
+  });
+}
+if (aggregationWorkbenchSummaryEl) {
+  aggregationWorkbenchSummaryEl.addEventListener("change", (e) => {
+    e.stopPropagation();
+    const control = e.target.closest("[data-aggregation-control]");
+    if (!control) return;
+    const kind = control.dataset.aggregationControl;
+    if (kind === "source") aggregationWorkbenchState.sourceMode = control.value || "auto";
+    if (kind === "scope") aggregationWorkbenchState.scopeMode = control.value || "filtered";
+    if (kind === "header") {
+      aggregationWorkbenchState.headerRowChoice = control.value === "manual" ? "manual" : "auto";
+      if (aggregationWorkbenchState.headerRowChoice === "manual") {
+        const fallbackRow = Number.isFinite(aggregationWorkbenchState.customHeaderRow) && aggregationWorkbenchState.customHeaderRow > 0
+          ? aggregationWorkbenchState.customHeaderRow
+          : currentHeaderRow;
+        aggregationWorkbenchState.customHeaderRow = fallbackRow;
+      }
+    }
+    if (kind === "header-number") {
+      const next = parseInt(control.value || "", 10);
+      if (!Number.isFinite(next) || next < 1) {
+        toast("Podaj dodatni numer wiersza naglowka.", "warning");
+        control.value = String(aggregationWorkbenchState.customHeaderRow || currentHeaderRow);
+        return;
+      }
+      if (!isValidAggregationHeaderRow(next)) {
+        toast(`Wiersz ${next} nie wyglada na poprawny naglowek dla tego arkusza.`, "error");
+        control.value = String(aggregationWorkbenchState.customHeaderRow || currentHeaderRow);
+        return;
+      }
+      aggregationWorkbenchState.customHeaderRow = next;
+      aggregationWorkbenchState.headerRowChoice = "manual";
+    }
+    if (kind === "group") aggregationWorkbenchState.groupBy = control.value || "";
+    if (kind === "measure") aggregationWorkbenchState.measure = control.value || "count_rows";
+    if (kind === "aggregation") aggregationWorkbenchState.aggregation = control.value || "count";
+    if (kind === "match") aggregationWorkbenchState.matchMode = control.value || "contains";
+    if (kind === "count") {
+      const next = parseInt(control.value || "20", 10);
+      aggregationWorkbenchState.showCount = Number.isFinite(next) && next > 0 ? next : 20;
+    }
+    renderAggregationWorkbench();
+  });
+}
+if (aggregationWorkbenchListEl) {
+  aggregationWorkbenchListEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const btn = e.target.closest("button[data-aggregation-action='filter-group']");
+    if (!btn) return;
+    const value = (btn.dataset.aggregationValue || "").trim();
+    if (!value) return;
+    searchQueryEl.value = value;
+    if (filterModeEl) {
+      filterModeEl.value = aggregationWorkbenchState.matchMode === "exact" ? "Równa się" : "Zawiera";
+    }
+    applyFilters();
+    sortRows();
+    renderActiveTable();
+    renderInsights();
+    renderKpiExtractor();
+    renderSheetInspectorSummary();
+    renderColumnProfiles();
+    renderSections();
+    renderRepeatingBlocks();
+    renderDurationAnalysis();
+    renderAggregationWorkbench();
+    renderFormulaWorkbench();
+    updateFilterBadge();
+    toast(`Przefiltrowano widok dla: ${value}`, "info");
   });
 }
 if (columnProfilerEl) {
@@ -4976,6 +5818,7 @@ if (sheetInspectorSummaryEl) {
       renderActiveTable();
       renderSheetInspectorSummary();
       renderDurationAnalysis();
+      renderAggregationWorkbench();
       toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
       return;
     }
@@ -5008,6 +5851,7 @@ if (wideLongToggleEl) {
     manualColumnWidths = {};
     renderActiveTable();
     renderDurationAnalysis();
+    renderAggregationWorkbench();
     toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
   });
 }
@@ -5140,6 +5984,7 @@ renderColumnProfiles();
 renderSections();
 renderRepeatingBlocks();
 renderDurationAnalysis();
+renderAggregationWorkbench();
 renderFormulaWorkbench();
 populateSortColumnSelect();
 renderSortPresets();

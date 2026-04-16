@@ -138,6 +138,23 @@ Zasada:
 - nie budujemy pelnego `Pivot Builder`
 - budujemy prosty, szybki i czytelny analizator do najczestszych pytan roboczych
 
+Status po pierwszym wdrozeniu:
+- obecna wersja Etapu 2 to dobra `v1`
+- ma byc traktowana jako fundament pod dalsze rozszerzenia, a nie jako finalna forma modulu
+- juz teraz korzysta z bardziej ogolnego modelu zrodla danych (`wide / long`, `filtered / all`), zeby kolejne funkcje nie byly doklejane jako osobne wyjatki
+
+Docelowy kierunek rozwoju:
+- wieksza reczna kustomizacja
+- wieksza kontrola nad tym, co jest grupa, co jest miara i jak liczony jest wynik
+- mozliwosc skladania lekkich workflow, ktore w zwyklym Excelu koncza sie makrami
+- rozwijanie tego w sposob przyjazny dla PWA i urzadzen bez wsparcia makr, szczegolnie tabletow
+
+To znaczy, ze w kolejnych iteracjach mozna dojsc do:
+- bardziej recznego definiowania zrodel i miar
+- dodatkowych typow agregacji i transformacji
+- zapisanych scenariuszy pracy dla konkretnych typow plikow
+- lekkich "macro substitutes" dzialajacych lokalnie w workbenchu bez VBA
+
 Uwaga UX / IA:
 - przy Etapie 2 nie zakladamy z gory, ze wszystko musi wyjsc z sidebaru
 - jesli czesc funkcji wygodnie miesci sie w panelu bocznym, to moze tam zostac
