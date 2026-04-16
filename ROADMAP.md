@@ -84,6 +84,8 @@ Why:
 
 Why:
 - current version is a strong `v1`
+- it already borrows part of the value that people normally expect from pivot tables in Excel
+- one of its important long-term goals is to become, in some workflows, a better and more approachable alternative to classic pivot-table work
 - the long-term goal is a browser-native substitute for some macro-based Excel workflows
 
 ### 6. Formula Workbench Improvements
@@ -105,6 +107,16 @@ Why:
 Why:
 - this is one of the most important long-term product opportunities
 - especially for PWA and tablet use
+
+### 8. Future Localization
+
+- add English as an optional UI language
+- make labels, helper text, and workbench panels available in both Polish and English
+- improve locale-aware formatting so Polish mode uses Polish-friendly date presentation instead of English month names
+
+Why:
+- the project is easier to share publicly when it can be shown in English
+- local formatting should feel natural in the language the user actually chose
 
 ## Ideas
 
@@ -147,6 +159,11 @@ These are valuable directions, but they are not promises yet.
 - restore investigative state later
 - keep a light history of workbench actions per file type
 
+### Localization Quality
+
+- stronger locale-aware formatting for dates, labels, and summaries
+- more consistent Polish and English wording across the UI
+
 ## Specific Direction For Aggregation
 
 The current aggregation module should evolve carefully:
@@ -154,6 +171,15 @@ The current aggregation module should evolve carefully:
 - keep the easy `v1` flow for fast questions
 - expand manual control without making the default UX heavy
 - allow more powerful layouts only when the sidebar stops being enough
+
+It is also worth stating the product intent clearly:
+
+- this module is intentionally inspired, in part, by what pivot tables give people in Excel
+- but the goal is not to recreate Excel pivot tables one-to-one
+- the goal is to make some pivot-table-style tasks easier, more readable, and more natural inside the workbench
+- in that sense, the feature should gradually become a better version of that workflow for selected real-world use cases
+- some of that value is already visible in the current version, but there is still a lot of room for future growth
+- it should keep supporting another core goal as well: replacing some macro-heavy or overly complicated Excel workflows with something lighter and more human-friendly
 
 That means:
 

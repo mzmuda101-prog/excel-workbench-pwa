@@ -148,6 +148,8 @@ let sortState = { col: "", dir: "asc" };
 let multiSortState = [];
 let manualColumnWidths = {};
 let hasUnsavedChanges = false;
+let focusedCellState = null;
+let selectedCellState = null;
 let syncingHorizontalScroll = false;
 let tooltipHideTimer = null;
 let durationAnalysisState = {
@@ -167,7 +169,7 @@ let aggregationWorkbenchState = {
   matchMode: "contains",
   showCount: 20,
 };
-const APP_BUILD_VERSION = "20260416-6";
+const APP_BUILD_VERSION = "20260416-11";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -3492,6 +3494,110 @@ function buildLongViewModel() {
   return buildLongViewModelFromRows(viewRows);
 }
 
+function getRowSelectionKey(row) {
+  if (!row) return "";
+  if (row.isLongViewRow) {
+    return `long:${row.sourceRowIndex0 ?? row.rowIndex0}:${row.sourceBlockIndex ?? 0}`;
+  }
+  return `wide:${row.rowIndex0 ?? ""}`;
+}
+
+function findCellElement(cellState) {
+  if (!cellState) return null;
+  return tbodyEl.querySelector(
+    `tr[data-row-key="${CSS.escape(cellState.rowKey)}"] td[data-col-index="${cellState.colIndex0}"]`
+  );
+}
+
+function findFocusedRowElement() {
+  if (!focusedCellState) return null;
+  return tbodyEl.querySelector(`tr[data-row-key="${CSS.escape(focusedCellState.rowKey)}"]`);
+}
+
+function syncFocusedCellInDom(options = {}) {
+  tbodyEl.querySelectorAll("tr.row-focused").forEach((row) => row.classList.remove("row-focused"));
+  const rowEl = findFocusedRowElement();
+  if (!rowEl) {
+    if (options.clearMissing !== false) focusedCellState = null;
+    return null;
+  }
+  rowEl.classList.add("row-focused");
+  const cell = findCellElement(focusedCellState);
+  if (options.scroll) {
+    (cell || rowEl).scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  return rowEl;
+}
+
+function syncSelectedCellInDom(options = {}) {
+  tbodyEl.querySelectorAll("td.cell-selected").forEach((cell) => cell.classList.remove("cell-selected"));
+  const cell = findCellElement(selectedCellState);
+  if (!cell) {
+    if (options.clearMissing !== false) selectedCellState = null;
+    return null;
+  }
+  cell.classList.add("cell-selected");
+  if (options.scroll) {
+    cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  return cell;
+}
+
+function setFocusedCell(rowKey, colIndex0, options = {}) {
+  if (!rowKey || !Number.isFinite(colIndex0) || colIndex0 < 0) {
+    focusedCellState = null;
+    syncFocusedCellInDom({ clearMissing: false });
+    return;
+  }
+  focusedCellState = { rowKey, colIndex0 };
+  syncFocusedCellInDom(options);
+}
+
+function setSelectedCell(rowKey, colIndex0, options = {}) {
+  if (!rowKey || !Number.isFinite(colIndex0) || colIndex0 < 0) {
+    selectedCellState = null;
+    syncSelectedCellInDom({ clearMissing: false });
+    return;
+  }
+  selectedCellState = { rowKey, colIndex0 };
+  syncSelectedCellInDom(options);
+}
+
+function moveFocusedCell(rowDelta, colDelta) {
+  if (!focusedCellState || !currentDisplayModel?.rows?.length || !currentDisplayModel?.headers?.length) return false;
+  const rowIndex = currentDisplayModel.rows.findIndex((row) => getRowSelectionKey(row) === focusedCellState.rowKey);
+  if (rowIndex < 0) {
+    focusedCellState = null;
+    return false;
+  }
+  const nextRowIndex = Math.max(0, Math.min(currentDisplayModel.rows.length - 1, rowIndex + rowDelta));
+  const nextColIndex = Math.max(0, Math.min(currentDisplayModel.headers.length - 1, focusedCellState.colIndex0 + colDelta));
+  const nextRow = currentDisplayModel.rows[nextRowIndex];
+  setFocusedCell(getRowSelectionKey(nextRow), nextColIndex, { scroll: true });
+  return true;
+}
+
+function moveSelectedCell(rowDelta, colDelta) {
+  if (!selectedCellState || !currentDisplayModel?.rows?.length || !currentDisplayModel?.headers?.length) return false;
+  const rowIndex = currentDisplayModel.rows.findIndex((row) => getRowSelectionKey(row) === selectedCellState.rowKey);
+  if (rowIndex < 0) {
+    selectedCellState = null;
+    return false;
+  }
+  const nextRowIndex = Math.max(0, Math.min(currentDisplayModel.rows.length - 1, rowIndex + rowDelta));
+  const nextColIndex = Math.max(0, Math.min(currentDisplayModel.headers.length - 1, selectedCellState.colIndex0 + colDelta));
+  const nextRow = currentDisplayModel.rows[nextRowIndex];
+  setSelectedCell(getRowSelectionKey(nextRow), nextColIndex, { scroll: true });
+  return true;
+}
+
+function shouldIgnoreTableArrowNavigation() {
+  const active = document.activeElement;
+  if (!active) return false;
+  const tag = String(active.tagName || "").toLowerCase();
+  return active.isContentEditable || ["input", "textarea", "select", "button"].includes(tag);
+}
+
 function getAggregationSourceRows(scopeMode) {
   return scopeMode === "all" ? baseRows.slice() : viewRows.slice();
 }
@@ -4084,6 +4190,8 @@ function renderTable(modelOrHeaders, maybeRows) {
 
   rowsShown.forEach((row, rowPos) => {
     const tr = document.createElement("tr");
+    tr.dataset.rowKey = getRowSelectionKey(row);
+    if (focusedCellState && focusedCellState.rowKey === tr.dataset.rowKey) tr.classList.add("row-focused");
     if (row.isSubheader) tr.classList.add("row-subheader");
     if (typeof row.rowIndex0 === "number") {
       tr.dataset.rowIndex = String(row.rowIndex0);
@@ -4105,6 +4213,9 @@ function renderTable(modelOrHeaders, maybeRows) {
       td.textContent = displayValue;
       td.dataset.fullText = displayValue;
       td.dataset.colIndex = String(i);
+      if (selectedCellState && selectedCellState.rowKey === tr.dataset.rowKey && selectedCellState.colIndex0 === i) {
+        td.classList.add("cell-selected");
+      }
 
       if (mergeLayout) {
         const anchor = mergeLayout.anchors.get(mergeKey);
@@ -4124,6 +4235,8 @@ function renderTable(modelOrHeaders, maybeRows) {
 
   const modeLabel = model.mode === "long" ? " • tryb long" : "";
   setStatus(`Wierszy: ${rows.length} (pokazano: ${Math.min(rows.length, limit)})${modeLabel}`);
+  syncFocusedCellInDom({ clearMissing: true });
+  syncSelectedCellInDom({ clearMissing: true });
   syncHorizontalScrollbar();
 }
 
@@ -5439,76 +5552,20 @@ resetWidthsBtn.addEventListener("click", () => {
   toast("Przywrocono automatyczne szerokosci", "info");
 });
 
-tbodyEl.addEventListener("dblclick", (e) => {
-  if (currentDisplayModel && currentDisplayModel.mode === "long") {
-    toast("Wide-to-Long jest na razie widokiem tylko do analizy", "info");
-    return;
-  }
+tbodyEl.addEventListener("click", (e) => {
   const td = e.target.closest("td");
-  if (!td) return;
+  if (!td || td.classList.contains("row-head")) return;
   const tr = td.parentElement;
-  const rowIndex0 = tr.dataset.rowIndex ? parseInt(tr.dataset.rowIndex, 10) : null;
-  const colIndex0 = td.dataset.colIndex ? parseInt(td.dataset.colIndex, 10) : null;
-  if (rowIndex0 === null || colIndex0 === null) return;
+  const rowKey = tr?.dataset.rowKey || "";
+  const colIndex0 = parseInt(td.dataset.colIndex || "", 10);
+  if (!rowKey || !Number.isFinite(colIndex0)) return;
+  setFocusedCell(rowKey, colIndex0, { scroll: false });
+});
 
-  if (!workbook || !currentSheetName) return;
-  const sheet = workbook.Sheets[currentSheetName];
-  const absoluteCol = currentStartCol + colIndex0;
-  const cellRef = XLSX.utils.encode_cell({ r: rowIndex0, c: absoluteCol });
-  const cell = sheet ? sheet[cellRef] : null;
-  if (cell && cell.f) {
-    toast("Edycja formul jest zablokowana", "warning");
-    return;
-  }
-
-  const rowObj = viewRows.find((r) => r.rowIndex0 === rowIndex0);
-  if (!rowObj) return;
-
-  const oldValue = rowObj.values[colIndex0];
-  const input = document.createElement("input");
-  input.className = "cell-editor";
-  input.value = oldValue == null ? "" : String(oldValue);
-  td.innerHTML = "";
-  td.appendChild(input);
-  input.focus();
-  input.select();
-
-  const commit = () => {
-    const parsed = parseInputValue(input.value);
-    if (parsed && parsed.type === "formula") {
-      toast("Edycja formul jest zablokowana", "warning");
-      renderActiveTable();
-      return;
-    }
-    if (!parsed) {
-      rowObj.values[colIndex0] = null;
-      rowObj.display[colIndex0] = "";
-      updateSheetCell(rowIndex0, colIndex0, null);
-      if (!valuesEqual(oldValue, null)) setDirtyState(true);
-    } else {
-      rowObj.values[colIndex0] = parsed.value;
-      rowObj.display[colIndex0] = toDisplay(parsed.value);
-      updateSheetCell(rowIndex0, colIndex0, parsed);
-      if (!valuesEqual(oldValue, parsed.value)) setDirtyState(true);
-    }
-    renderActiveTable();
-    renderInsights();
-    renderColumnProfiles();
-    renderSections();
-    renderRepeatingBlocks();
-    renderDurationAnalysis();
-    renderAggregationWorkbench();
-  };
-
-  const cancel = () => {
-    renderActiveTable();
-  };
-
-  input.addEventListener("keydown", (evt) => {
-    if (evt.key === "Enter") commit();
-    if (evt.key === "Escape") cancel();
-  });
-  input.addEventListener("blur", commit);
+tbodyEl.addEventListener("dblclick", (e) => {
+  const td = e.target.closest("td");
+  if (!td || td.classList.contains("row-head")) return;
+  toast("Edycja komorek jest tymczasowo zablokowana, dopoki lepiej nie dopracujemy zapisu stylow i zgodnosci pliku.", "info");
 });
 
 [searchQueryEl, searchQuery2El, onlyNonEmptyEl, dateModeEl, dateFromEl, dateToEl, lastDaysEl].forEach((el) => {
@@ -5917,6 +5974,27 @@ if (autoHeaderRowEl) {
 
 document.addEventListener("keydown", (e) => {
   const meta = e.ctrlKey || e.metaKey;
+  if (!meta && !e.altKey && !shouldIgnoreTableArrowNavigation()) {
+    let handled = false;
+    if (e.shiftKey) {
+      if (!selectedCellState && focusedCellState) {
+        setSelectedCell(focusedCellState.rowKey, focusedCellState.colIndex0, { scroll: false });
+      }
+      if (e.key === "ArrowUp") handled = moveSelectedCell(-1, 0);
+      if (e.key === "ArrowDown") handled = moveSelectedCell(1, 0);
+      if (e.key === "ArrowLeft") handled = moveSelectedCell(0, -1);
+      if (e.key === "ArrowRight") handled = moveSelectedCell(0, 1);
+    } else {
+      if (e.key === "ArrowUp") handled = moveFocusedCell(-1, 0);
+      if (e.key === "ArrowDown") handled = moveFocusedCell(1, 0);
+      if (e.key === "ArrowLeft") handled = moveFocusedCell(0, -1);
+      if (e.key === "ArrowRight") handled = moveFocusedCell(0, 1);
+    }
+    if (handled) {
+      e.preventDefault();
+      return;
+    }
+  }
   if (meta && e.key === "Enter") {
     e.preventDefault();
     applyFilterBtn.click();
