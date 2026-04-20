@@ -172,7 +172,7 @@ let aggregationWorkbenchState = {
   matchMode: "contains",
   showCount: 20,
 };
-const APP_BUILD_VERSION = "20260420-14";
+const APP_BUILD_VERSION = "20260420-15";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -4784,14 +4784,14 @@ function updateFilterBadge() {
   let count = 0;
   if (searchQueryEl.value.trim()) count += 1;
   if (searchQuery2El.value.trim()) count += 1;
-  if (filterEmptyModeEl.value !== "any_non_empty") count += 1;
-  if (filterEmptyMode2El.value !== "any_non_empty") count += 1;
+  if (filterEmptyModeEl.value !== "all") count += 1;
+  if (filterEmptyMode2El.value !== "all") count += 1;
   if (filterNegateEl.checked) count += 1;
   if (filterNegate2El.checked) count += 1;
   if (onlyNonEmptyEl.checked) count += 1;
   if (dateModeEl.value === "last_n_days") count += 1;
   if (dateFromEl.value.trim() || dateToEl.value.trim()) count += 1;
-  if (dateEmptyModeEl.value !== "any_non_empty") count += 1;
+  if (dateEmptyModeEl.value !== "all") count += 1;
   if (dateNegateEl.checked) count += 1;
   if (columnSelections.filter1.size) count += 1;
   if (columnSelections.filter2.size) count += 1;
