@@ -33,6 +33,10 @@ const filter1ColumnsEl = document.getElementById("filter1Columns");
 const filter2ColumnsEl = document.getElementById("filter2Columns");
 const filter1PickBtn = document.getElementById("filter1Pick");
 const filter2PickBtn = document.getElementById("filter2Pick");
+const filterEmptyModeEl = document.getElementById("filterEmptyMode");
+const filterNegateEl = document.getElementById("filterNegate");
+const filterEmptyMode2El = document.getElementById("filterEmptyMode2");
+const filterNegate2El = document.getElementById("filterNegate2");
 const onlyNonEmptyEl = document.getElementById("onlyNonEmpty");
 const applyFilterBtn = document.getElementById("applyFilterBtn");
 const filterBadgeEl = document.getElementById("filterBadge");
@@ -49,6 +53,8 @@ const dateModeEl = document.getElementById("dateMode");
 const dateFromEl = document.getElementById("dateFrom");
 const dateToEl = document.getElementById("dateTo");
 const lastDaysEl = document.getElementById("lastDays");
+const dateEmptyModeEl = document.getElementById("dateEmptyMode");
+const dateNegateEl = document.getElementById("dateNegate");
 const dateColumnsEl = document.getElementById("dateColumns");
 const datePickBtn = document.getElementById("datePick");
 
@@ -166,7 +172,7 @@ let aggregationWorkbenchState = {
   matchMode: "contains",
   showCount: 20,
 };
-const APP_BUILD_VERSION = "20260416-12";
+const APP_BUILD_VERSION = "20260420-12";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -3153,6 +3159,36 @@ function getDateRange() {
   return { from, to };
 }
 
+function rowMatchesEmptyMode(row, indexes, emptyMode) {
+  if (!emptyMode || emptyMode === "all") return true;
+  const resolvedIndexes = indexes && indexes.length ? indexes : row.values.map((_, i) => i);
+  const emptyStates = resolvedIndexes.map((i) => {
+    if (i >= row.values.length) return true;
+    return getDisplayValue(row, i).trim().length === 0;
+  });
+  if (!emptyStates.length) return emptyMode === "any_empty";
+  if (emptyMode === "any_empty") return emptyStates.some(Boolean);
+  if (emptyMode === "all_empty") return emptyStates.every(Boolean);
+  if (emptyMode === "any_non_empty") return emptyStates.some((isEmpty) => !isEmpty);
+  if (emptyMode === "all_non_empty") return emptyStates.every((isEmpty) => !isEmpty);
+  return true;
+}
+
+function combinePrimaryAndEmptyMatch(primaryMatched, emptyMatched, negated, hasPrimaryRule, hasEmptyRule) {
+  if (!hasPrimaryRule && !hasEmptyRule) return true;
+  if (hasPrimaryRule && negated) {
+    if (hasEmptyRule) return !primaryMatched && emptyMatched;
+    return !primaryMatched;
+  }
+  if (hasPrimaryRule && !negated) {
+    if (hasEmptyRule) return primaryMatched && emptyMatched;
+    return primaryMatched;
+  }
+  if (hasEmptyRule && negated) return !emptyMatched;
+  if (hasEmptyRule) return emptyMatched;
+  return true;
+}
+
 function rowMatchesTextFilter(row, criteria, onlyNonEmpty) {
   const values = row.values;
   let usedIndexes = new Set();
@@ -3169,9 +3205,14 @@ function rowMatchesTextFilter(row, criteria, onlyNonEmpty) {
 
   for (const criterion of criteria) {
     const query = criterion.query;
-    if (!query) continue;
-    let matched = false;
+    const emptyMode = criterion.emptyMode || "all";
+    const hasQuery = !!query;
+    const hasEmptyRule = emptyMode !== "all";
+    if (!hasQuery && !hasEmptyRule) continue;
+
+    let textMatched = !hasQuery;
     for (const i of criterion.indexes) {
+      if (!hasQuery) break;
       if (i >= values.length) continue;
       const text = getDisplayValue(row, i).toLowerCase();
       const altDate = parseDateFlexible(values[i]);
@@ -3184,29 +3225,44 @@ function rowMatchesTextFilter(row, criteria, onlyNonEmpty) {
         candidates.push(`${dd}-${mm}-${yy}`);
         candidates.push(`${dd}-${mm}-${yyyy}`);
       }
-      if (criterion.mode === "Równa się" && candidates.some((c) => c === query)) matched = true;
-      if (criterion.mode === "Zaczyna się" && candidates.some((c) => c.startsWith(query))) matched = true;
-      if (criterion.mode === "Zawiera" && candidates.some((c) => c.includes(query))) matched = true;
-      if (matched) break;
+      if (criterion.mode === "Równa się" && candidates.some((c) => c === query)) textMatched = true;
+      if (criterion.mode === "Zaczyna się" && candidates.some((c) => c.startsWith(query))) textMatched = true;
+      if (criterion.mode === "Zawiera" && candidates.some((c) => c.includes(query))) textMatched = true;
+      if (textMatched) break;
     }
+    const emptyMatched = rowMatchesEmptyMode(row, criterion.indexes, emptyMode);
+    const matched = combinePrimaryAndEmptyMatch(textMatched, emptyMatched, criterion.negated, hasQuery, hasEmptyRule);
     if (!matched) return false;
   }
 
   return true;
 }
 
-function rowMatchesDateFilter(row, indexes, dateRange) {
-  if (!dateRange.from && !dateRange.to) return true;
-  for (const idx of indexes) {
-    if (idx >= row.values.length) continue;
-    const raw = row.rawValues ? row.rawValues[idx] : row.values[idx];
-    const d = parseDateFlexible(raw ?? getDisplayValue(row, idx));
-    if (!d) continue;
-    if (dateRange.from && d < dateRange.from) continue;
-    if (dateRange.to && d > dateRange.to) continue;
-    return true;
+function rowMatchesDateFilter(row, filter) {
+  const indexes = filter.indexes || [];
+  const dateRange = filter.range || { from: null, to: null };
+  const hasRange = !!(dateRange.from || dateRange.to);
+  const emptyMode = filter.emptyMode || "all";
+  const hasEmptyRule = emptyMode !== "all";
+  if (!hasRange && !hasEmptyRule) return true;
+
+  let rangeMatched = !hasRange;
+  if (hasRange) {
+    rangeMatched = false;
+    for (const idx of indexes) {
+      if (idx >= row.values.length) continue;
+      const raw = row.rawValues ? row.rawValues[idx] : row.values[idx];
+      const d = parseDateFlexible(raw ?? getDisplayValue(row, idx));
+      if (!d) continue;
+      if (dateRange.from && d < dateRange.from) continue;
+      if (dateRange.to && d > dateRange.to) continue;
+      rangeMatched = true;
+      break;
+    }
   }
-  return false;
+
+  const emptyMatched = rowMatchesEmptyMode(row, indexes, emptyMode);
+  return combinePrimaryAndEmptyMatch(rangeMatched, emptyMatched, filter.negated, hasRange, hasEmptyRule);
 }
 
 function resolveIndexes(headers, selected) {
@@ -3388,21 +3444,29 @@ function applyFilters() {
       query: (searchQueryEl.value || "").trim().toLowerCase(),
       mode: filterModeEl.value,
       indexes: resolveIndexes(currentHeaders, columnSelections.filter1),
+      emptyMode: filterEmptyModeEl.value,
+      negated: filterNegateEl.checked,
     },
     {
       query: (searchQuery2El.value || "").trim().toLowerCase(),
       mode: filterMode2El.value,
       indexes: resolveIndexes(currentHeaders, columnSelections.filter2),
+      emptyMode: filterEmptyMode2El.value,
+      negated: filterNegate2El.checked,
     },
   ];
 
-  const dateIndexes = resolveIndexes(currentHeaders, columnSelections.date);
-  const dateRange = getDateRange();
+  const dateFilter = {
+    indexes: resolveIndexes(currentHeaders, columnSelections.date),
+    range: getDateRange(),
+    emptyMode: dateEmptyModeEl.value,
+    negated: dateNegateEl.checked,
+  };
   const onlyNonEmpty = onlyNonEmptyEl.checked;
 
   viewRows = baseRows.filter((row) => {
     if (!rowMatchesTextFilter(row, criteria, onlyNonEmpty)) return false;
-    if (!rowMatchesDateFilter(row, dateIndexes, dateRange)) return false;
+    if (!rowMatchesDateFilter(row, dateFilter)) return false;
     return true;
   });
 }
@@ -4720,9 +4784,15 @@ function updateFilterBadge() {
   let count = 0;
   if (searchQueryEl.value.trim()) count += 1;
   if (searchQuery2El.value.trim()) count += 1;
+  if (filterEmptyModeEl.value !== "any_non_empty") count += 1;
+  if (filterEmptyMode2El.value !== "any_non_empty") count += 1;
+  if (filterNegateEl.checked) count += 1;
+  if (filterNegate2El.checked) count += 1;
   if (onlyNonEmptyEl.checked) count += 1;
   if (dateModeEl.value === "last_n_days") count += 1;
   if (dateFromEl.value.trim() || dateToEl.value.trim()) count += 1;
+  if (dateEmptyModeEl.value !== "any_non_empty") count += 1;
+  if (dateNegateEl.checked) count += 1;
   if (columnSelections.filter1.size) count += 1;
   if (columnSelections.filter2.size) count += 1;
   if (columnSelections.date.size) count += 1;
@@ -4782,11 +4852,17 @@ function resetFilterInputs() {
   searchQuery2El.value = "";
   filterModeEl.value = "Zawiera";
   filterMode2El.value = "Zawiera";
+  filterEmptyModeEl.value = "all";
+  filterEmptyMode2El.value = "all";
+  filterNegateEl.checked = false;
+  filterNegate2El.checked = false;
   onlyNonEmptyEl.checked = false;
   dateModeEl.value = "between";
   dateFromEl.value = "";
   dateToEl.value = "";
   lastDaysEl.value = "";
+  dateEmptyModeEl.value = "all";
+  dateNegateEl.checked = false;
   columnSelections.filter1.clear();
   columnSelections.filter2.clear();
   columnSelections.date.clear();

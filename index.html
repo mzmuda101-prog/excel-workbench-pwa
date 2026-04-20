@@ -161,6 +161,22 @@
                   </div>
                 </label>
               </div>
+              <div class="row">
+                <label class="field">
+                  Puste / Niepuste
+                  <select id="filterEmptyMode">
+                    <option value="all">dowolnie</option>
+                    <option value="any_non_empty">niepuste w wybranych kol.</option>
+                    <option value="all_non_empty">niepuste w calym zakresie</option>
+                    <option value="any_empty">puste w wybranych kol.</option>
+                    <option value="all_empty">puste w calym zakresie</option>
+                  </select>
+                </label>
+                <label class="field checkbox">
+                  <input id="filterNegate" type="checkbox" />
+                  Odwróć
+                </label>
+              </div>
               <label class="field checkbox">
                 <input id="onlyNonEmpty" type="checkbox" />
                 Tylko wiersze z danymi
@@ -199,6 +215,22 @@
                     <input id="filter2Columns" type="text" readonly value="Wszystkie kolumny" />
                     <button class="btn ghost btn-sm" id="filter2Pick" type="button">Wybierz</button>
                   </div>
+                </label>
+              </div>
+              <div class="row">
+                <label class="field">
+                  Puste / Niepuste
+                  <select id="filterEmptyMode2">
+                    <option value="all">dowolnie</option>
+                    <option value="any_non_empty">niepuste w wybranych kol.</option>
+                    <option value="all_non_empty">niepuste w calym zakresie</option>
+                    <option value="any_empty">puste w wybranych kol.</option>
+                    <option value="all_empty">puste w calym zakresie</option>
+                  </select>
+                </label>
+                <label class="field checkbox">
+                  <input id="filterNegate2" type="checkbox" />
+                  Odwróć
                 </label>
               </div>
             </div>
@@ -252,6 +284,23 @@
                   <button class="btn ghost btn-sm" id="datePick" type="button">Wybierz</button>
                 </div>
               </label>
+
+              <div class="row">
+                <label class="field">
+                  Puste / Niepuste
+                  <select id="dateEmptyMode">
+                    <option value="all">dowolnie</option>
+                    <option value="any_non_empty">niepuste w wybranych kol.</option>
+                    <option value="all_non_empty">niepuste w calym zakresie</option>
+                    <option value="any_empty">puste w wybranych kol.</option>
+                    <option value="all_empty">puste w calym zakresie</option>
+                  </select>
+                </label>
+                <label class="field checkbox">
+                  <input id="dateNegate" type="checkbox" />
+                  Odwróć
+                </label>
+              </div>
 
               <div class="quick-row">
                 <button class="chip" data-range="7" type="button">7 dni</button>
@@ -677,6 +726,6 @@
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
     <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260416-12"></script>
+    <script src="app.js?v=20260420-12"></script>
   </body>
 </html>
