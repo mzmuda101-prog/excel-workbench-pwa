@@ -172,7 +172,7 @@ let aggregationWorkbenchState = {
   matchMode: "contains",
   showCount: 20,
 };
-const APP_BUILD_VERSION = "20260420-12";
+const APP_BUILD_VERSION = "20260420-14";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";

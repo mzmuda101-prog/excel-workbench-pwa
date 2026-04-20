@@ -42,6 +42,17 @@ Why:
 - this is core daily value
 - this is where the app can beat normal Excel fastest
 
+### 1.5. Puste/Niepuste Filtering Enhancement (FUTURE)
+
+- opcja "sprawdzaj we WSZYSTKICH kolumnach" niezależnie od wybranych kolumn
+- jako dodatkowy checkbox: "we wszystkich kolumnach" albo osobne pole wyboru
+- pozwoli na scenariusze gdzie użytkownik chce filtrować wiersze całkowicie puste/niepuste w całym arkuszu
+
+Why:
+- rozszerza elastyczność filtrowania o nowe scenariusze użycia
+
+### 2. Multi-Sort And Reusable Presets
+
 ### 2. Multi-Sort And Reusable Presets
 
 - multi-sort with priority order
