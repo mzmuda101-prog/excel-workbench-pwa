@@ -12,6 +12,8 @@ This roadmap is public-facing and intentionally split into two groups:
 - Build a workbench around Excel, not a full Excel clone
 - Prioritize workflows that are painful in normal Excel, especially on tablet/PWA
 - Reuse existing modules instead of growing a pile of special-case tools
+- Draw light inspiration from Excel Pivot Tables for aggregation workflows
+- Aim to replace common macro/VBA-heavy Excel workflows with lighter, browser-native alternatives
 
 ## Current Foundation
 
@@ -73,7 +75,20 @@ Why:
 Why:
 - this supports every advanced feature added later
 
-### 4. Wide Workbook Support
+### 4. Multi-Level Grouping (Aggregation v2)
+
+- grouping by multiple columns (e.g., Country > City in hierarchy)
+- distinct count (number of unique values)
+- group filtering with HAVING (e.g., "only categories with >10 products")
+- result sorting options
+- better result browsing
+
+Why:
+- makes aggregation workbench more universal for various sheet types
+- distinct count is a common business question ("how many unique customers?")
+- multi-level grouping solves more complex analytical scenarios
+
+### 5. Wide Workbook Support
 
 - improve repeated-block detection across more workbook shapes
 - make `Wide-to-Long` clearer and more robust
@@ -83,7 +98,7 @@ Why:
 Why:
 - wide operational spreadsheets are one of the strongest use cases for this project
 
-### 5. Aggregation Workbench `v2`
+### 6. Aggregation Workbench `v2`
 
 - stronger manual customization of:
   - grouping
@@ -95,11 +110,9 @@ Why:
 
 Why:
 - current version is a strong `v1`
-- it already borrows part of the value that people normally expect from pivot tables in Excel
-- one of its important long-term goals is to become, in some workflows, a better and more approachable alternative to classic pivot-table work
-- the long-term goal is a browser-native substitute for some macro-based Excel workflows
+- extends the pivot-table-inspired workflow further
 
-### 6. Formula Workbench Improvements
+### 7. Formula Workbench Improvements
 
 - better grouping of similar formulas
 - stronger filters by function and error type
@@ -109,7 +122,7 @@ Why:
 Why:
 - formulas are a painful Excel area and a good fit for workbench tooling
 
-### 7. Lightweight Macro-Substitute Workflows
+### 8. Lightweight Macro-Substitute Workflows
 
 - reusable analysis setups for specific workbook patterns
 - saved workbench scenarios per file type
@@ -119,7 +132,7 @@ Why:
 - this is one of the most important long-term product opportunities
 - especially for PWA and tablet use
 
-### 8. Future Localization
+### 9. Future Localization
 
 - add English as an optional UI language
 - make labels, helper text, and workbench panels available in both Polish and English
@@ -174,29 +187,6 @@ These are valuable directions, but they are not promises yet.
 
 - stronger locale-aware formatting for dates, labels, and summaries
 - more consistent Polish and English wording across the UI
-
-## Specific Direction For Aggregation
-
-The current aggregation module should evolve carefully:
-
-- keep the easy `v1` flow for fast questions
-- expand manual control without making the default UX heavy
-- allow more powerful layouts only when the sidebar stops being enough
-
-It is also worth stating the product intent clearly:
-
-- this module is intentionally inspired, in part, by what pivot tables give people in Excel
-- but the goal is not to recreate Excel pivot tables one-to-one
-- the goal is to make some pivot-table-style tasks easier, more readable, and more natural inside the workbench
-- in that sense, the feature should gradually become a better version of that workflow for selected real-world use cases
-- some of that value is already visible in the current version, but there is still a lot of room for future growth
-- it should keep supporting another core goal as well: replacing some macro-heavy or overly complicated Excel workflows with something lighter and more human-friendly
-
-That means:
-
-- some controls may stay in the sidebar
-- richer result views may eventually move into a wider or dedicated workspace
-- UI decisions should follow clarity and comfort, not a rigid layout rule
 
 ## Not In Scope
 
