@@ -173,8 +173,11 @@ let aggregationWorkbenchState = {
   showCount: 20,
   havingMode: "all",
   havingValue: 10,
+  measureFilterMode: "all",
+  measureFilterValue: "",
+  resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260420-15";
+const APP_BUILD_VERSION = "20260421-12";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -1513,8 +1516,19 @@ function buildAggregationWorkbenchResult() {
   }
 
   const isDistinct = aggregationWorkbenchState.aggregation === "distinct";
+  const measureFilterMode = aggregationWorkbenchState.measureFilterMode || "all";
+  const measureFilterValue = aggregationWorkbenchState.measureFilterValue || "";
   const buckets = new Map();
   model.rows.forEach((row) => {
+    if (measureFilterMode !== "all" && measureFilterValue) {
+      const rowMeasureText = measure.getRawText
+        ? measure.getRawText(row)
+        : getDisplayValue(row, measure.colIdx) || "";
+      const rowMeasureLower = rowMeasureText.toLowerCase();
+      const filterLower = measureFilterValue.toLowerCase();
+      if (measureFilterMode === "contains" && !rowMeasureLower.includes(filterLower)) return;
+      if (measureFilterMode === "exact" && rowMeasureLower !== filterLower) return;
+    }
     const rawGroup = row.values?.[groupIdx];
     const groupLabel = String(getDisplayValue(row, groupIdx) || rawGroup || "(puste)").trim() || "(puste)";
     const key = normalizeAnalysisKey(groupLabel) || "(puste)";
@@ -1788,6 +1802,35 @@ function renderAggregationWorkbench() {
   matchSelect.value = aggregationWorkbenchState.matchMode;
   matchField.appendChild(matchSelect);
 
+const measureFilterField = document.createElement("label");
+  measureFilterField.className = "field";
+  measureFilterField.append("Zawiera w mierze");
+  const measureFilterSelect = document.createElement("select");
+  measureFilterSelect.dataset.aggregationControl = "measurefilter";
+  [
+    { value: "all", label: "Wszystkie", title: "Pokaz wszystkie wiersze bez filtrowania" },
+    { value: "contains", label: "Zawiera", title: "Znajdz wiersze zawierajace szukany tekst (np. czesc imienia)" },
+    { value: "exact", label: "Dokladnie", title: "Znajdz wiersze dokladnie rowne szukanej wartosci" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    option.title = item.title || "";
+    measureFilterSelect.appendChild(option);
+  });
+  measureFilterSelect.value = aggregationWorkbenchState.measureFilterMode || "all";
+  measureFilterField.appendChild(measureFilterSelect);
+
+  const measureFilterInput = document.createElement("input");
+  measureFilterInput.type = "text";
+  measureFilterInput.className = "aggregation-measurefilter-value";
+  measureFilterInput.dataset.aggregationControl = "measurefilter-value";
+  measureFilterInput.value = aggregationWorkbenchState.measureFilterValue || "";
+  measureFilterInput.placeholder = "szukaj...";
+  measureFilterInput.title = "Szukana wartosc w kolumnie mierzonej";
+  measureFilterInput.style.display = aggregationWorkbenchState.measureFilterMode === "all" ? "none" : "inline-block";
+  measureFilterField.appendChild(measureFilterInput);
+
   const showCountField = document.createElement("label");
   showCountField.className = "field";
   showCountField.append("Pokaz wynikow");
@@ -1833,7 +1876,7 @@ function renderAggregationWorkbench() {
   havingValueInput.style.display = aggregationWorkbenchState.havingMode === "all" ? "none" : "inline-block";
   havingField.appendChild(havingValueInput);
 
-  [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, showCountField, havingField].forEach((field) => controls.appendChild(field));
+  [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
   aggregationWorkbenchSummaryEl.appendChild(controls);
 
   const note = document.createElement("div");
@@ -1849,15 +1892,45 @@ function renderAggregationWorkbench() {
   note.textContent = `Aktualne zrodlo: ${result.model.mode === "long" ? "Wide-to-Long" : "widok klasyczny"} • zakres: ${aggregationWorkbenchState.scopeMode === "all" ? "caly arkusz" : "aktualny widok"} • naglowek: ${headerModeText}${result.helperMode ? " (pomocniczy)" : ""} • dopasowanie: ${aggregationWorkbenchState.matchMode === "exact" ? "dokladnie" : "zawiera"}${havingText}.`;
   aggregationWorkbenchSummaryEl.appendChild(note);
 
-  const listNote = document.createElement("div");
-  listNote.className = "duration-analysis-note";
-  const visibleCount = Math.min(aggregationWorkbenchState.showCount, result.entries.length);
-  listNote.textContent = result.entries.length > visibleCount
-    ? `Pokazano ${visibleCount} z ${result.entries.length} grup.`
-    : `Pokazano wszystkie grupy: ${result.entries.length}.`;
-  aggregationWorkbenchListEl.appendChild(listNote);
+  const currentSearch = aggregationWorkbenchState.resultSearch || "";
+  const filteredEntries = currentSearch
+    ? result.entries.filter((e) => e.label.toLowerCase().includes(currentSearch.toLowerCase()))
+    : result.entries;
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "aggregation-result-search-wrap";
 
-  result.entries.slice(0, aggregationWorkbenchState.showCount).forEach((entry, index) => {
+  const searchLabel = document.createElement("span");
+  searchLabel.textContent = "Szukaj:";
+  searchLabel.style.fontSize = "12px";
+  searchLabel.style.color = "var(--muted)";
+  searchWrap.appendChild(searchLabel);
+
+  const resultSearchInput = document.createElement("input");
+  resultSearchInput.type = "text";
+  resultSearchInput.className = "aggregation-result-search";
+  resultSearchInput.placeholder = "np. Julian...";
+  resultSearchInput.title = "Wpisz tekst ktory ma sie zawierac w nazwie grupy (np. czesc imienia)";
+  resultSearchInput.style.flex = "1";
+  resultSearchInput.style.minWidth = "100px";
+  resultSearchInput.style.padding = "4px 8px";
+  resultSearchInput.style.borderRadius = "var(--r-sm)";
+  resultSearchInput.style.border = "1px solid var(--border)";
+  resultSearchInput.style.fontSize = "13px";
+  resultSearchInput.value = currentSearch;
+  searchWrap.appendChild(resultSearchInput);
+
+  const searchCount = document.createElement("span");
+  searchCount.style.fontSize = "12px";
+  searchCount.style.color = "var(--muted)";
+  searchCount.style.marginLeft = "8px";
+  searchCount.style.whiteSpace = "nowrap";
+  searchCount.textContent = currentSearch ? `${filteredEntries.length} z ${result.entries.length}` : "";
+  searchWrap.appendChild(searchCount);
+
+  aggregationWorkbenchListEl.appendChild(searchWrap);
+
+  const showCount = Math.min(aggregationWorkbenchState.showCount, filteredEntries.length);
+  filteredEntries.slice(0, showCount).forEach((entry, index) => {
     const item = document.createElement("div");
     item.className = "aggregation-item";
 
@@ -6049,6 +6122,16 @@ if (aggregationWorkbenchSummaryEl) {
     if (kind === "measure") aggregationWorkbenchState.measure = control.value || "count_rows";
     if (kind === "aggregation") aggregationWorkbenchState.aggregation = control.value || "count";
     if (kind === "match") aggregationWorkbenchState.matchMode = control.value || "contains";
+    if (kind === "measurefilter") {
+      aggregationWorkbenchState.measureFilterMode = control.value || "all";
+      const valueInput = aggregationWorkbenchSummaryEl.querySelector("[data-aggregation-control=\"measurefilter-value\"]");
+      if (valueInput) {
+        valueInput.style.display = aggregationWorkbenchState.measureFilterMode === "all" ? "none" : "inline-block";
+      }
+    }
+    if (kind === "measurefilter-value") {
+      aggregationWorkbenchState.measureFilterValue = control.value || "";
+    }
     if (kind === "count") {
       const next = parseInt(control.value || "20", 10);
       aggregationWorkbenchState.showCount = Number.isFinite(next) && next > 0 ? next : 20;
@@ -6069,6 +6152,13 @@ if (aggregationWorkbenchSummaryEl) {
   });
 }
 if (aggregationWorkbenchListEl) {
+  aggregationWorkbenchListEl.addEventListener("keydown", (e) => {
+    if (e.target.classList.contains("aggregation-result-search") && e.key === "Enter") {
+      e.preventDefault();
+      aggregationWorkbenchState.resultSearch = e.target.value || "";
+      renderAggregationWorkbench();
+    }
+  });
   aggregationWorkbenchListEl.addEventListener("click", (e) => {
     e.stopPropagation();
     const btn = e.target.closest("button[data-aggregation-action='filter-group']");

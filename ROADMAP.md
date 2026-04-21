@@ -177,6 +177,20 @@ These are valuable directions, but they are not promises yet.
 - filtering by cell type
 - filtering by color or formatting hints
 
+### Shared Words Grouping (FUTURE)
+
+- intelligent grouping of similar text values with variations (e.g., "Julian Olsz", "Gr1 Julian Olsz", "Julian Olasz")
+- use shortest record as canonical pattern per group
+- compare by shared words count with configurable minimum threshold
+- noise removal option (numbers, prefixes like "Gr1", "gr.4")
+- case-sensitive option
+- goal: count "Julian Olsz" variants together while keeping "Julian Olasz" separate
+
+Why:
+- handles common data entry variations and typos
+- enables accurate counting of entities with inconsistent naming
+- currently blocked by complexity issues (needs more robust implementation)
+
 ### Local Analytical Sessions
 
 - save local analysis sessions
