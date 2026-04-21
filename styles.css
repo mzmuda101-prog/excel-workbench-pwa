@@ -1131,6 +1131,15 @@ details.panel[open] > summary {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.aggregation-having-value {
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  text-align: center;
+}
+
 .aggregation-header-row {
   display: grid;
   gap: 8px;

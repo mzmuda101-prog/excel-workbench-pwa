@@ -78,10 +78,10 @@ Why:
 ### 4. Multi-Level Grouping (Aggregation v2)
 
 - grouping by multiple columns (e.g., Country > City in hierarchy)
-- distinct count (number of unique values)
-- group filtering with HAVING (e.g., "only categories with >10 products")
 - result sorting options
 - better result browsing
+
+Note: HAVING filter and distinct count already implemented in v1.5.
 
 Why:
 - makes aggregation workbench more universal for various sheet types

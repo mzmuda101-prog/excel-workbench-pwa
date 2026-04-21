@@ -171,6 +171,8 @@ let aggregationWorkbenchState = {
   aggregation: "count",
   matchMode: "contains",
   showCount: 20,
+  havingMode: "all",
+  havingValue: 10,
 };
 const APP_BUILD_VERSION = "20260420-15";
 
@@ -1356,6 +1358,10 @@ function detectAggregationMeasureCandidates(model, profiles) {
         if (typeof raw === "number" && Number.isFinite(raw)) return raw;
         return parseDurationDaysFlexible(raw ?? getDisplayValue(row, profile.idx));
       },
+      getRawText: (row) => {
+        const raw = row.values?.[profile.idx];
+        return raw != null ? String(raw).trim() : "";
+      },
     });
   });
 
@@ -1449,7 +1455,7 @@ function getNormalizedAggregationWorkbenchContext() {
   const measure = measures.find((candidate) => candidate.key === nextMeasure) || measures[0] || null;
   const allowedAggregations = measure?.measureType === "count_rows"
     ? ["count"]
-    : ["avg", "median", "min", "max", "sum", "count"];
+    : ["avg", "median", "min", "max", "sum", "count", "distinct"];
   const nextAggregation = allowedAggregations.includes(aggregationWorkbenchState.aggregation)
     ? aggregationWorkbenchState.aggregation
     : chooseDefaultAggregationMethod(measure);
@@ -1476,6 +1482,10 @@ function getNormalizedAggregationWorkbenchContext() {
 }
 
 function computeAggregateMetric(values, aggregation) {
+  if (aggregation === "distinct") {
+    const unique = new Set(values.map((v) => String(v).trim()).filter((v) => v));
+    return unique.size;
+  }
   const nums = values.filter((value) => Number.isFinite(value));
   if (aggregation === "count") return nums.length;
   if (!nums.length) return null;
@@ -1502,6 +1512,7 @@ function buildAggregationWorkbenchResult() {
     return { status: "no-options", ...context };
   }
 
+  const isDistinct = aggregationWorkbenchState.aggregation === "distinct";
   const buckets = new Map();
   model.rows.forEach((row) => {
     const rawGroup = row.values?.[groupIdx];
@@ -1512,17 +1523,26 @@ function buildAggregationWorkbenchResult() {
       values: [],
       rowIndexes: new Set(),
     };
-    const measureValue = measure.getValue(row);
-    if (measure.measureType === "count_rows") {
-      entry.values.push(1);
-    } else if (Number.isFinite(measureValue)) {
-      entry.values.push(measureValue);
+    if (isDistinct) {
+      const rawValue = measure.getRawText
+        ? measure.getRawText(row)
+        : measure.colIdx != null
+          ? getDisplayValue(row, measure.colIdx) || ""
+          : "";
+      entry.values.push(rawValue);
+    } else {
+      const measureValue = measure.getValue(row);
+      if (measure.measureType === "count_rows") {
+        entry.values.push(1);
+      } else if (Number.isFinite(measureValue)) {
+        entry.values.push(measureValue);
+      }
     }
     entry.rowIndexes.add(row.rowIndex0);
     buckets.set(key, entry);
   });
 
-  const entries = Array.from(buckets.values())
+  const rawEntries = Array.from(buckets.values())
     .map((entry) => {
       const count = entry.values.filter((value) => Number.isFinite(value)).length;
       return {
@@ -1536,7 +1556,24 @@ function buildAggregationWorkbenchResult() {
         primary: computeAggregateMetric(entry.values, aggregationWorkbenchState.aggregation),
       };
     })
-    .filter((entry) => entry.count > 0 || aggregationWorkbenchState.aggregation === "count")
+    .filter((entry) => {
+      if (aggregationWorkbenchState.aggregation === "distinct") return true;
+      return entry.count > 0 || aggregationWorkbenchState.aggregation === "count";
+    });
+
+  const totalPrimary = rawEntries.reduce((sum, e) => sum + (e.primary || 0), 0);
+  const maxPrimary = rawEntries.length > 0 ? Math.max(...rawEntries.map(e => e.primary || 0)) : 0;
+
+  const entries = rawEntries
+    .filter((entry) => {
+      if (aggregationWorkbenchState.havingMode === "all") return true;
+      const primary = entry.primary || 0;
+      const value = aggregationWorkbenchState.havingValue;
+      if (aggregationWorkbenchState.havingMode === "above_value") return primary > value;
+      if (aggregationWorkbenchState.havingMode === "above_percent") return totalPrimary > 0 && (primary / totalPrimary) * 100 > value;
+      if (aggregationWorkbenchState.havingMode === "above_max_percent") return maxPrimary > 0 && (primary / maxPrimary) * 100 > value;
+      return true;
+    })
     .sort((a, b) => {
       const diff = Number(b.primary || 0) - Number(a.primary || 0);
       if (Math.abs(diff) > 0.001) return diff;
@@ -1581,7 +1618,8 @@ function renderAggregationWorkbench() {
   }
 
   const measure = result.measure;
-  const primaryKind = measure?.kind === "duration" ? "duration" : "number";
+  const isDistinctMode = aggregationWorkbenchState.aggregation === "distinct";
+  const primaryKind = isDistinctMode ? "number" : (measure?.kind === "duration" ? "duration" : "number");
   const aggregationLabels = {
     count: "Liczebnosc",
     avg: "Srednia",
@@ -1589,6 +1627,7 @@ function renderAggregationWorkbench() {
     min: "Minimum",
     max: "Maksimum",
     sum: "Suma",
+    distinct: "Unikalnych",
   };
 
   const summaryGrid = document.createElement("div");
@@ -1714,10 +1753,20 @@ function renderAggregationWorkbench() {
   const aggregationSelect = document.createElement("select");
   aggregationSelect.dataset.aggregationControl = "aggregation";
   aggregationField.appendChild(aggregationSelect);
+  const aggregationTooltips = {
+    count: "Ile wierszy jest w kazdej grupie (np. 15 wierszy w Krakowie)",
+    avg: "Srednia wartosc (np. sredni czas lub srednia kwota)",
+    median: "Srodkowa wartosc (polowa wartosci jest mniejsza, polowa wieksza)",
+    min: "Najmniejsza wartosc w grupie",
+    max: "Najwieksza wartosc w grupie",
+    sum: "Laczna suma wszystkich wartosci w grupie",
+    distinct: "Ile roznych, niepowtarzalnych wartosci (np. 5 roznych klientow)",
+  };
   result.allowedAggregations.forEach((key) => {
     const opt = document.createElement("option");
     opt.value = key;
     opt.textContent = aggregationLabels[key];
+    opt.title = aggregationTooltips[key] || "";
     aggregationSelect.appendChild(opt);
   });
   aggregationSelect.value = aggregationWorkbenchState.aggregation;
@@ -1753,7 +1802,38 @@ function renderAggregationWorkbench() {
   showCountSelect.value = String(aggregationWorkbenchState.showCount);
   showCountField.appendChild(showCountSelect);
 
-  [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, showCountField].forEach((field) => controls.appendChild(field));
+  const havingField = document.createElement("label");
+  havingField.className = "field";
+  havingField.append("Filtrowanie grup");
+  const havingSelect = document.createElement("select");
+  havingSelect.dataset.aggregationControl = "having";
+  [
+    { value: "all", label: "Wszystkie", title: "Pokaz wszystkie grupy bez ograniczen" },
+    { value: "above_value", label: " Wartosc >", title: "Pokaz tylko grupy z wartoscia wieksza niz podana liczba" },
+    { value: "above_percent", label: "% sumy >", title: "Pokaz grupy ktore stanowia wiecej niz X% lacznej sumy wszystkich grup" },
+    { value: "above_max_percent", label: "% max >", title: "Pokaz grupy wieksze niz polowa najsilniejszej grupy" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    option.title = item.title;
+    havingSelect.appendChild(option);
+  });
+  havingSelect.value = aggregationWorkbenchState.havingMode;
+  havingField.appendChild(havingSelect);
+
+  const havingValueInput = document.createElement("input");
+  havingValueInput.type = "number";
+  havingValueInput.className = "aggregation-having-value";
+  havingValueInput.dataset.aggregationControl = "having-value";
+  havingValueInput.value = String(aggregationWorkbenchState.havingValue);
+  havingValueInput.min = "0";
+  havingValueInput.step = "1";
+  havingValueInput.title = "Podaj wartosc progową (np. 10 oznacza >10)";
+  havingValueInput.style.display = aggregationWorkbenchState.havingMode === "all" ? "none" : "inline-block";
+  havingField.appendChild(havingValueInput);
+
+  [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, showCountField, havingField].forEach((field) => controls.appendChild(field));
   aggregationWorkbenchSummaryEl.appendChild(controls);
 
   const note = document.createElement("div");
@@ -1761,7 +1841,12 @@ function renderAggregationWorkbench() {
   const headerModeText = aggregationWorkbenchState.headerRowChoice === "auto"
     ? `auto -> wiersz ${result.resolvedHeaderRow}`
     : `wiersz ${result.resolvedHeaderRow}`;
-  note.textContent = `Aktualne zrodlo: ${result.model.mode === "long" ? "Wide-to-Long" : "widok klasyczny"} • zakres: ${aggregationWorkbenchState.scopeMode === "all" ? "caly arkusz" : "aktualny widok"} • naglowek: ${headerModeText}${result.helperMode ? " (pomocniczy)" : ""} • dopasowanie: ${aggregationWorkbenchState.matchMode === "exact" ? "dokladnie" : "zawiera"}.`;
+  const havingText = aggregationWorkbenchState.havingMode === "all"
+    ? ""
+    : aggregationWorkbenchState.havingMode === "above_value"
+      ? ` • filtr: > ${aggregationWorkbenchState.havingValue}`
+      : ` • filtr: > ${aggregationWorkbenchState.havingValue}%`;
+  note.textContent = `Aktualne zrodlo: ${result.model.mode === "long" ? "Wide-to-Long" : "widok klasyczny"} • zakres: ${aggregationWorkbenchState.scopeMode === "all" ? "caly arkusz" : "aktualny widok"} • naglowek: ${headerModeText}${result.helperMode ? " (pomocniczy)" : ""} • dopasowanie: ${aggregationWorkbenchState.matchMode === "exact" ? "dokladnie" : "zawiera"}${havingText}.`;
   aggregationWorkbenchSummaryEl.appendChild(note);
 
   const listNote = document.createElement("div");
@@ -5929,6 +6014,8 @@ if (durationAnalysisListEl) {
 if (aggregationWorkbenchSummaryEl) {
   aggregationWorkbenchSummaryEl.addEventListener("change", (e) => {
     e.stopPropagation();
+    const sidebarEl = document.querySelector(".sidebar");
+    const savedSidebarScroll = sidebarEl ? sidebarEl.scrollTop : 0;
     const control = e.target.closest("[data-aggregation-control]");
     if (!control) return;
     const kind = control.dataset.aggregationControl;
@@ -5966,7 +6053,19 @@ if (aggregationWorkbenchSummaryEl) {
       const next = parseInt(control.value || "20", 10);
       aggregationWorkbenchState.showCount = Number.isFinite(next) && next > 0 ? next : 20;
     }
+    if (kind === "having") {
+      aggregationWorkbenchState.havingMode = control.value || "all";
+      const valueInput = aggregationWorkbenchSummaryEl.querySelector("[data-aggregation-control=\"having-value\"]");
+      if (valueInput) {
+        valueInput.style.display = aggregationWorkbenchState.havingMode === "all" ? "none" : "inline-block";
+      }
+    }
+    if (kind === "having-value") {
+      const next = parseFloat(control.value || "0", 10);
+      aggregationWorkbenchState.havingValue = Number.isFinite(next) && next >= 0 ? next : 10;
+    }
     renderAggregationWorkbench();
+    if (sidebarEl) sidebarEl.scrollTop = savedSidebarScroll;
   });
 }
 if (aggregationWorkbenchListEl) {
