@@ -1848,6 +1848,7 @@ table {
   border-collapse: collapse;
   background: var(--panel);
   table-layout: fixed;
+  transition: transform 0.2s ease;
 }
 
 thead {

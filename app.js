@@ -22,6 +22,7 @@ const headerRowEl = document.getElementById("headerRow");
 const autoHeaderRowEl = document.getElementById("autoHeaderRow");
 const displayModeEl = document.getElementById("displayMode");
 const maxRowsEl = document.getElementById("maxRows");
+const zoomLevelEl = document.getElementById("zoomLevel");
 const excelLayoutToggleEl = document.getElementById("excelLayoutToggle");
 const loadBtn = document.getElementById("loadBtn");
 
@@ -227,6 +228,27 @@ function setDirtyState(isDirty) {
   hasUnsavedChanges = !!isDirty;
   statusEl.classList.toggle("unsaved", hasUnsavedChanges);
   document.title = hasUnsavedChanges ? `* ${BASE_TITLE}` : BASE_TITLE;
+}
+
+function applyZoom() {
+  if (!tableEl || !zoomLevelEl) return;
+  const zoom = parseFloat(zoomLevelEl.value) || 1;
+  const baseSize = 12;
+  
+  if (zoom === 1) {
+    tableEl.style.zoom = "";
+    tableEl.style.transform = "";
+    tableEl.style.fontSize = "";
+    tableEl.style.marginRight = "";
+    tableEl.style.marginBottom = "";
+    return;
+  }
+  
+  if ("zoom" in tableEl.style) {
+    tableEl.style.zoom = String(zoom);
+  } else {
+    tableEl.style.fontSize = `${baseSize * zoom}px`;
+  }
 }
 
 function valuesEqual(a, b) {
@@ -4500,6 +4522,7 @@ function renderTable(modelOrHeaders, maybeRows) {
   syncFocusedCellInDom({ clearMissing: true });
   syncSelectedCellInDom({ clearMissing: true });
   syncHorizontalScrollbar();
+  applyZoom();
 }
 
 function buildRows(sheet, headerRow, wb) {
@@ -5537,6 +5560,10 @@ loadBtn.addEventListener("click", () => {
       }
       toast("Arkusz wczytany", "success");
       log(`Wczytano arkusz: ${sheetName}`, "success");
+      setTimeout(() => {
+        const panelFileSheet = document.getElementById("panel-file-sheet");
+        if (panelFileSheet) panelFileSheet.removeAttribute("open");
+      }, 100);
     } finally {
       setLoading(false);
     }
@@ -5904,6 +5931,10 @@ maxRowsEl.addEventListener("change", () => {
   renderActiveTable();
 });
 
+zoomLevelEl.addEventListener("change", () => {
+  setTimeout(applyZoom, 50);
+});
+
 if (excelLayoutToggleEl) {
   excelLayoutToggleEl.addEventListener("click", () => {
     setExcelLayoutEnabled(!isExcelLayoutEnabled());
@@ -5917,6 +5948,7 @@ initTheme();
 loadMaxRowsPreference();
 loadExcelLayoutPreference();
 attachResizeHandlers();
+applyZoom();
 updateNetworkBadge();
 window.addEventListener("online", updateNetworkBadge);
 window.addEventListener("offline", updateNetworkBadge);

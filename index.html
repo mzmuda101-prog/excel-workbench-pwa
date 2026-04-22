@@ -256,8 +256,8 @@
                   Tryb
                   <select id="dateMode">
                     <option value="between">Między</option>
-                    <option value="before">Przed</option>
-                    <option value="after">Po</option>
+                    <option value="before">DO</option>
+                    <option value="after">OD</option>
                     <option value="last_n_days">Ostatnie N dni</option>
                   </select>
                 </label>
@@ -314,6 +314,50 @@
             </div>
           </details>
 
+          <details class="panel" id="panel-actions" open>
+            <summary>
+              <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18" />
+                <path d="M7 12h10" />
+                <path d="M10 18h4" />
+              </svg>
+              <span class="panel-title">Akcje</span>
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="panel-body stack">
+              <button class="btn full" id="applyFilterBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
+                Filtruj
+                <span class="filter-badge hidden" id="filterBadge">0</span>
+              </button>
+              <button class="btn ghost full" id="resetFiltersBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1 4 1 10 7 10"></polyline>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                </svg>
+                Reset filtrow
+              </button>
+              <button class="btn ghost full" id="resetWidthsBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+                Reset szerokosci
+              </button>
+              <button class="btn ghost full" id="saveBtn" type="button" disabled aria-disabled="true" title="Wersja webowa nie zapisuje do oryginalnego pliku. Użyj „Zapisz jako…”.">Zapisz</button>
+              <button class="btn ghost full" id="saveAsBtn" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7l18 8 1-4H3z"></path>
+                </svg>
+                Zapisz jako...</button>
+            </div>
+          </details>
+          
           <details class="panel" id="panel-sort-workbench">
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -365,47 +409,35 @@
             </div>
           </details>
 
-          <details class="panel" id="panel-actions" open>
+          <details class="panel" id="panel-view" open>
             <summary>
               <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 6h18" />
-                <path d="M7 12h10" />
-                <path d="M10 18h4" />
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v2" />
+                <path d="M12 21v2" />
+                <path d="M4.22 4.22l1.42 1.42" />
+                <path d="M18.36 18.36l1.42 1.42" />
+                <path d="M1 12h2" />
+                <path d="M21 12h2" />
+                <path d="M4.22 19.78l1.42-1.42" />
+                <path d="M18.36 5.64l1.42-1.42" />
               </svg>
-              <span class="panel-title">Akcje</span>
+              <span class="panel-title">Widok</span>
               <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </summary>
             <div class="panel-body stack">
-              <button class="btn full" id="applyFilterBtn" type="button">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                </svg>
-                Filtruj
-                <span class="filter-badge hidden" id="filterBadge">0</span>
-              </button>
-              <button class="btn ghost full" id="resetFiltersBtn" type="button">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="1 4 1 10 7 10"></polyline>
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-                </svg>
-                Reset filtrow
-              </button>
-              <button class="btn ghost full" id="resetWidthsBtn" type="button">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="3" y1="12" x2="21" y2="12"></line>
-                  <line x1="3" y1="6" x2="21" y2="6"></line>
-                  <line x1="3" y1="18" x2="21" y2="18"></line>
-                </svg>
-                Reset szerokosci
-              </button>
-              <button class="btn ghost full" id="saveBtn" type="button" disabled aria-disabled="true" title="Wersja webowa nie zapisuje do oryginalnego pliku. Użyj „Zapisz jako…”.">Zapisz</button>
-              <button class="btn ghost full" id="saveAsBtn" type="button">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 7l18 8 1-4H3z"></path>
-                </svg>
-                Zapisz jako...</button>
+              <label class="field">
+                Powiększenie
+                <select id="zoomLevel">
+                  <option value="1">100%</option>
+                  <option value="1.25">125%</option>
+                  <option value="1.5">150%</option>
+                  <option value="1.75">175%</option>
+                  <option value="2">200%</option>
+                </select>
+              </label>
             </div>
           </details>
 
