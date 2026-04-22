@@ -121,3 +121,10 @@ If you want to contribute, please read [CONTRIBUTING.md](./CONTRIBUTING.md) firs
 ## Notes
 
 Some deeper product and research notes are kept in separate files in this repo. They are useful for development context, but `README.md` and `ROADMAP.md` are the main public-facing entry points.
+
+## License
+
+The source code of this project is available under the `MIT` license.
+
+Exception:
+the project logo, branding elements, screenshots, visual identity, and other presentation assets remain the property of Mateusz Zmuda and are not intended for reuse as ready-made branding or product presentation materials without explicit permission.
