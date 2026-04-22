@@ -1848,13 +1848,12 @@ table {
   border-collapse: collapse;
   background: var(--panel);
   table-layout: fixed;
-  transition: transform 0.2s ease;
 }
 
 thead {
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 5;
 }
 
 thead th {
@@ -1865,6 +1864,10 @@ thead th {
   padding: 9px 12px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+}
+
+thead tr.header-row th {
+  background: var(--surface);
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
@@ -1882,7 +1885,7 @@ thead .guide-row th {
   text-align: center;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--accent-border);
   cursor: default;
   height: var(--guide-row-height);
   padding: 6px 10px;
@@ -1920,7 +1923,7 @@ thead .guide-row th {
 .row-head {
   text-align: center;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--accent-border);
   white-space: nowrap;
   padding: 7px 6px;
   border-right: 1px solid var(--border);

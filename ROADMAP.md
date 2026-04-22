@@ -165,7 +165,7 @@ These are valuable directions, but they are not promises yet.
 ### Workbook Structure Diagnostics
 
 - named ranges
-- freeze panes
+- freeze panes - sticky header when scrolling (like Excel/Google Sheets freeze panes)
 - table objects
 - hidden / very hidden sheet signals
 - structural heatmaps

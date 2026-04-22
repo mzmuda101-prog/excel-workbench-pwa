@@ -142,6 +142,7 @@ let currentRepeatingBlocks = [];
 let currentFormulaEntries = [];
 let currentDisplayModel = null;
 let tableViewMode = "wide";
+
 const columnSelections = {
   filter1: new Set(),
   filter2: new Set(),
