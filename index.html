@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Lokalne przeglądanie, filtrowanie i analiza arkuszy Excel" />
+    <meta id="pageDescription" name="description" content="Lokalne przeglądanie, filtrowanie i analiza arkuszy Excel" />
     <title>Excel Workbench</title>
     <link rel="icon" type="image/png" href="/favicon.png?v=3" />
     <link rel="manifest" href="manifest.json" />
@@ -37,6 +37,10 @@
           <button class="panel-toggle" id="panelToggle" type="button" aria-label="Zwin/rozwin panel">
             Panel
           </button>
+          <div class="lang-switch" role="group" aria-label="Przełącznik języka" id="langSwitch">
+            <button class="lang-button is-active" type="button" data-lang="pl" aria-pressed="true">PL</button>
+            <button class="lang-button" type="button" data-lang="en" aria-pressed="false">EN</button>
+          </div>
           <span class="hero-badge">PWA</span>
           <span class="hero-badge network-badge" id="networkBadge" aria-live="polite">Online</span>
           <a href="https://strona-6.vercel.app" target="_blank" rel="noopener"><button class="logo-badge" id="link1" title="Przejdź do strony Mateusz App | formularz i eksport Excel" aria-label="Przejdź do strony Mateusz App | formularz i eksport Excel">
@@ -109,8 +113,8 @@
                 <label class="field">
                   Tryb wyświetlania
                   <select id="displayMode">
-                    <option>Wartości</option>
-                    <option>Formuły</option>
+                    <option value="values">Wartości</option>
+                    <option value="formulas">Formuły</option>
                   </select>
                 </label>
                 <label class="field">
@@ -149,9 +153,9 @@
                 <label class="field">
                   Tryb
                   <select id="filterMode">
-                    <option>Zawiera</option>
-                    <option>Zaczyna się</option>
-                    <option>Równa się</option>
+                    <option value="contains">Zawiera</option>
+                    <option value="starts_with">Zaczyna się</option>
+                    <option value="equals">Równa się</option>
                   </select>
                 </label>
                 <label class="field">
@@ -205,9 +209,9 @@
                 <label class="field">
                   Tryb
                   <select id="filterMode2">
-                    <option>Zawiera</option>
-                    <option>Zaczyna się</option>
-                    <option>Równa się</option>
+                    <option value="contains">Zawiera</option>
+                    <option value="starts_with">Zaczyna się</option>
+                    <option value="equals">Równa się</option>
                   </select>
                 </label>
                 <label class="field">
