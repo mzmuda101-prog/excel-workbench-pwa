@@ -1,4 +1,5 @@
 const rootEl = document.documentElement;
+const appShellEl = document.querySelector(".app");
 const logEl = document.getElementById("log");
 const statusEl = document.getElementById("status");
 const tableEl = document.getElementById("dataTable");
@@ -83,6 +84,8 @@ const applyPickBtn = document.getElementById("applyPickBtn");
 const closePickerBtn = document.getElementById("closePicker");
 
 const themeToggle = document.getElementById("themeToggle");
+const langSwitchEl = document.getElementById("langSwitch");
+const langSwitchIndicatorEl = langSwitchEl?.querySelector(".lang-switch-indicator") || null;
 const langButtons = Array.from(document.querySelectorAll(".lang-button"));
 const panelToggle = document.getElementById("panelToggle");
 const panelHandle = document.getElementById("panelHandle");
@@ -120,6 +123,7 @@ const formulaWorkbenchSummaryEl = document.getElementById("formulaWorkbenchSumma
 const formulaWorkbenchListEl = document.getElementById("formulaWorkbenchList");
 
 const quickRangeButtons = Array.from(document.querySelectorAll(".chip[data-range]"));
+const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let workbook = null;
 let currentHeaders = [];
@@ -180,7 +184,7 @@ let aggregationWorkbenchState = {
   measureFilterValue: "",
   resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260421-12";
+const APP_BUILD_VERSION = "20260425-01";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -802,6 +806,22 @@ function applySelectTranslations() {
   });
 }
 
+function updateLangSwitchIndicator() {
+  if (!langSwitchEl || !langSwitchIndicatorEl) return;
+
+  const activeButton = langButtons.find((button) => button.classList.contains("is-active"));
+  if (!activeButton) return;
+
+  langSwitchIndicatorEl.style.setProperty("--lang-pill-x", `${activeButton.offsetLeft}px`);
+  langSwitchIndicatorEl.style.setProperty("--lang-pill-width", `${activeButton.offsetWidth}px`);
+
+  if (!langSwitchEl.classList.contains("is-ready")) {
+    window.requestAnimationFrame(() => {
+      langSwitchEl.classList.add("is-ready");
+    });
+  }
+}
+
 function applyLanguage(lang) {
   currentLang = lang === "en" ? "en" : "pl";
   localStorage.setItem(LANG_KEY, currentLang);
@@ -813,6 +833,7 @@ function applyLanguage(lang) {
   setReadingMode(rootEl.classList.contains("reading"));
   renderSortRules();
   renderSortPresets();
+  updateLangSwitchIndicator();
 }
 
 function log(msg, type = "info") {
@@ -6658,6 +6679,10 @@ if (langButtons.length) {
     });
   });
 }
+
+window.addEventListener("resize", () => {
+  updateLangSwitchIndicator();
+});
 
 applyLanguage(currentLang);
 initIntroSplash();
