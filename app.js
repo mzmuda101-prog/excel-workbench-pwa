@@ -205,6 +205,117 @@ const I18N = {
     contains: "Zawiera",
     startsWith: "Zaczyna się",
     equals: "Równa się",
+    dateBetween: "Między",
+    dateBefore: "DO",
+    dateAfter: "OD",
+    dateLastN: "Ostatnie N dni",
+    any: "dowolnie",
+    anyNonEmpty: "nie puste (przynajmniej jedna)",
+    allNonEmpty: "nie puste (wszystkie)",
+    anyEmpty: "puste (przynajmniej jedna)",
+    allEmpty: "puste (wszystkie)",
+    dateAnyNonEmpty: "z datą (przynajmniej jedna)",
+    dateAllNonEmpty: "z datą (wszystkie)",
+    dateAnyEmpty: "bez daty (przynajmniej jedna)",
+    dateAllEmpty: "bez daty (wszystkie)",
+    sortAsc: "Rosnąco",
+    sortDesc: "Malejąco",
+    allFunctions: "Wszystkie funkcje",
+    noResult: "Bez wyniku",
+    withError: "Z błędem",
+    online: "Online",
+    offline: "Offline",
+    panelOpen: "Zamknij filtry",
+    panelClosed: "Filtry",
+    readingStandard: "Tryb standardowy",
+    readingQuick: "Tryb szybkie szukanie",
+    quickSearchColumns: "Kolumny",
+    allColumns: "Wszystkie kolumny",
+    choosePreset: "Wybierz preset",
+    noSavedPresets: "Brak zapisanych presetów",
+    moveUp: "Góra",
+    moveDown: "Dół",
+    changeDirection: "Zmień kierunek",
+    remove: "Usuń",
+    defaultSort: "Domyślne sortowanie",
+    excelView: "Widok Excel",
+    excelViewOn: "Widok Excel: ON",
+    classicView: "Widok klasyczny",
+    loadingFile: "Wczytywanie pliku...",
+    loadingSheet: "Budowanie tabeli...",
+    loadingGeneric: "Wczytywanie...",
+    statusFileLoaded: "Plik wczytany",
+    fileLoaded: "Plik wczytany",
+    sheetLoaded: "Arkusz wczytany",
+    filtersApplied: "Zastosowano filtry",
+    filtersReset: "Reset filtrow",
+    firstLoadSheet: "Najpierw wczytaj arkusz",
+    loadSheetToPickColumns: "Wczytaj arkusz, żeby wybrac kolumny",
+    addedSortRule: "Dodano sortowanie do kolejki",
+    noSortsToSave: "Brak sortowan do zapisania",
+    presetNamePrompt: "Nazwa presetu sortowania:",
+    sortPresetSaved: "Zapisano preset sortowania",
+    choosePresetToast: "Wybierz preset",
+    presetNotFound: "Nie znaleziono presetu",
+    sortPresetLoaded: "Wczytano preset sortowania",
+    choosePresetToDelete: "Wybierz preset do usuniecia",
+    sortPresetDeleted: "Usunieto preset sortowania",
+    defaultSortRestored: "Przywrocono domyslne sortowanie",
+    webSaveInfo: "Wersja webowa nie nadpisuje pliku. Uzyj Zapisz jako...",
+    widthsRestored: "Przywrocono automatyczne szerokosci",
+    cacheRefresh: "Czyszcze cache i odswiezam aplikacje...",
+    refreshingApp: "Odswiezam aplikacje...",
+    fileLoadFailed: "Nie udalo sie wczytac pliku",
+    noDataForExport: "Brak danych do eksportu",
+    csvExported: "Wyeksportowano CSV",
+    noFileToSave: "Brak pliku do zapisu",
+    xlsmConfirm: "Plik .xlsm moze utracic makra. Kontynuowac zapis?",
+    fileSaved: "Zapisano plik",
+    saveAsPrompt: "Podaj nazwe pliku (xlsx lub xlsm):",
+    chooseFileFirst: "Najpierw wybierz plik",
+    noSheet: "Brak arkusza",
+    duplicatedHeaders: "Zdublowane naglowki rozrozniono ({count})",
+    themeToggleTitle: "Zmień motyw (jasny / ciemny)",
+    themeToggleAria: "Zmień motyw",
+    brandRefreshTitle: "Odśwież aplikację",
+    brandRefreshAria: "Odśwież aplikację",
+    networkSafety: "Pliki Excel są wczytywane i przetwarzane lokalnie na Twoim urządzeniu.",
+    networkOnlineTitle: "Połączenie aktywne. {note}",
+    networkOfflineTitle: "Brak połączenia sieciowego. {note}",
+    sidebarCloseAria: "Zamknij panel filtrow",
+    sidebarOpenAria: "Otworz panel filtrow",
+    sidebarHideTitle: "Schowaj filtry",
+    sidebarShowTitle: "Pokaz filtry",
+    emptyTitle: "Wysuń sidebar-a i wczytaj plik Excel",
+    emptySub: "możesz tam przeciągnąć plik lub wybrać go bezpośrednio z dysku",
+  },
+  en: {
+    locale: "en-US",
+    title: "Excel Workbench",
+    description: "Local browsing, filtering, and analysis of Excel sheets",
+    values: "Values",
+    formulas: "Formulas",
+    contains: "Contains",
+    startsWith: "Starts with",
+    equals: "Equals",
+    dateBetween: "Between",
+    dateBefore: "Before",
+    dateAfter: "After",
+    dateLastN: "Last N days",
+    any: "any",
+    anyNonEmpty: "not empty (at least one)",
+    allNonEmpty: "not empty (all)",
+    anyEmpty: "empty (at least one)",
+    allEmpty: "empty (all)",
+    dateAnyNonEmpty: "with date (at least one)",
+    dateAllNonEmpty: "with date (all)",
+    dateAnyEmpty: "without date (at least one)",
+    dateAllEmpty: "without date (all)",
+    sortAsc: "Ascending",
+    sortDesc: "Descending",
+    allFunctions: "All functions",
+    noResult: "No result",
+    withError: "With error",
     online: "Online",
     offline: "Offline",
     panelOpen: "Zamknij filtry",
@@ -360,6 +471,41 @@ function t(key, vars = {}) {
   });
   return value;
 }
+
+const SELECT_VALUE_ALIASES_PL = {
+  "dowolnie": "all",
+  "nie puste (przynajmniej jedna)": "any_non_empty",
+  "nie puste (przynajmniej jedno)": "any_non_empty",
+  "nie puste (wszystkie)": "all_non_empty",
+  "puste (przynajmniej jedna)": "any_empty",
+  "puste (przynajmniej jedno)": "any_empty",
+  "puste (wszystkie)": "all_empty",
+  "z datą (przynajmniej jedna)": "any_non_empty",
+  "z data (przynajmniej jedna)": "any_non_empty",
+  "z datą (wszystkie)": "all_non_empty",
+  "z data (wszystkie)": "all_non_empty",
+  "bez daty (przynajmniej jedna)": "any_empty",
+  "bez daty (wszystkie)": "all_empty",
+  "zawiera": "contains",
+  "zaczyna się": "starts_with",
+  "równa się": "equals",
+  "między": "between",
+  "do": "before",
+  "od": "after",
+  "ostatnie n dni": "last_n_days",
+  "dokładnie": "exact",
+  "dokladnie": "exact",
+  "rosnąco": "asc",
+  "rosnaco": "asc",
+  "malejąco": "desc",
+  "malejaco": "desc",
+  "wszystkie funkcje": "all",
+  "bez wyniku": "missing",
+  "z błędem": "error",
+  "z błędami": "error",
+  "wartości": "values",
+  "formuły": "formulas",
+};
 
 const STATIC_TRANSLATIONS = {
   pl: {
@@ -639,6 +785,170 @@ function setButtonLabel(selector, text) {
   textNode.textContent = ` ${text} `;
 }
 
+const SELECT_VALUE_ALIASES = {
+  filterMode: {
+    contains: "contains",
+    "zawiera": "contains",
+    "starts_with": "starts_with",
+    "zaczyna się": "starts_with",
+    "zaczyna sie": "starts_with",
+    "starts with": "starts_with",
+    equals: "equals",
+    "równa się": "equals",
+    "rowna sie": "equals",
+  },
+  filterMode2: {
+    contains: "contains",
+    "zawiera": "contains",
+    "starts_with": "starts_with",
+    "zaczyna się": "starts_with",
+    "zaczyna sie": "starts_with",
+    "starts with": "starts_with",
+    equals: "equals",
+    "równa się": "equals",
+    "rowna sie": "equals",
+  },
+  dateMode: {
+    between: "between",
+    "między": "between",
+    "miedzy": "between",
+    before: "before",
+    do: "before",
+    after: "after",
+    od: "after",
+    last_n_days: "last_n_days",
+    "ostatnie n dni": "last_n_days",
+    "last n days": "last_n_days",
+  },
+  filterEmptyMode: {
+    all: "all",
+    "dowolnie": "all",
+    any: "all",
+    any_non_empty: "any_non_empty",
+    "nie puste (przynajmniej jedna)": "any_non_empty",
+    "nie puste (przynajmniej jedno)": "any_non_empty",
+    "not empty (at least one)": "any_non_empty",
+    all_non_empty: "all_non_empty",
+    "nie puste (wszystkie)": "all_non_empty",
+    "not empty (all)": "all_non_empty",
+    any_empty: "any_empty",
+    "puste (przynajmniej jedna)": "any_empty",
+    "puste (przynajmniej jedno)": "any_empty",
+    "empty (at least one)": "any_empty",
+    all_empty: "all_empty",
+    "puste (wszystkie)": "all_empty",
+    "empty (all)": "all_empty",
+  },
+  filterEmptyMode2: {
+    all: "all",
+    "dowolnie": "all",
+    any: "all",
+    any_non_empty: "any_non_empty",
+    "nie puste (przynajmniej jedna)": "any_non_empty",
+    "nie puste (przynajmniej jedno)": "any_non_empty",
+    "not empty (at least one)": "any_non_empty",
+    all_non_empty: "all_non_empty",
+    "nie puste (wszystkie)": "all_non_empty",
+    "not empty (all)": "all_non_empty",
+    any_empty: "any_empty",
+    "puste (przynajmniej jedna)": "any_empty",
+    "puste (przynajmniej jedno)": "any_empty",
+    "empty (at least one)": "any_empty",
+    all_empty: "all_empty",
+    "puste (wszystkie)": "all_empty",
+    "empty (all)": "all_empty",
+  },
+  dateEmptyMode: {
+    all: "all",
+    "dowolnie": "all",
+    any: "all",
+    any_non_empty: "any_non_empty",
+    "z datą (przynajmniej jedna)": "any_non_empty",
+    "z data (przynajmniej jedna)": "any_non_empty",
+    "with date (at least one)": "any_non_empty",
+    all_non_empty: "all_non_empty",
+    "z datą (wszystkie)": "all_non_empty",
+    "z data (wszystkie)": "all_non_empty",
+    "with date (all)": "all_non_empty",
+    any_empty: "any_empty",
+    "bez daty (przynajmniej jedna)": "any_empty",
+    "without date (at least one)": "any_empty",
+    all_empty: "all_empty",
+    "bez daty (wszystkie)": "all_empty",
+    "without date (all)": "all_empty",
+  },
+  quickSearchMode: {
+    contains: "contains",
+    "zawiera": "contains",
+    exact: "exact",
+    "dokladnie": "exact",
+    "dokładnie": "exact",
+    equals: "exact",
+  },
+  quickSearchPopupMode: {
+    contains: "contains",
+    "zawiera": "contains",
+    exact: "exact",
+    "dokladnie": "exact",
+    "dokładnie": "exact",
+    equals: "exact",
+  },
+  displayMode: {
+    values: "values",
+    "wartości": "values",
+    formulas: "formulas",
+    "formuły": "formulas",
+  },
+  sortDirectionSelect: {
+    asc: "asc",
+    "rosnąco": "asc",
+    "rosnaco": "asc",
+    "ascending": "asc",
+    desc: "desc",
+    "malejąco": "desc",
+    "malejaco": "desc",
+    "descending": "desc",
+  },
+  formulaFilter: {
+    all: "all",
+    "wszystkie": "all",
+    "all functions": "all",
+    missing: "missing",
+    "bez wyniku": "missing",
+    "no result": "missing",
+    error: "error",
+    "z błędem": "error",
+    "with error": "error",
+  },
+};
+
+function normalizeSelectAliasKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeSelectValue(id, value) {
+  const aliases = SELECT_VALUE_ALIASES[id];
+  if (!aliases) return value;
+  const normalized = aliases[normalizeSelectAliasKey(value)];
+  return normalized || value;
+}
+
+function normalizeSelectElement(select) {
+  if (!select?.id) return;
+  Array.from(select.options).forEach((option) => {
+    const canonical = normalizeSelectValue(select.id, option.value) || normalizeSelectValue(select.id, option.textContent);
+    if (canonical && canonical !== option.value) option.value = canonical;
+  });
+  const normalizedValue = normalizeSelectValue(select.id, select.value);
+  if (normalizedValue && normalizedValue !== select.value) select.value = normalizedValue;
+}
+
+function getNormalizedSelectValue(select) {
+  if (!select) return "";
+  normalizeSelectElement(select);
+  return normalizeSelectValue(select.id, select.value);
+}
+
 function applyStaticTranslations() {
   const copy = STATIC_TRANSLATIONS[currentLang] || STATIC_TRANSLATIONS.pl;
   document.documentElement.lang = currentLang;
@@ -783,25 +1093,76 @@ function applyStaticTranslations() {
 }
 
 function applySelectTranslations() {
-  const dictionaries = {
-    displayMode: { values: t("values"), formulas: t("formulas") },
-    filterMode: { contains: t("contains"), starts_with: t("startsWith"), equals: t("equals") },
-    filterMode2: { contains: t("contains"), starts_with: t("startsWith"), equals: t("equals") },
-    dateMode: { between: t("dateBetween"), before: t("dateBefore"), after: t("dateAfter"), last_n_days: t("dateLastN") },
-    filterEmptyMode: { all: t("any"), any_non_empty: t("anyNonEmpty"), all_non_empty: t("allNonEmpty"), any_empty: t("anyEmpty"), all_empty: t("allEmpty") },
-    filterEmptyMode2: { all: t("any"), any_non_empty: t("anyNonEmpty"), all_non_empty: t("allNonEmpty"), any_empty: t("anyEmpty"), all_empty: t("allEmpty") },
-    dateEmptyMode: { all: t("any"), any_non_empty: t("dateAnyNonEmpty"), all_non_empty: t("dateAllNonEmpty"), any_empty: t("dateAnyEmpty"), all_empty: t("dateAllEmpty") },
-    quickSearchMode: { contains: t("contains"), exact: t("equals") },
-    quickSearchPopupMode: { contains: t("contains"), exact: t("equals") },
-    sortDirectionSelect: { asc: t("sortAsc"), desc: t("sortDesc") },
-    formulaFilter: { all: t("allFunctions"), missing: t("noResult"), error: t("withError") },
+  const valueToI18nKey = {
+    values: "values",
+    formulas: "formulas",
+    contains: "contains",
+    starts_with: "startsWith",
+    equals: "equals",
+    between: "dateBetween",
+    before: "dateBefore",
+    after: "dateAfter",
+    last_n_days: "dateLastN",
+    all: "any",
+    any_non_empty: "anyNonEmpty",
+    all_non_empty: "allNonEmpty",
+    any_empty: "anyEmpty",
+    all_empty: "allEmpty",
+    exact: "equals",
+    asc: "sortAsc",
+    desc: "sortDesc",
+    all_functions: "allFunctions",
+    missing: "noResult",
+    error: "withError",
   };
 
-  Object.entries(dictionaries).forEach(([id, map]) => {
+  const plToEn = {
+    "wartości": "values",
+    "formuły": "formulas",
+    "zawiera": "contains",
+    "zaczyna się": "starts_with",
+    "równa się": "equals",
+    "między": "between",
+    "do": "before",
+    "od": "after",
+    "ostatnie n dni": "last_n_days",
+    "dowolnie": "all",
+    "nie puste (przynajmniej jedna)": "any_non_empty",
+    "nie puste (przynajmniej jedno)": "any_non_empty",
+    "nie puste (wszystkie)": "all_non_empty",
+    "puste (przynajmniej jedna)": "any_empty",
+    "puste (przynajmniej jedno)": "any_empty",
+    "puste (wszystkie)": "all_empty",
+    "z datą (przynajmniej jedna)": "any_non_empty",
+    "z datą (wszystkie)": "all_non_empty",
+    "bez daty (przynajmniej jedna)": "any_empty",
+    "bez daty (wszystkie)": "all_empty",
+    "dokładnie": "exact",
+    "dokladnie": "exact",
+    "rosnąco": "asc",
+    "rosnaco": "asc",
+    "malejąco": "desc",
+    "malejaco": "desc",
+    "wszystkie funkcje": "all_functions",
+    "bez wyniku": "missing",
+    "z błędem": "error",
+    "z błędami": "error",
+  };
+
+  const ids = [
+    "displayMode", "filterMode", "filterMode2", "dateMode",
+    "filterEmptyMode", "filterEmptyMode2", "dateEmptyMode",
+    "quickSearchMode", "quickSearchPopupMode",
+    "sortDirectionSelect", "formulaFilter"
+  ];
+
+  ids.forEach((id) => {
     const select = document.getElementById(id);
     if (!select) return;
     Array.from(select.options).forEach((option) => {
-      if (map[option.value]) option.textContent = map[option.value];
+      const value = plToEn[option.value] || option.value;
+      const i18nKey = valueToI18nKey[value];
+      if (i18nKey) option.textContent = t(i18nKey);
     });
   });
 }
@@ -4052,7 +4413,7 @@ function updateSheetCell(rowIndex0, colIndex0, parsed) {
 }
 
 function getDateRange() {
-  const mode = dateModeEl.value;
+  const mode = getNormalizedSelectValue(dateModeEl);
   if (mode === "last_n_days") {
     const days = Math.max(1, parseInt(lastDaysEl.value || "30", 10));
     const now = new Date();
@@ -4349,16 +4710,16 @@ function applyFilters() {
   const criteria = [
     {
       query: (searchQueryEl.value || "").trim().toLowerCase(),
-      mode: filterModeEl.value,
+      mode: getNormalizedSelectValue(filterModeEl),
       indexes: resolveIndexes(currentHeaders, columnSelections.filter1),
-      emptyMode: filterEmptyModeEl.value,
+      emptyMode: getNormalizedSelectValue(filterEmptyModeEl),
       negated: filterNegateEl.checked,
     },
     {
       query: (searchQuery2El.value || "").trim().toLowerCase(),
-      mode: filterMode2El.value,
+      mode: getNormalizedSelectValue(filterMode2El),
       indexes: resolveIndexes(currentHeaders, columnSelections.filter2),
-      emptyMode: filterEmptyMode2El.value,
+      emptyMode: getNormalizedSelectValue(filterEmptyMode2El),
       negated: filterNegate2El.checked,
     },
   ];
@@ -4366,7 +4727,7 @@ function applyFilters() {
   const dateFilter = {
     indexes: resolveIndexes(currentHeaders, columnSelections.date),
     range: getDateRange(),
-    emptyMode: dateEmptyModeEl.value,
+    emptyMode: getNormalizedSelectValue(dateEmptyModeEl),
     negated: dateNegateEl.checked,
   };
   const onlyNonEmpty = onlyNonEmptyEl.checked;
@@ -5693,14 +6054,14 @@ function updateFilterBadge() {
   let count = 0;
   if (searchQueryEl.value.trim()) count += 1;
   if (searchQuery2El.value.trim()) count += 1;
-  if (filterEmptyModeEl.value !== "all") count += 1;
-  if (filterEmptyMode2El.value !== "all") count += 1;
+  if (getNormalizedSelectValue(filterEmptyModeEl) !== "all") count += 1;
+  if (getNormalizedSelectValue(filterEmptyMode2El) !== "all") count += 1;
   if (filterNegateEl.checked) count += 1;
   if (filterNegate2El.checked) count += 1;
   if (onlyNonEmptyEl.checked) count += 1;
-  if (dateModeEl.value === "last_n_days") count += 1;
+  if (getNormalizedSelectValue(dateModeEl) === "last_n_days") count += 1;
   if (dateFromEl.value.trim() || dateToEl.value.trim()) count += 1;
-  if (dateEmptyModeEl.value !== "all") count += 1;
+  if (getNormalizedSelectValue(dateEmptyModeEl) !== "all") count += 1;
   if (dateNegateEl.checked) count += 1;
   if (columnSelections.filter1.size) count += 1;
   if (columnSelections.filter2.size) count += 1;
@@ -5711,7 +6072,7 @@ function updateFilterBadge() {
 }
 
 function updateDateChipsActive() {
-  const isLastN = dateModeEl.value === "last_n_days";
+  const isLastN = getNormalizedSelectValue(dateModeEl) === "last_n_days";
   const days = lastDaysEl.value.trim() ? String(lastDaysEl.value) : "30";
   quickRangeButtons.forEach((btn) => {
     const active = isLastN && btn.dataset.range === days;
@@ -5729,7 +6090,7 @@ function syncQuickSearchInputs() {
 }
 
 function getQuickSearchModeValue() {
-  return filterModeEl && filterModeEl.value === "equals" ? "exact" : "contains";
+  return filterModeEl && getNormalizedSelectValue(filterModeEl) === "equals" ? "exact" : "contains";
 }
 
 function syncQuickSearchModeControls() {
@@ -5739,7 +6100,8 @@ function syncQuickSearchModeControls() {
 }
 
 function applyQuickSearchMode(mode) {
-  const normalized = mode === "exact" ? "equals" : "contains";
+  const normalizedQuickMode = normalizeSelectValue("quickSearchMode", mode);
+  const normalized = normalizedQuickMode === "exact" ? "equals" : "contains";
   if (filterModeEl) filterModeEl.value = normalized;
   syncQuickSearchModeControls();
 }
@@ -6320,8 +6682,8 @@ function applyQuickSearch() {
   else if (quickSearchEl) value = quickSearchEl.value;
   else value = searchQueryEl.value || "";
   const popupActive = quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden");
-  if (popupActive && quickSearchPopupModeEl) applyQuickSearchMode(quickSearchPopupModeEl.value);
-  else if (quickSearchModeEl) applyQuickSearchMode(quickSearchModeEl.value);
+  if (popupActive && quickSearchPopupModeEl) applyQuickSearchMode(getNormalizedSelectValue(quickSearchPopupModeEl));
+  else if (quickSearchModeEl) applyQuickSearchMode(getNormalizedSelectValue(quickSearchModeEl));
   if (quickSearchPopupInput) quickSearchPopupInput.value = value;
   if (quickSearchEl) quickSearchEl.value = value;
   searchQueryEl.value = value;
@@ -6405,7 +6767,7 @@ if (quickSearchEl) {
 
 if (quickSearchModeEl) {
   quickSearchModeEl.addEventListener("change", () => {
-    applyQuickSearchMode(quickSearchModeEl.value);
+    applyQuickSearchMode(getNormalizedSelectValue(quickSearchModeEl));
   });
 }
 
@@ -6416,7 +6778,7 @@ if (quickSearchPopupInput) {
 }
 if (quickSearchPopupModeEl) {
   quickSearchPopupModeEl.addEventListener("change", () => {
-    applyQuickSearchMode(quickSearchPopupModeEl.value);
+    applyQuickSearchMode(getNormalizedSelectValue(quickSearchPopupModeEl));
   });
 }
 if (quickSearchPopupBtn) {
