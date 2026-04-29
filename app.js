@@ -209,6 +209,7 @@ const I18N = {
     dateBefore: "DO",
     dateAfter: "OD",
     dateLastN: "Ostatnie N dni",
+    allLabel: "Wszystkie",
     any: "dowolnie",
     anyNonEmpty: "nie puste (przynajmniej jedna)",
     allNonEmpty: "nie puste (wszystkie)",
@@ -231,6 +232,7 @@ const I18N = {
     readingQuick: "Tryb szybkie szukanie",
     quickSearchColumns: "Kolumny",
     allColumns: "Wszystkie kolumny",
+    selectedColumnsCount: "{count} kolumn",
     choosePreset: "Wybierz preset",
     noSavedPresets: "Brak zapisanych presetów",
     moveUp: "Góra",
@@ -302,6 +304,7 @@ const I18N = {
     dateBefore: "Before",
     dateAfter: "After",
     dateLastN: "Last N days",
+    allLabel: "All",
     any: "any",
     anyNonEmpty: "not empty (at least one)",
     allNonEmpty: "not empty (all)",
@@ -311,88 +314,9 @@ const I18N = {
     dateAllNonEmpty: "with date (all)",
     dateAnyEmpty: "without date (at least one)",
     dateAllEmpty: "without date (all)",
-    sortAsc: "Ascending",
-    sortDesc: "Descending",
     allFunctions: "All functions",
     noResult: "No result",
     withError: "With error",
-    online: "Online",
-    offline: "Offline",
-    panelOpen: "Zamknij filtry",
-    panelClosed: "Filtry",
-    readingStandard: "Tryb standardowy",
-    readingQuick: "Tryb szybkie szukanie",
-    quickSearchColumns: "Kolumny",
-    allColumns: "Wszystkie kolumny",
-    choosePreset: "Wybierz preset",
-    noSavedPresets: "Brak zapisanych presetów",
-    sortAsc: "Rosnąco",
-    sortDesc: "Malejąco",
-    moveUp: "Góra",
-    moveDown: "Dół",
-    changeDirection: "Zmień kierunek",
-    remove: "Usuń",
-    defaultSort: "Domyślne sortowanie",
-    excelView: "Widok Excel",
-    excelViewOn: "Widok Excel: ON",
-    classicView: "Widok klasyczny",
-    loadingFile: "Wczytywanie pliku...",
-    loadingSheet: "Budowanie tabeli...",
-    loadingGeneric: "Wczytywanie...",
-    statusFileLoaded: "Plik wczytany",
-    fileLoaded: "Plik wczytany",
-    sheetLoaded: "Arkusz wczytany",
-    filtersApplied: "Zastosowano filtry",
-    filtersReset: "Reset filtrow",
-    firstLoadSheet: "Najpierw wczytaj arkusz",
-    loadSheetToPickColumns: "Wczytaj arkusz, żeby wybrac kolumny",
-    addedSortRule: "Dodano sortowanie do kolejki",
-    noSortsToSave: "Brak sortowan do zapisania",
-    presetNamePrompt: "Nazwa presetu sortowania:",
-    sortPresetSaved: "Zapisano preset sortowania",
-    choosePresetToast: "Wybierz preset",
-    presetNotFound: "Nie znaleziono presetu",
-    sortPresetLoaded: "Wczytano preset sortowania",
-    choosePresetToDelete: "Wybierz preset do usuniecia",
-    sortPresetDeleted: "Usunieto preset sortowania",
-    defaultSortRestored: "Przywrocono domyslne sortowanie",
-    webSaveInfo: "Wersja webowa nie nadpisuje pliku. Użyj „Zapisz jako…”",
-    widthsRestored: "Przywrocono automatyczne szerokosci",
-    cacheRefresh: "Czyszcze cache i odswiezam aplikacje...",
-    refreshingApp: "Odswiezam aplikacje...",
-    fileLoadFailed: "Nie udalo sie wczytac pliku",
-    noDataForExport: "Brak danych do eksportu",
-    csvExported: "Wyeksportowano CSV",
-    noFileToSave: "Brak pliku do zapisu",
-    xlsmConfirm: "Plik .xlsm moze utracic makra. Kontynuowac zapis?",
-    fileSaved: "Zapisano plik",
-    saveAsPrompt: "Podaj nazwe pliku (xlsx lub xlsm):",
-    chooseFileFirst: "Najpierw wybierz plik",
-    noSheet: "Brak arkusza",
-    duplicatedHeaders: "Zdublowane naglowki rozrozniono ({count})",
-    themeToggleTitle: "Zmień motyw (jasny / ciemny)",
-    themeToggleAria: "Zmień motyw",
-    brandRefreshTitle: "Odśwież aplikację",
-    brandRefreshAria: "Odśwież aplikację",
-    networkSafety: "Pliki Excel są wczytywane i przetwarzane lokalnie na Twoim urządzeniu.",
-    networkOnlineTitle: "Połączenie aktywne. {note}",
-    networkOfflineTitle: "Brak połączenia sieciowego. {note}",
-    sidebarCloseAria: "Zamknij panel filtrow",
-    sidebarOpenAria: "Otworz panel filtrow",
-    sidebarHideTitle: "Schowaj filtry",
-    sidebarShowTitle: "Pokaz filtry",
-    emptyTitle: "Wysuń sidebar-a i wczytaj plik Excel",
-    emptySub: "możesz tam przeciągnąć plik lub wybrać go bezpośrednio z dysku",
-  },
-  en: {
-    locale: "en-US",
-    title: "Excel Workbench",
-    description: "Local browsing, filtering, and analysis of Excel sheets",
-    values: "Values",
-    formulas: "Formulas",
-    contains: "Contains",
-    startsWith: "Starts with",
-    equals: "Equals",
     online: "Online",
     offline: "Offline",
     panelOpen: "Close filters",
@@ -401,6 +325,7 @@ const I18N = {
     readingQuick: "Quick search mode",
     quickSearchColumns: "Columns",
     allColumns: "All columns",
+    selectedColumnsCount: "{count} columns",
     choosePreset: "Choose preset",
     noSavedPresets: "No saved presets",
     sortAsc: "Ascending",
@@ -1093,27 +1018,65 @@ function applyStaticTranslations() {
 }
 
 function applySelectTranslations() {
-  const valueToI18nKey = {
-    values: "values",
-    formulas: "formulas",
-    contains: "contains",
-    starts_with: "startsWith",
-    equals: "equals",
-    between: "dateBetween",
-    before: "dateBefore",
-    after: "dateAfter",
-    last_n_days: "dateLastN",
-    all: "any",
-    any_non_empty: "anyNonEmpty",
-    all_non_empty: "allNonEmpty",
-    any_empty: "anyEmpty",
-    all_empty: "allEmpty",
-    exact: "equals",
-    asc: "sortAsc",
-    desc: "sortDesc",
-    all_functions: "allFunctions",
-    missing: "noResult",
-    error: "withError",
+  const selectValueToI18nKey = {
+    displayMode: {
+      values: "values",
+      formulas: "formulas",
+    },
+    filterMode: {
+      contains: "contains",
+      starts_with: "startsWith",
+      equals: "equals",
+    },
+    filterMode2: {
+      contains: "contains",
+      starts_with: "startsWith",
+      equals: "equals",
+    },
+    dateMode: {
+      between: "dateBetween",
+      before: "dateBefore",
+      after: "dateAfter",
+      last_n_days: "dateLastN",
+    },
+    filterEmptyMode: {
+      all: "any",
+      any_non_empty: "anyNonEmpty",
+      all_non_empty: "allNonEmpty",
+      any_empty: "anyEmpty",
+      all_empty: "allEmpty",
+    },
+    filterEmptyMode2: {
+      all: "any",
+      any_non_empty: "anyNonEmpty",
+      all_non_empty: "allNonEmpty",
+      any_empty: "anyEmpty",
+      all_empty: "allEmpty",
+    },
+    dateEmptyMode: {
+      all: "any",
+      any_non_empty: "dateAnyNonEmpty",
+      all_non_empty: "dateAllNonEmpty",
+      any_empty: "dateAnyEmpty",
+      all_empty: "dateAllEmpty",
+    },
+    quickSearchMode: {
+      contains: "contains",
+      exact: "equals",
+    },
+    quickSearchPopupMode: {
+      contains: "contains",
+      exact: "equals",
+    },
+    sortDirectionSelect: {
+      asc: "sortAsc",
+      desc: "sortDesc",
+    },
+    formulaFilter: {
+      all: "allLabel",
+      missing: "noResult",
+      error: "withError",
+    },
   };
 
   const plToEn = {
@@ -1159,12 +1122,16 @@ function applySelectTranslations() {
   ids.forEach((id) => {
     const select = document.getElementById(id);
     if (!select) return;
+    const optionMap = selectValueToI18nKey[id] || {};
     Array.from(select.options).forEach((option) => {
       const value = plToEn[option.value] || option.value;
-      const i18nKey = valueToI18nKey[value];
+      const i18nKey = optionMap[value];
       if (i18nKey) option.textContent = t(i18nKey);
     });
   });
+
+  const formulaFunctionPlaceholder = document.querySelector("#formulaFunctionFilter option[value=\"\"]");
+  if (formulaFunctionPlaceholder) formulaFunctionPlaceholder.textContent = t("allFunctions");
 }
 
 function updateLangSwitchIndicator() {
@@ -1187,6 +1154,7 @@ function applyLanguage(lang) {
   currentLang = lang === "en" ? "en" : "pl";
   localStorage.setItem(LANG_KEY, currentLang);
   applyStaticTranslations();
+  updateColumnSummary();
   updateNetworkBadge();
   updateQuickSearchColumnButtons();
   updateExcelLayoutButtonLabel();
@@ -5763,7 +5731,7 @@ function renderFormulaFunctionFilter() {
 
   const allOpt = document.createElement("option");
   allOpt.value = "";
-  allOpt.textContent = "Wszystkie funkcje";
+  allOpt.textContent = t("allFunctions");
   formulaFunctionFilterEl.appendChild(allOpt);
 
   names.forEach((name) => {
@@ -6040,7 +6008,7 @@ function applyAutoHeaderRowIfEnabled() {
 function columnSummary(set) {
   if (!set.size) return t("allColumns");
   if (set.size === 1) return Array.from(set)[0];
-  return `${set.size} kolumn`;
+  return t("selectedColumnsCount", { count: set.size });
 }
 
 function updateColumnSummary() {
@@ -6113,7 +6081,7 @@ function updateQuickSearchColumnButtons() {
   [quickSearchColumnsBtn, quickSearchPopupColumnsBtn].forEach((btn) => {
     if (!btn) return;
     btn.textContent = label;
-    btn.title = `Quick search: ${summary}`;
+    btn.title = `${t("quickSearchColumns")}: ${summary}`;
     btn.setAttribute("aria-label", `${t("quickSearchColumns")} - ${summary}.`);
   });
 }

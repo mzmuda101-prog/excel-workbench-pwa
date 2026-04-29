@@ -202,6 +202,22 @@ Why:
 - stronger locale-aware formatting for dates, labels, and summaries
 - more consistent Polish and English wording across the UI
 
+### Python Integration (Exploratory)
+
+- research potential for bridging this PWA application with Python-based processing capabilities
+- explore direct or indirect file editing workflows that leverage Python libraries (e.g., pandas, openpyxl)
+- potential for running Python scripts locally or via lightweight backend services
+- could unlock: advanced data transformations, custom formula processing, automated cleanup routines, cross-file operations, and integration with Python-powered analytical pipelines
+- longer-term vision: position the workbench as a bridge between accessible browser-based UI and powerful Python-driven data workflows
+
+Why:
+- expands the tool from a workbench into a potential integration hub
+- leverages Python's ecosystem strengths while keeping the browser interface accessible
+- opens doors for enterprise automation, data science workflows, and custom processing pipelines
+- aligns with the macro-substitute opportunity — Python could replace VBA-heavy workflows more elegantly
+
+Status: early exploration, requires technical feasibility assessment.
+
 ## Not In Scope
 
 Things this project should avoid for now:
