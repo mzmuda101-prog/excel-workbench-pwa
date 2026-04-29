@@ -1069,7 +1069,14 @@ maxRowsEl.addEventListener("change", () => {
 });
 
 zoomLevelEl.addEventListener("change", () => {
-  setTimeout(applyZoom, 50);
+  setTimeout(() => {
+    applyZoom();
+    if (currentHeaders.length) {
+      renderActiveTable();
+    } else {
+      syncHorizontalScrollbar();
+    }
+  }, 50);
 });
 
 if (excelLayoutToggleEl) {

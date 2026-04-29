@@ -246,20 +246,8 @@ function updateExcelLayoutButtonLabel() {
 function applyZoom() {
   if (!tableEl || !zoomLevelEl) return;
   const zoom = parseFloat(zoomLevelEl.value) || 1;
-  const baseSize = 12;
-  
-  if (zoom === 1) {
-    tableEl.style.zoom = "";
-    tableEl.style.transform = "";
-    tableEl.style.fontSize = "";
-    tableEl.style.marginRight = "";
-    tableEl.style.marginBottom = "";
-    return;
-  }
-  
-  if ("zoom" in tableEl.style) {
-    tableEl.style.zoom = String(zoom);
-  } else {
-    tableEl.style.fontSize = `${baseSize * zoom}px`;
+  tableEl.style.setProperty("--table-zoom", String(zoom));
+  if (tableWrapEl) {
+    tableWrapEl.style.setProperty("--table-zoom", String(zoom));
   }
 }

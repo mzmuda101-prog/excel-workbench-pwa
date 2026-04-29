@@ -94,6 +94,11 @@
    =================================================== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--r-full); }
@@ -1913,6 +1918,7 @@ details.panel[open] > summary {
    TABLE
    =================================================== */
 .table-wrap {
+  --table-zoom: 1;
   overflow: auto;
   min-height: 240px;
   flex: 1;
@@ -1927,6 +1933,7 @@ details.panel[open] > summary {
 }
 
 table {
+  font-size: calc(12px * var(--table-zoom));
   width: 100%;
   border-collapse: collapse;
   background: var(--panel);
@@ -1942,9 +1949,9 @@ thead {
 thead th {
   background: var(--surface);
   text-align: left;
-  font-size: 12px;
+  font-size: calc(12px * var(--table-zoom));
   font-weight: 600;
-  padding: 9px 12px;
+  padding: calc(9px * var(--table-zoom)) calc(12px * var(--table-zoom));
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -1966,12 +1973,12 @@ thead th:hover { background: rgba(47,111,92,.06); }
 thead .guide-row th {
   background: var(--panel);
   text-align: center;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--table-zoom));
   font-weight: 600;
   color: var(--accent-border);
   cursor: default;
-  height: var(--guide-row-height);
-  padding: 6px 10px;
+  height: calc(var(--guide-row-height) * var(--table-zoom));
+  padding: calc(6px * var(--table-zoom)) calc(10px * var(--table-zoom));
   position: relative;
 }
 
@@ -1993,8 +2000,8 @@ thead .guide-row th {
   content: "";
   position: absolute;
   right: 2px;
-  top: 6px;
-  bottom: 6px;
+  top: calc(6px * var(--table-zoom));
+  bottom: calc(6px * var(--table-zoom));
   width: 1px;
   background: rgba(90, 96, 86, 0.25);
 }
@@ -2008,7 +2015,7 @@ thead .guide-row th {
   font-weight: 600;
   color: var(--accent-border);
   white-space: nowrap;
-  padding: 7px 6px;
+  padding: calc(7px * var(--table-zoom)) calc(6px * var(--table-zoom));
   border-right: 1px solid var(--border);
   cursor: default;
 }
@@ -2019,15 +2026,15 @@ tbody .row-head {
 
 thead th .sort-arrow {
   display: inline-block;
-  margin-left: 4px;
-  font-size: 10px;
+  margin-left: calc(4px * var(--table-zoom));
+  font-size: calc(10px * var(--table-zoom));
   color: var(--accent);
 }
 
 tbody td {
-  padding: 7px 12px;
+  padding: calc(7px * var(--table-zoom)) calc(12px * var(--table-zoom));
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--table-zoom));
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
@@ -2037,7 +2044,7 @@ tbody td {
 /* [EN] Cells with fill color from Excel – subtle highlight */
 tbody td.cell-has-fill {
   border-left: 3px solid var(--accent);
-  padding-left: 9px;
+  padding-left: calc(9px * var(--table-zoom));
 }
 
 tbody td.cell-merged {
@@ -2115,8 +2122,8 @@ tbody td.cell-selected.cell-selected {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--r-xs);
-  padding: 4px 6px;
-  font-size: 12.5px;
+  padding: calc(4px * var(--table-zoom)) calc(6px * var(--table-zoom));
+  font-size: calc(12.5px * var(--table-zoom));
   font-family: inherit;
 }
 
