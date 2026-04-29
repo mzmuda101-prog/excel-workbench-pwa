@@ -670,7 +670,27 @@ function setText(selector, value) {
 
 function setHtml(selector, value) {
   const el = document.querySelector(selector);
-  if (el) el.innerHTML = value;
+  if (!el) return;
+  
+  // [EN] Safe implementation without innerHTML - only allow specific trusted markup
+  // Currently only used for drop text with <strong> tag
+  el.textContent = '';
+  
+  // Handle .xlsx strong formatting
+  if (value.includes('<strong>')) {
+    const parts = value.split(/<\/?strong>/);
+    parts.forEach((part, index) => {
+      if (index % 2 === 1) {
+        const strong = document.createElement('strong');
+        strong.textContent = part;
+        el.appendChild(strong);
+      } else {
+        el.appendChild(document.createTextNode(part));
+      }
+    });
+  } else {
+    el.textContent = value;
+  }
 }
 
 function setAttr(selector, attr, value) {
@@ -7443,7 +7463,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     applyFilterBtn.click();
   }
-  if (meta && e.shiftKey && e.key.toLowerCase() === "s") {
+  if (meta && e.altKey && e.key.toLowerCase() === "s") {
     e.preventDefault();
     saveAsBtn.click();
   }
@@ -7451,7 +7471,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     exportCsvBtn.click();
   }
-  if (meta && e.shiftKey && e.key.toLowerCase() === "f") {
+  if (meta && e.shiftKey && e.key.toLowerCase() === "x") {
     e.preventDefault();
     resetFiltersBtn.click();
   }
@@ -7468,7 +7488,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     themeToggle.click();
   }
-  if (meta && e.key === "f") {
+  if (meta && e.shiftKey && e.key.toLowerCase() === "f") {
     e.preventDefault();
     if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
       quickSearchPopupEl.classList.add("hidden");
@@ -7509,10 +7529,14 @@ document.addEventListener("keydown", (e) => {
 
 
   if (e.key === "Escape" && !columnPickerEl.classList.contains("hidden")) {
+    e.preventDefault();
     closeColumnPicker();
+    return;
   }
   if (e.key === "Escape" && quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
+    e.preventDefault();
     quickSearchPopupEl.classList.add("hidden");
+    return;
   }
   if (e.key === "Escape" && isSidebarOpen()) {
     setSidebarOpen(false);
