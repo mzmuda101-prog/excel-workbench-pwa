@@ -218,6 +218,80 @@ Why:
 
 Status: early exploration, requires technical feasibility assessment.
 
+### Real Workbook Intelligence
+
+Based on the real workbook that inspired this project (`RODO_Obieg_terenow_2026_V5.xlsx`), the app should gradually become better at recognizing multi-layer Excel systems, not just flat tables.
+
+- detect workbook roles automatically:
+  data sheet, helper sheet, dashboard sheet, analysis sheet, chart sheet
+- detect real Excel tables and expose:
+  table name, range, columns, linked formulas, dependent sheets
+- detect named ranges and warn about broken names or dead references
+- detect chart-bearing sheets and unsupported/partially supported Excel features
+- highlight conditional formatting presence as a workbook signal
+
+Why:
+- the workbook uses a true multi-sheet architecture with helper logic, dashboarding, and summary layers
+- better structural awareness would make the app much more useful for real-world operational Excel files
+
+### Formula Pattern Intelligence
+
+The latest workbook version uses many repeated formula families (`IF`, `COUNTIF`, `COUNTIFS`, `IFERROR`, duration calculations, helper transformations), which makes it a strong source of inspiration for a more advanced formula workbench.
+
+- group repeated formulas by pattern, not only by exact text
+- show formula families with counts, affected columns, and sample addresses
+- detect outliers inside repeated formula blocks
+- surface long / complex formulas as "high-maintenance" candidates
+- identify helper formulas that look like business rules:
+  status derivation, overdue flags, date-range duration logic, name normalization
+
+Why:
+- real files often rely on hundreds or thousands of copied formulas
+- understanding formula structure is often more valuable than reading formulas cell by cell
+
+### Process Sheet / SLA Workbench
+
+The inspiring workbook behaves like a process tracker with status logic and aging rules. This suggests a dedicated analysis mode for operational sheets.
+
+- detect status columns such as:
+  `W trakcie`, `Zamknięte`, `PRZETERMINOWANY`
+- detect "open vs closed" lifecycle rules from paired date columns (`od` / `do`)
+- auto-build SLA and aging summaries:
+  in progress, closed, overdue, average closure time, longest open items
+- add workload views per employee / owner / assignee
+- add top bottleneck and longest-duration ranking panels
+
+Why:
+- this would match the actual business use case that started the project
+- the workbench could become especially strong for operational, legal, administrative, and tracking-style spreadsheets
+
+### Repeated Block Templates
+
+The main sheet in the inspiring workbook uses repeated cycle blocks (`Imię i Nazwisko`, `od`, `do`, `Długość`, then suffixed variants like `2`, `3`, etc.), which should directly inform future upgrades.
+
+- improve repeated-block detection for suffixed headers
+- suggest a canonical block schema automatically
+- show how many cycles/blocks were found and which columns belong to each block
+- offer one-click "analyze as repeated process cycles"
+- improve Wide-to-Long suggestions for cyclical Excel layouts
+
+Why:
+- this structure appears in real files, not only in synthetic examples
+- repeated operational cycles are one of the strongest areas where the workbench can outperform basic spreadsheet viewers
+
+### Workbook Inspiration Loop
+
+Keep using real workbooks that motivated the project as a design source for future features.
+
+- review new workbook versions for:
+  new formulas, helper columns, reporting patterns, and sheet architectures
+- treat workbook evolution as product research
+- when a new manual Excel workaround appears, consider whether it should become a workbench feature
+
+Why:
+- the strongest roadmap ideas are coming from real pain points, not abstract brainstorming
+- this keeps the product aligned with genuine spreadsheet work instead of drifting into generic BI tooling
+
 ## Not In Scope
 
 Things this project should avoid for now:
