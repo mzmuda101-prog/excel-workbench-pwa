@@ -1,0 +1,995 @@
+// Language dictionaries, translation helpers, and locale-specific UI updates.
+
+const LANG_KEY = "excel-workbench-lang";
+let currentLang = localStorage.getItem(LANG_KEY) === "en" ? "en" : "pl";
+let BASE_TITLE = document.title || "Excel Workbench";
+
+const I18N = {
+  pl: {
+    locale: "pl-PL",
+    title: "Excel Workbench",
+    description: "Lokalne przeglądanie, filtrowanie i analiza arkuszy Excel",
+    values: "Wartości",
+    formulas: "Formuły",
+    contains: "Zawiera",
+    startsWith: "Zaczyna się",
+    equals: "Równa się",
+    dateBetween: "Między",
+    dateBefore: "DO",
+    dateAfter: "OD",
+    dateLastN: "Ostatnie N dni",
+    allLabel: "Wszystkie",
+    any: "dowolnie",
+    anyNonEmpty: "nie puste (przynajmniej jedna)",
+    allNonEmpty: "nie puste (wszystkie)",
+    anyEmpty: "puste (przynajmniej jedna)",
+    allEmpty: "puste (wszystkie)",
+    dateAnyNonEmpty: "z datą (przynajmniej jedna)",
+    dateAllNonEmpty: "z datą (wszystkie)",
+    dateAnyEmpty: "bez daty (przynajmniej jedna)",
+    dateAllEmpty: "bez daty (wszystkie)",
+    sortAsc: "Rosnąco",
+    sortDesc: "Malejąco",
+    allFunctions: "Wszystkie funkcje",
+    noResult: "Bez wyniku",
+    withError: "Z błędem",
+    online: "Online",
+    offline: "Offline",
+    panelOpen: "Zamknij filtry",
+    panelClosed: "Filtry",
+    readingStandard: "Tryb standardowy",
+    readingQuick: "Tryb szybkie szukanie",
+    quickSearchColumns: "Kolumny",
+    allColumns: "Wszystkie kolumny",
+    selectedColumnsCount: "{count} kolumn",
+    choosePreset: "Wybierz preset",
+    noSavedPresets: "Brak zapisanych presetów",
+    moveUp: "Góra",
+    moveDown: "Dół",
+    changeDirection: "Zmień kierunek",
+    remove: "Usuń",
+    defaultSort: "Domyślne sortowanie",
+    excelView: "Widok Excel",
+    excelViewOn: "Widok Excel: ON",
+    classicView: "Widok klasyczny",
+    loadingFile: "Wczytywanie pliku...",
+    loadingSheet: "Budowanie tabeli...",
+    loadingGeneric: "Wczytywanie...",
+    statusFileLoaded: "Plik wczytany",
+    fileLoaded: "Plik wczytany",
+    sheetLoaded: "Arkusz wczytany",
+    filtersApplied: "Zastosowano filtry",
+    filtersReset: "Reset filtrow",
+    firstLoadSheet: "Najpierw wczytaj arkusz",
+    loadSheetToPickColumns: "Wczytaj arkusz, żeby wybrac kolumny",
+    addedSortRule: "Dodano sortowanie do kolejki",
+    noSortsToSave: "Brak sortowan do zapisania",
+    presetNamePrompt: "Nazwa presetu sortowania:",
+    sortPresetSaved: "Zapisano preset sortowania",
+    choosePresetToast: "Wybierz preset",
+    presetNotFound: "Nie znaleziono presetu",
+    sortPresetLoaded: "Wczytano preset sortowania",
+    choosePresetToDelete: "Wybierz preset do usuniecia",
+    sortPresetDeleted: "Usunieto preset sortowania",
+    defaultSortRestored: "Przywrocono domyslne sortowanie",
+    webSaveInfo: "Wersja webowa nie nadpisuje pliku. Uzyj Zapisz jako...",
+    widthsRestored: "Przywrocono automatyczne szerokosci",
+    cacheRefresh: "Czyszcze cache i odswiezam aplikacje...",
+    refreshingApp: "Odswiezam aplikacje...",
+    fileLoadFailed: "Nie udalo sie wczytac pliku",
+    noDataForExport: "Brak danych do eksportu",
+    csvExported: "Wyeksportowano CSV",
+    noFileToSave: "Brak pliku do zapisu",
+    xlsmConfirm: "Plik .xlsm moze utracic makra. Kontynuowac zapis?",
+    fileSaved: "Zapisano plik",
+    saveAsPrompt: "Podaj nazwe pliku (xlsx lub xlsm):",
+    chooseFileFirst: "Najpierw wybierz plik",
+    noSheet: "Brak arkusza",
+    duplicatedHeaders: "Zdublowane naglowki rozrozniono ({count})",
+    themeToggleTitle: "Zmień motyw (jasny / ciemny)",
+    themeToggleAria: "Zmień motyw",
+    brandRefreshTitle: "Odśwież aplikację",
+    brandRefreshAria: "Odśwież aplikację",
+    networkSafety: "Pliki Excel są wczytywane i przetwarzane lokalnie na Twoim urządzeniu.",
+    networkOnlineTitle: "Połączenie aktywne. {note}",
+    networkOfflineTitle: "Brak połączenia sieciowego. {note}",
+    sidebarCloseAria: "Zamknij panel filtrow",
+    sidebarOpenAria: "Otworz panel filtrow",
+    sidebarHideTitle: "Schowaj filtry",
+    sidebarShowTitle: "Pokaz filtry",
+    emptyTitle: "Wysuń sidebar-a i wczytaj plik Excel",
+    emptySub: "możesz tam przeciągnąć plik lub wybrać go bezpośrednio z dysku",
+  },
+  en: {
+    locale: "en-US",
+    title: "Excel Workbench",
+    description: "Local browsing, filtering, and analysis of Excel sheets",
+    values: "Values",
+    formulas: "Formulas",
+    contains: "Contains",
+    startsWith: "Starts with",
+    equals: "Equals",
+    dateBetween: "Between",
+    dateBefore: "Before",
+    dateAfter: "After",
+    dateLastN: "Last N days",
+    allLabel: "All",
+    any: "any",
+    anyNonEmpty: "not empty (at least one)",
+    allNonEmpty: "not empty (all)",
+    anyEmpty: "empty (at least one)",
+    allEmpty: "empty (all)",
+    dateAnyNonEmpty: "with date (at least one)",
+    dateAllNonEmpty: "with date (all)",
+    dateAnyEmpty: "without date (at least one)",
+    dateAllEmpty: "without date (all)",
+    allFunctions: "All functions",
+    noResult: "No result",
+    withError: "With error",
+    online: "Online",
+    offline: "Offline",
+    panelOpen: "Close filters",
+    panelClosed: "Filters",
+    readingStandard: "Standard mode",
+    readingQuick: "Quick search mode",
+    quickSearchColumns: "Columns",
+    allColumns: "All columns",
+    selectedColumnsCount: "{count} columns",
+    choosePreset: "Choose preset",
+    noSavedPresets: "No saved presets",
+    sortAsc: "Ascending",
+    sortDesc: "Descending",
+    moveUp: "Up",
+    moveDown: "Down",
+    changeDirection: "Change direction",
+    remove: "Remove",
+    defaultSort: "Default sort",
+    excelView: "Excel view",
+    excelViewOn: "Excel view: ON",
+    classicView: "Classic view",
+    loadingFile: "Loading file...",
+    loadingSheet: "Building table...",
+    loadingGeneric: "Loading...",
+    statusFileLoaded: "File loaded",
+    fileLoaded: "File loaded",
+    sheetLoaded: "Sheet loaded",
+    filtersApplied: "Filters applied",
+    filtersReset: "Filters reset",
+    firstLoadSheet: "Load a sheet first",
+    loadSheetToPickColumns: "Load a sheet to choose columns",
+    addedSortRule: "Sort rule added to the queue",
+    noSortsToSave: "No sort rules to save",
+    presetNamePrompt: "Sort preset name:",
+    sortPresetSaved: "Sort preset saved",
+    choosePresetToast: "Choose a preset",
+    presetNotFound: "Preset not found",
+    sortPresetLoaded: "Sort preset loaded",
+    choosePresetToDelete: "Choose a preset to delete",
+    sortPresetDeleted: "Sort preset deleted",
+    defaultSortRestored: "Default sorting restored",
+    webSaveInfo: "The web version does not overwrite the original file. Use “Save as...”",
+    widthsRestored: "Automatic widths restored",
+    cacheRefresh: "Clearing cache and refreshing the app...",
+    refreshingApp: "Refreshing the app...",
+    fileLoadFailed: "Failed to load the file",
+    noDataForExport: "No data to export",
+    csvExported: "CSV exported",
+    noFileToSave: "No file to save",
+    xlsmConfirm: ".xlsm files may lose macros. Continue saving?",
+    fileSaved: "File saved",
+    saveAsPrompt: "Enter a file name (xlsx or xlsm):",
+    chooseFileFirst: "Choose a file first",
+    noSheet: "No sheet selected",
+    duplicatedHeaders: "Duplicate headers were disambiguated ({count})",
+    themeToggleTitle: "Change theme (light / dark)",
+    themeToggleAria: "Change theme",
+    brandRefreshTitle: "Refresh app",
+    brandRefreshAria: "Refresh app",
+    networkSafety: "Excel files are loaded and processed locally on your device.",
+    networkOnlineTitle: "Connection active. {note}",
+    networkOfflineTitle: "No network connection. {note}",
+    sidebarCloseAria: "Close filters panel",
+    sidebarOpenAria: "Open filters panel",
+    sidebarHideTitle: "Hide filters",
+    sidebarShowTitle: "Show filters",
+    emptyTitle: "Slide out the sidebar and load an Excel file",
+    emptySub: "you can drag a file there or pick it directly from disk",
+  },
+};
+
+function t(key, vars = {}) {
+  const dictionary = I18N[currentLang] || I18N.pl;
+  let value = dictionary[key] ?? I18N.pl[key] ?? key;
+  Object.entries(vars).forEach(([name, replacement]) => {
+    value = value.replaceAll(`{${name}}`, String(replacement));
+  });
+  return value;
+}
+
+const SELECT_VALUE_ALIASES_PL = {
+  "dowolnie": "all",
+  "nie puste (przynajmniej jedna)": "any_non_empty",
+  "nie puste (przynajmniej jedno)": "any_non_empty",
+  "nie puste (wszystkie)": "all_non_empty",
+  "puste (przynajmniej jedna)": "any_empty",
+  "puste (przynajmniej jedno)": "any_empty",
+  "puste (wszystkie)": "all_empty",
+  "z datą (przynajmniej jedna)": "any_non_empty",
+  "z data (przynajmniej jedna)": "any_non_empty",
+  "z datą (wszystkie)": "all_non_empty",
+  "z data (wszystkie)": "all_non_empty",
+  "bez daty (przynajmniej jedna)": "any_empty",
+  "bez daty (wszystkie)": "all_empty",
+  "zawiera": "contains",
+  "zaczyna się": "starts_with",
+  "równa się": "equals",
+  "między": "between",
+  "do": "before",
+  "od": "after",
+  "ostatnie n dni": "last_n_days",
+  "dokładnie": "exact",
+  "dokladnie": "exact",
+  "rosnąco": "asc",
+  "rosnaco": "asc",
+  "malejąco": "desc",
+  "malejaco": "desc",
+  "wszystkie funkcje": "all",
+  "bez wyniku": "missing",
+  "z błędem": "error",
+  "z błędami": "error",
+  "wartości": "values",
+  "formuły": "formulas",
+};
+
+const STATIC_TRANSLATIONS = {
+  pl: {
+    title: "Excel Workbench",
+    description: "Lokalne przeglądanie, filtrowanie i analiza arkuszy Excel",
+    heroSub: "Lokalne przeglądanie, filtrowanie i analiza arkuszy",
+    introAria: "Intro Mateusza",
+    panelToggleAria: "Zwin/rozwin panel",
+    link1Title: "Przejdź do strony Mateusz App | formularz i eksport Excel",
+    link2Title: "Przejdź do strony Mateusz App | Portal Ogloszeniowy",
+    fileAndSheet: "Plik i arkusz",
+    dropText: "Przeciągnij plik <strong>.xlsx</strong>",
+    dropOr: "lub",
+    chooseFile: "Wybierz plik",
+    fileInputAria: "Wybierz plik Excel",
+    noFile: "Brak pliku",
+    sheet: "Arkusz",
+    headerRow: "Wiersz nagłówka",
+    autoDetectHeader: "Auto wykryj wiersz nagłówka",
+    displayMode: "Tryb wyświetlania",
+    rowsLimit: "Limit wierszy",
+    loadSheet: "Wczytaj arkusz",
+    textFilter1: "Filtr tekstowy 1",
+    textFilter2: "Filtr tekstowy 2",
+    search: "Szukaj",
+    searchInvoice: "np. faktura",
+    searchClient: "np. klient",
+    mode: "Tryb",
+    columns: "Kolumny",
+    choose: "Wybierz",
+    emptyOrNot: "Puste / Niepuste",
+    invert: "Odwróć",
+    onlyRowsWithData: "Tylko wiersze z danymi",
+    dateFilter: "Filtr dat",
+    lastDays: "Ostatnie dni",
+    from: "Od",
+    to: "Do",
+    dateColumns: "Kolumny dat",
+    actions: "Akcje",
+    filter: "Filtruj",
+    resetFilters: "Reset filtrow",
+    resetWidths: "Reset szerokosci",
+    save: "Zapisz",
+    saveTitle: "Wersja webowa nie zapisuje do oryginalnego pliku. Użyj „Zapisz jako…”.",
+    saveAs: "Zapisz jako...",
+    sortingPresets: "Sortowanie i presety",
+    sortColumn: "Kolumna sortowania",
+    direction: "Kierunek",
+    addSort: "Dodaj sortowanie",
+    sortPreset: "Preset sortowania",
+    savePreset: "Zapisz preset",
+    loadPreset: "Wczytaj preset",
+    deletePreset: "Usuń preset",
+    view: "Widok",
+    zoom: "Powiększenie",
+    workbenchAnalysis: "Analiza workbench",
+    file: "Plik",
+    sheetSection: "Arkusz",
+    flags: "Flagi",
+    kpiSummary: "KPI / Podsumowanie",
+    kpiHint: "Pomocnicze wyciąganie najważniejszych liczb i wskaźników z górnej części arkusza.",
+    sheetLayout: "Uklad arkusza",
+    sheetLayoutHint: "Jedno miejsce na orientacje w arkuszu: sekcje, kolumny, powtarzalne bloki i szybkie sygnaly o ukladzie danych.",
+    mapAndColumns: "Mapa arkusza i kolumn",
+    mapHint: "Tu masz jednoczesnie szybkie skoki po sekcjach oraz profil kolumn, zeby latwiej rozumiec uklad arkusza bez przeskakiwania miedzy dwoma podobnymi blokami.",
+    sectionsJumps: "Sekcje i skoki",
+    columnsSignals: "Kolumny i sygnaly",
+    blockDetector: "Wykrywacz bloków",
+    blockHint: "Pomocniczy widok dla szerokich arkuszy z cyklami, turami albo powtarzalnymi sekcjami kolumn.",
+    durationAnalysis: "Analiza czasu / osob",
+    durationHint: "Lokalna analiza dla wykrytych blokow: laczenie tych samych osob lub innych wartosci w jednej kolumnie i liczenie srednich czasow na podstawie dat lub dlugosci.",
+    aggregations: "Agregacje",
+    aggregationsHint: "Lekki kreator typu grupuj / mierz / agreguj. Dziala na aktualnym widoku albo calym arkuszu, z opcja pracy na Wide-to-Long tam, gdzie ma to sens.",
+    formulaHint: "Pogrupowany przegląd formuł z aktualnego arkusza: wyszukiwanie, szybkie flagi, skrócone podglądy i skok do komórki.",
+    searchFormula: "Szukaj formuły",
+    formulaPlaceholder: "np. XLOOKUP, SUMIFS, A1, kwota",
+    formulaFilter: "Filtr",
+    function: "Funkcja",
+    log: "Log",
+    logAria: "Log zdarzeń",
+    shortcuts: "Skróty",
+    statusNoData: "Brak danych",
+    quickSearchPlaceholder: "Szybkie szukanie...",
+    quickSearchAria: "Tryb szybkiego szukania",
+    quickSearchColumnsTitle: "Wybierz kolumny dla szybkiego szukania",
+    resetSort: "Domyślne sortowanie",
+    exportCsv: "Eksport CSV",
+    sidebarScrimAria: "Zamknij panel filtrow",
+    chooseColumns: "Wybierz kolumny",
+    close: "Zamknij",
+    searchColumns: "Szukaj kolumn",
+    selectAll: "Zaznacz wszystko",
+    clear: "Wyczyść",
+    apply: "Zastosuj",
+    quickSearchDialogAria: "Szybkie szukanie",
+    searchInTable: "Szukaj w tabeli",
+    quickSearchPopupPlaceholder: "np. faktura...",
+    quickSearchPopupModeAria: "Tryb szybkiego szukania w oknie",
+    quickSearchHint: "Enter – zastosuj, Esc – zamknij",
+    dateBetween: "Między",
+    dateBefore: "DO",
+    dateAfter: "OD",
+    dateLastN: "Ostatnie N dni",
+    any: "dowolnie",
+    anyNonEmpty: "nie puste (przynajmniej jedna)",
+    allNonEmpty: "nie puste (wszystkie)",
+    anyEmpty: "puste (przynajmniej jedna)",
+    allEmpty: "puste (wszystkie)",
+    dateAnyNonEmpty: "z datą (przynajmniej jedna)",
+    dateAllNonEmpty: "z datą (wszystkie)",
+    dateAnyEmpty: "bez daty (przynajmniej jedna)",
+    dateAllEmpty: "bez daty (wszystkie)",
+    allFunctions: "Wszystkie funkcje",
+    noResult: "Bez wyniku",
+    withError: "Z błędem",
+  },
+  en: {
+    title: "Excel Workbench",
+    description: "Local browsing, filtering, and analysis of Excel sheets",
+    heroSub: "Local browsing, filtering, and sheet analysis",
+    introAria: "Mateusz intro",
+    panelToggleAria: "Collapse/expand panel",
+    link1Title: "Go to Mateusz App | form and Excel export",
+    link2Title: "Go to Mateusz App | Listings Portal",
+    fileAndSheet: "File and sheet",
+    dropText: "Drag a <strong>.xlsx</strong> file",
+    dropOr: "or",
+    chooseFile: "Choose file",
+    fileInputAria: "Choose an Excel file",
+    noFile: "No file",
+    sheet: "Sheet",
+    headerRow: "Header row",
+    autoDetectHeader: "Auto-detect header row",
+    displayMode: "Display mode",
+    rowsLimit: "Row limit",
+    loadSheet: "Load sheet",
+    textFilter1: "Text filter 1",
+    textFilter2: "Text filter 2",
+    search: "Search",
+    searchInvoice: "e.g. invoice",
+    searchClient: "e.g. client",
+    mode: "Mode",
+    columns: "Columns",
+    choose: "Choose",
+    emptyOrNot: "Empty / Not empty",
+    invert: "Invert",
+    onlyRowsWithData: "Only rows with data",
+    dateFilter: "Date filter",
+    lastDays: "Last days",
+    from: "From",
+    to: "To",
+    dateColumns: "Date columns",
+    actions: "Actions",
+    filter: "Filter",
+    resetFilters: "Reset filters",
+    resetWidths: "Reset widths",
+    save: "Save",
+    saveTitle: "The web version does not save back to the original file. Use “Save as...”.",
+    saveAs: "Save as...",
+    sortingPresets: "Sorting and presets",
+    sortColumn: "Sort column",
+    direction: "Direction",
+    addSort: "Add sort rule",
+    sortPreset: "Sort preset",
+    savePreset: "Save preset",
+    loadPreset: "Load preset",
+    deletePreset: "Delete preset",
+    view: "View",
+    zoom: "Zoom",
+    workbenchAnalysis: "Workbench analysis",
+    file: "File",
+    sheetSection: "Sheet",
+    flags: "Flags",
+    kpiSummary: "KPI / Summary",
+    kpiHint: "A helper extraction of the most important numbers and indicators from the upper part of the sheet.",
+    sheetLayout: "Sheet layout",
+    sheetLayoutHint: "One place for orienting yourself in the sheet: sections, columns, repeating blocks, and quick layout signals.",
+    mapAndColumns: "Sheet map and columns",
+    mapHint: "Here you get quick jumps between sections and a column profile at the same time, so it is easier to understand the sheet layout without bouncing between two similar blocks.",
+    sectionsJumps: "Sections and jumps",
+    columnsSignals: "Columns and signals",
+    blockDetector: "Block detector",
+    blockHint: "A helper view for wide sheets with cycles, rounds, or repeating column sections.",
+    durationAnalysis: "Time / person analysis",
+    durationHint: "Local analysis for detected blocks: linking the same people or other values in one column and calculating average times from dates or durations.",
+    aggregations: "Aggregations",
+    aggregationsHint: "A lightweight group / measure / aggregate builder. It works on the current view or the full sheet, with an option to use Wide-to-Long where it makes sense.",
+    formulaHint: "A grouped review of formulas from the current sheet: search, quick flags, shortened previews, and a jump to the cell.",
+    searchFormula: "Search formulas",
+    formulaPlaceholder: "e.g. XLOOKUP, SUMIFS, A1, amount",
+    formulaFilter: "Filter",
+    function: "Function",
+    log: "Log",
+    logAria: "Event log",
+    shortcuts: "Shortcuts",
+    statusNoData: "No data",
+    quickSearchPlaceholder: "Quick search...",
+    quickSearchAria: "Quick search mode",
+    quickSearchColumnsTitle: "Choose columns for quick search",
+    resetSort: "Default sort",
+    exportCsv: "Export CSV",
+    sidebarScrimAria: "Close filters panel",
+    chooseColumns: "Choose columns",
+    close: "Close",
+    searchColumns: "Search columns",
+    selectAll: "Select all",
+    clear: "Clear",
+    apply: "Apply",
+    quickSearchDialogAria: "Quick search",
+    searchInTable: "Search in table",
+    quickSearchPopupPlaceholder: "e.g. invoice...",
+    quickSearchPopupModeAria: "Quick search mode in dialog",
+    quickSearchHint: "Enter - apply, Esc - close",
+    dateBetween: "Between",
+    dateBefore: "Before",
+    dateAfter: "After",
+    dateLastN: "Last N days",
+    any: "any",
+    anyNonEmpty: "not empty (at least one)",
+    allNonEmpty: "not empty (all)",
+    anyEmpty: "empty (at least one)",
+    allEmpty: "empty (all)",
+    dateAnyNonEmpty: "with date (at least one)",
+    dateAllNonEmpty: "with date (all)",
+    dateAnyEmpty: "without date (at least one)",
+    dateAllEmpty: "without date (all)",
+    allFunctions: "All functions",
+    noResult: "No result",
+    withError: "With error",
+  },
+};
+
+function setText(selector, value) {
+  const el = document.querySelector(selector);
+  if (el) el.textContent = value;
+}
+
+function setHtml(selector, value) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  
+  // [EN] Safe implementation without innerHTML - only allow specific trusted markup
+  // Currently only used for drop text with <strong> tag
+  el.textContent = '';
+  
+  // Handle .xlsx strong formatting
+  if (value.includes('<strong>')) {
+    const parts = value.split(/<\/?strong>/);
+    parts.forEach((part, index) => {
+      if (index % 2 === 1) {
+        const strong = document.createElement('strong');
+        strong.textContent = part;
+        el.appendChild(strong);
+      } else {
+        el.appendChild(document.createTextNode(part));
+      }
+    });
+  } else {
+    el.textContent = value;
+  }
+}
+
+function setAttr(selector, attr, value) {
+  const el = document.querySelector(selector);
+  if (el) el.setAttribute(attr, value);
+}
+
+function setFieldLabel(controlId, text) {
+  const control = document.getElementById(controlId);
+  const label = control?.closest("label.field");
+  if (!label) return;
+  const textNode = Array.from(label.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  if (textNode) {
+    textNode.textContent = `${text}\n`;
+  }
+}
+
+function setCheckboxText(controlId, text) {
+  const control = document.getElementById(controlId);
+  const span = control?.closest("label.checkbox")?.querySelector("span");
+  if (span) span.textContent = text;
+}
+
+function setButtonLabel(selector, text) {
+  const button = document.querySelector(selector);
+  if (!button) return;
+  const badge = button.querySelector(".filter-badge");
+  let textNode = Array.from(button.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  if (!textNode) {
+    textNode = document.createTextNode("");
+    if (badge) {
+      button.insertBefore(textNode, badge);
+    } else {
+      button.appendChild(textNode);
+    }
+  }
+  textNode.textContent = ` ${text} `;
+}
+
+const SELECT_VALUE_ALIASES = {
+  filterMode: {
+    contains: "contains",
+    "zawiera": "contains",
+    "starts_with": "starts_with",
+    "zaczyna się": "starts_with",
+    "zaczyna sie": "starts_with",
+    "starts with": "starts_with",
+    equals: "equals",
+    "równa się": "equals",
+    "rowna sie": "equals",
+  },
+  filterMode2: {
+    contains: "contains",
+    "zawiera": "contains",
+    "starts_with": "starts_with",
+    "zaczyna się": "starts_with",
+    "zaczyna sie": "starts_with",
+    "starts with": "starts_with",
+    equals: "equals",
+    "równa się": "equals",
+    "rowna sie": "equals",
+  },
+  dateMode: {
+    between: "between",
+    "między": "between",
+    "miedzy": "between",
+    before: "before",
+    do: "before",
+    after: "after",
+    od: "after",
+    last_n_days: "last_n_days",
+    "ostatnie n dni": "last_n_days",
+    "last n days": "last_n_days",
+  },
+  filterEmptyMode: {
+    all: "all",
+    "dowolnie": "all",
+    any: "all",
+    any_non_empty: "any_non_empty",
+    "nie puste (przynajmniej jedna)": "any_non_empty",
+    "nie puste (przynajmniej jedno)": "any_non_empty",
+    "not empty (at least one)": "any_non_empty",
+    all_non_empty: "all_non_empty",
+    "nie puste (wszystkie)": "all_non_empty",
+    "not empty (all)": "all_non_empty",
+    any_empty: "any_empty",
+    "puste (przynajmniej jedna)": "any_empty",
+    "puste (przynajmniej jedno)": "any_empty",
+    "empty (at least one)": "any_empty",
+    all_empty: "all_empty",
+    "puste (wszystkie)": "all_empty",
+    "empty (all)": "all_empty",
+  },
+  filterEmptyMode2: {
+    all: "all",
+    "dowolnie": "all",
+    any: "all",
+    any_non_empty: "any_non_empty",
+    "nie puste (przynajmniej jedna)": "any_non_empty",
+    "nie puste (przynajmniej jedno)": "any_non_empty",
+    "not empty (at least one)": "any_non_empty",
+    all_non_empty: "all_non_empty",
+    "nie puste (wszystkie)": "all_non_empty",
+    "not empty (all)": "all_non_empty",
+    any_empty: "any_empty",
+    "puste (przynajmniej jedna)": "any_empty",
+    "puste (przynajmniej jedno)": "any_empty",
+    "empty (at least one)": "any_empty",
+    all_empty: "all_empty",
+    "puste (wszystkie)": "all_empty",
+    "empty (all)": "all_empty",
+  },
+  dateEmptyMode: {
+    all: "all",
+    "dowolnie": "all",
+    any: "all",
+    any_non_empty: "any_non_empty",
+    "z datą (przynajmniej jedna)": "any_non_empty",
+    "z data (przynajmniej jedna)": "any_non_empty",
+    "with date (at least one)": "any_non_empty",
+    all_non_empty: "all_non_empty",
+    "z datą (wszystkie)": "all_non_empty",
+    "z data (wszystkie)": "all_non_empty",
+    "with date (all)": "all_non_empty",
+    any_empty: "any_empty",
+    "bez daty (przynajmniej jedna)": "any_empty",
+    "without date (at least one)": "any_empty",
+    all_empty: "all_empty",
+    "bez daty (wszystkie)": "all_empty",
+    "without date (all)": "all_empty",
+  },
+  quickSearchMode: {
+    contains: "contains",
+    "zawiera": "contains",
+    exact: "exact",
+    "dokladnie": "exact",
+    "dokładnie": "exact",
+    equals: "exact",
+  },
+  quickSearchPopupMode: {
+    contains: "contains",
+    "zawiera": "contains",
+    exact: "exact",
+    "dokladnie": "exact",
+    "dokładnie": "exact",
+    equals: "exact",
+  },
+  displayMode: {
+    values: "values",
+    "wartości": "values",
+    formulas: "formulas",
+    "formuły": "formulas",
+  },
+  sortDirectionSelect: {
+    asc: "asc",
+    "rosnąco": "asc",
+    "rosnaco": "asc",
+    "ascending": "asc",
+    desc: "desc",
+    "malejąco": "desc",
+    "malejaco": "desc",
+    "descending": "desc",
+  },
+  formulaFilter: {
+    all: "all",
+    "wszystkie": "all",
+    "all functions": "all",
+    missing: "missing",
+    "bez wyniku": "missing",
+    "no result": "missing",
+    error: "error",
+    "z błędem": "error",
+    "with error": "error",
+  },
+};
+
+function normalizeSelectAliasKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeSelectValue(id, value) {
+  const aliases = SELECT_VALUE_ALIASES[id];
+  if (!aliases) return value;
+  const normalized = aliases[normalizeSelectAliasKey(value)];
+  return normalized || value;
+}
+
+function normalizeSelectElement(select) {
+  if (!select?.id) return;
+  Array.from(select.options).forEach((option) => {
+    const canonical = normalizeSelectValue(select.id, option.value) || normalizeSelectValue(select.id, option.textContent);
+    if (canonical && canonical !== option.value) option.value = canonical;
+  });
+  const normalizedValue = normalizeSelectValue(select.id, select.value);
+  if (normalizedValue && normalizedValue !== select.value) select.value = normalizedValue;
+}
+
+function getNormalizedSelectValue(select) {
+  if (!select) return "";
+  normalizeSelectElement(select);
+  return normalizeSelectValue(select.id, select.value);
+}
+
+function applyStaticTranslations() {
+  const copy = STATIC_TRANSLATIONS[currentLang] || STATIC_TRANSLATIONS.pl;
+  document.documentElement.lang = currentLang;
+  document.title = copy.title;
+  BASE_TITLE = copy.title;
+  const meta = document.getElementById("pageDescription");
+  if (meta) meta.setAttribute("content", copy.description);
+
+  setAttr("#introVideo", "aria-label", copy.introAria);
+  setText(".hero-sub", copy.heroSub);
+  setAttr("#panelToggle", "aria-label", copy.panelToggleAria);
+  setAttr("#link1", "title", copy.link1Title);
+  setAttr("#link1", "aria-label", copy.link1Title);
+  setAttr("#link2", "title", copy.link2Title);
+  setAttr("#link2", "aria-label", copy.link2Title);
+  setAttr("#brandRefresh", "title", t("brandRefreshTitle"));
+  setAttr("#brandRefresh", "aria-label", t("brandRefreshAria"));
+  setAttr("#themeToggle", "title", t("themeToggleTitle"));
+  setAttr("#themeToggle", "aria-label", t("themeToggleAria"));
+
+  setText("#panel-file-sheet .panel-title", copy.fileAndSheet);
+  setHtml(".drop-text", copy.dropText);
+  setText(".drop-or", copy.dropOr);
+  setText(".drop-btn", copy.chooseFile);
+  setAttr("#fileInput", "aria-label", copy.fileInputAria);
+  setText("#fileNameText", currentFileName || copy.noFile);
+  setFieldLabel("sheetSelect", copy.sheet);
+  setFieldLabel("headerRow", copy.headerRow);
+  setCheckboxText("autoHeaderRow", copy.autoDetectHeader);
+  setFieldLabel("displayMode", copy.displayMode);
+  setFieldLabel("maxRows", copy.rowsLimit);
+  setButtonLabel("#loadBtn", copy.loadSheet);
+  setText("#panel-text-filter-1 .panel-title", copy.textFilter1);
+  setFieldLabel("searchQuery", copy.search);
+  setAttr("#searchQuery", "placeholder", copy.searchInvoice);
+  setFieldLabel("filterMode", copy.mode);
+  setFieldLabel("filter1Columns", copy.columns);
+  setText("#filter1Pick", copy.choose);
+  setFieldLabel("filterEmptyMode", copy.emptyOrNot);
+  setCheckboxText("filterNegate", copy.invert);
+  setCheckboxText("onlyNonEmpty", copy.onlyRowsWithData);
+  setText("#panel-text-filter-2 .panel-title", copy.textFilter2);
+  setFieldLabel("searchQuery2", copy.search);
+  setAttr("#searchQuery2", "placeholder", copy.searchClient);
+  setFieldLabel("filterMode2", copy.mode);
+  setFieldLabel("filter2Columns", copy.columns);
+  setText("#filter2Pick", copy.choose);
+  setFieldLabel("filterEmptyMode2", copy.emptyOrNot);
+  setCheckboxText("filterNegate2", copy.invert);
+  setText("#panel-date-filter .panel-title", copy.dateFilter);
+  setFieldLabel("dateMode", copy.mode);
+  setFieldLabel("lastDays", copy.lastDays);
+  setFieldLabel("dateFrom", copy.from);
+  setFieldLabel("dateTo", copy.to);
+  setFieldLabel("dateColumns", copy.dateColumns);
+  setText("#datePick", copy.choose);
+  setFieldLabel("dateEmptyMode", copy.emptyOrNot);
+  setCheckboxText("dateNegate", copy.invert);
+  setText("#panel-actions .panel-title", copy.actions);
+  setButtonLabel("#applyFilterBtn", copy.filter);
+  setButtonLabel("#resetFiltersBtn", copy.resetFilters);
+  setButtonLabel("#resetWidthsBtn", copy.resetWidths);
+  setText("#saveBtn", copy.save);
+  setAttr("#saveBtn", "title", copy.saveTitle);
+  setButtonLabel("#saveAsBtn", copy.saveAs);
+  setText("#panel-sort-workbench .panel-title", copy.sortingPresets);
+  setFieldLabel("sortColumnSelect", copy.sortColumn);
+  setFieldLabel("sortDirectionSelect", copy.direction);
+  setText("#addSortRuleBtn", copy.addSort);
+  setFieldLabel("sortPresetSelect", copy.sortPreset);
+  setText("#saveSortPresetBtn", copy.savePreset);
+  setText("#applySortPresetBtn", copy.loadPreset);
+  setText("#deleteSortPresetBtn", copy.deletePreset);
+  setText("#panel-view .panel-title", copy.view);
+  setFieldLabel("zoomLevel", copy.zoom);
+  setText("#panel-workbench-analysis .panel-title", copy.workbenchAnalysis);
+  setText('#panel-workbench-analysis .insight-subtitle:nth-of-type(1)', copy.file);
+  setText('#panel-workbench-analysis .insight-subtitle:nth-of-type(2)', copy.sheetSection);
+  setText('#panel-workbench-analysis .insight-subtitle:nth-of-type(3)', copy.flags);
+  setText("#panel-kpi-extractor .panel-title", copy.kpiSummary);
+  setText("#panel-kpi-extractor .panel-hint", copy.kpiHint);
+  setText("#panel-sheet-inspector .panel-title", copy.sheetLayout);
+  setText("#panel-sheet-inspector .panel-hint", copy.sheetLayoutHint);
+  setText('#panel-sheet-inspector .insight-subtitle:nth-of-type(1)', copy.mapAndColumns);
+  setText('#panel-sheet-inspector .inspector-map-section .insight-mini-title:nth-of-type(1)', copy.sectionsJumps);
+  setText('#panel-sheet-inspector .inspector-map-section:nth-of-type(2) .insight-mini-title', copy.columnsSignals);
+  setText('#panel-sheet-inspector .insight-subtitle:nth-of-type(2)', copy.blockDetector);
+  setText('#panel-sheet-inspector .insight-subtitle:nth-of-type(3)', copy.durationAnalysis);
+  const inspectorHints = document.querySelectorAll("#panel-sheet-inspector .panel-hint");
+  if (inspectorHints[0]) inspectorHints[0].textContent = copy.sheetLayoutHint;
+  if (inspectorHints[1]) inspectorHints[1].textContent = copy.mapHint;
+  if (inspectorHints[2]) inspectorHints[2].textContent = copy.blockHint;
+  if (inspectorHints[3]) inspectorHints[3].textContent = copy.durationHint;
+  setText("#panel-aggregation-workbench .panel-title", copy.aggregations);
+  setText("#panel-aggregation-workbench .panel-hint", copy.aggregationsHint);
+  setText("#panel-formula-workbench .panel-hint", copy.formulaHint);
+  setFieldLabel("formulaSearch", copy.searchFormula);
+  setAttr("#formulaSearch", "placeholder", copy.formulaPlaceholder);
+  setFieldLabel("formulaFilter", copy.formulaFilter);
+  setFieldLabel("formulaFunctionFilter", copy.function);
+  setText("#panel-log .panel-title", copy.log);
+  setAttr("#log", "aria-label", copy.logAria);
+  setText("#panel-shortcuts .panel-title", copy.shortcuts);
+
+  const heroStatus = statusEl
+    && !statusEl.classList.contains("unsaved")
+    && (statusEl.textContent === STATIC_TRANSLATIONS.pl.statusNoData || statusEl.textContent === STATIC_TRANSLATIONS.en.statusNoData);
+  if (heroStatus) setStatus(copy.statusNoData);
+
+  const emptyStateVisible = emptyStateEl && !emptyStateEl.classList.contains("hidden");
+  if (emptyStateVisible) setEmptyState(t("emptyTitle"), t("emptySub"));
+
+  setAttr("#sidebarScrim", "aria-label", copy.sidebarScrimAria);
+  setAttr("#quickSearchPopup", "aria-label", copy.quickSearchDialogAria);
+  setAttr("#quickSearchMode", "aria-label", copy.quickSearchAria);
+  setAttr("#quickSearchPopupMode", "aria-label", copy.quickSearchPopupModeAria);
+  setAttr("#quickSearchColumnsBtn", "title", copy.quickSearchColumnsTitle);
+  setAttr("#closePicker", "aria-label", copy.close);
+
+  setText("#columnPickerTitle", copy.chooseColumns);
+  setAttr("#columnSearch", "placeholder", copy.searchColumns);
+  setText("#selectAllBtn", copy.selectAll);
+  setText("#clearAllBtn", copy.clear);
+  setText("#applyPickBtn", copy.apply);
+  setText(".quick-search-popup-label", copy.searchInTable);
+  setAttr("#quickSearchPopupInput", "placeholder", copy.quickSearchPopupPlaceholder);
+  setText(".quick-search-popup-hint", copy.quickSearchHint);
+  setAttr("#quickSearch", "placeholder", copy.quickSearchPlaceholder);
+  setText("#exportCsvBtn", copy.exportCsv);
+  setText("#resetSortBtn", copy.resetSort);
+  setText("#loadingText", t("loadingGeneric"));
+
+  if (langButtons.length) {
+    langButtons.forEach((button) => {
+      const isActive = button.dataset.lang === currentLang;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+
+  applySelectTranslations();
+}
+
+function applySelectTranslations() {
+  const selectValueToI18nKey = {
+    displayMode: {
+      values: "values",
+      formulas: "formulas",
+    },
+    filterMode: {
+      contains: "contains",
+      starts_with: "startsWith",
+      equals: "equals",
+    },
+    filterMode2: {
+      contains: "contains",
+      starts_with: "startsWith",
+      equals: "equals",
+    },
+    dateMode: {
+      between: "dateBetween",
+      before: "dateBefore",
+      after: "dateAfter",
+      last_n_days: "dateLastN",
+    },
+    filterEmptyMode: {
+      all: "any",
+      any_non_empty: "anyNonEmpty",
+      all_non_empty: "allNonEmpty",
+      any_empty: "anyEmpty",
+      all_empty: "allEmpty",
+    },
+    filterEmptyMode2: {
+      all: "any",
+      any_non_empty: "anyNonEmpty",
+      all_non_empty: "allNonEmpty",
+      any_empty: "anyEmpty",
+      all_empty: "allEmpty",
+    },
+    dateEmptyMode: {
+      all: "any",
+      any_non_empty: "dateAnyNonEmpty",
+      all_non_empty: "dateAllNonEmpty",
+      any_empty: "dateAnyEmpty",
+      all_empty: "dateAllEmpty",
+    },
+    quickSearchMode: {
+      contains: "contains",
+      exact: "equals",
+    },
+    quickSearchPopupMode: {
+      contains: "contains",
+      exact: "equals",
+    },
+    sortDirectionSelect: {
+      asc: "sortAsc",
+      desc: "sortDesc",
+    },
+    formulaFilter: {
+      all: "allLabel",
+      missing: "noResult",
+      error: "withError",
+    },
+  };
+
+  const plToEn = {
+    "wartości": "values",
+    "formuły": "formulas",
+    "zawiera": "contains",
+    "zaczyna się": "starts_with",
+    "równa się": "equals",
+    "między": "between",
+    "do": "before",
+    "od": "after",
+    "ostatnie n dni": "last_n_days",
+    "dowolnie": "all",
+    "nie puste (przynajmniej jedna)": "any_non_empty",
+    "nie puste (przynajmniej jedno)": "any_non_empty",
+    "nie puste (wszystkie)": "all_non_empty",
+    "puste (przynajmniej jedna)": "any_empty",
+    "puste (przynajmniej jedno)": "any_empty",
+    "puste (wszystkie)": "all_empty",
+    "z datą (przynajmniej jedna)": "any_non_empty",
+    "z datą (wszystkie)": "all_non_empty",
+    "bez daty (przynajmniej jedna)": "any_empty",
+    "bez daty (wszystkie)": "all_empty",
+    "dokładnie": "exact",
+    "dokladnie": "exact",
+    "rosnąco": "asc",
+    "rosnaco": "asc",
+    "malejąco": "desc",
+    "malejaco": "desc",
+    "wszystkie funkcje": "all_functions",
+    "bez wyniku": "missing",
+    "z błędem": "error",
+    "z błędami": "error",
+  };
+
+  const ids = [
+    "displayMode", "filterMode", "filterMode2", "dateMode",
+    "filterEmptyMode", "filterEmptyMode2", "dateEmptyMode",
+    "quickSearchMode", "quickSearchPopupMode",
+    "sortDirectionSelect", "formulaFilter"
+  ];
+
+  ids.forEach((id) => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const optionMap = selectValueToI18nKey[id] || {};
+    Array.from(select.options).forEach((option) => {
+      const value = plToEn[option.value] || option.value;
+      const i18nKey = optionMap[value];
+      if (i18nKey) option.textContent = t(i18nKey);
+    });
+  });
+
+  const formulaFunctionPlaceholder = document.querySelector("#formulaFunctionFilter option[value=\"\"]");
+  if (formulaFunctionPlaceholder) formulaFunctionPlaceholder.textContent = t("allFunctions");
+}
+
+function updateLangSwitchIndicator() {
+  if (!langSwitchEl || !langSwitchIndicatorEl) return;
+
+  const activeButton = langButtons.find((button) => button.classList.contains("is-active"));
+  if (!activeButton) return;
+
+  langSwitchIndicatorEl.style.setProperty("--lang-pill-x", `${activeButton.offsetLeft}px`);
+  langSwitchIndicatorEl.style.setProperty("--lang-pill-width", `${activeButton.offsetWidth}px`);
+
+  if (!langSwitchEl.classList.contains("is-ready")) {
+    window.requestAnimationFrame(() => {
+      langSwitchEl.classList.add("is-ready");
+    });
+  }
+}
+
+function applyLanguage(lang) {
+  currentLang = lang === "en" ? "en" : "pl";
+  localStorage.setItem(LANG_KEY, currentLang);
+  applyStaticTranslations();
+  updateColumnSummary();
+  updateNetworkBadge();
+  updateQuickSearchColumnButtons();
+  updateExcelLayoutButtonLabel();
+  syncSidebarHandle();
+  setReadingMode(rootEl.classList.contains("reading"));
+  renderSortRules();
+  renderSortPresets();
+  updateLangSwitchIndicator();
+}

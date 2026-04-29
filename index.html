@@ -5,15 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta id="pageDescription" name="description" content="Lokalne przeglądanie, filtrowanie i analiza arkuszy Excel" />
     <title>Excel Workbench</title>
-    <link rel="icon" type="image/png" href="/favicon.png?v=3" />
+    <link rel="icon" type="image/png" href="assets/images/favicon.png?v=20260429-01" />
     <link rel="manifest" href="manifest.json" />
-    <link rel="apple-touch-icon" href="/favicon.png?v=3" />
-    <link rel="stylesheet" href="styles.css?v=20260425-01" />
+    <link rel="apple-touch-icon" href="assets/images/apple-touch-icon.png?v=20260429-01" />
+    <link rel="stylesheet" href="styles/app.css?v=20260429-01" />
   </head>
   <body>
     <!-- Intro splash -->
     <div class="hero-overlay" id="heroSplash">
-      <video src="MateuszIntro.mp4" autoplay muted playsinline tabindex="-1" preload="auto" aria-label="Intro Mateusza" id="introVideo"></video>
+      <video src="assets/media/mateusz-intro.mp4" autoplay muted playsinline tabindex="-1" preload="auto" aria-label="Intro Mateusza" id="introVideo"></video>
     </div>
     <div class="app">
       <!-- ============ HERO ============ -->
@@ -45,13 +45,13 @@
           <span class="hero-badge">PWA</span>
           <span class="hero-badge network-badge" id="networkBadge" aria-live="polite">Online</span>
           <a href="https://strona-6.vercel.app" target="_blank" rel="noopener"><button class="logo-badge" id="link1" title="Przejdź do strony Mateusz App | formularz i eksport Excel" aria-label="Przejdź do strony Mateusz App | formularz i eksport Excel">
-            <img src="logo%20Mateusz%20przezroczyste.png" alt="Logo Mateusz" />
+            <img src="assets/images/logo-mateusz-transparent.png" alt="Logo Mateusz" />
           </button></a>
           <a href="https://portal-ogloszeniowy.vercel.app" target="_blank" rel="noopener"><button class="logo-badge" id="link2" title="Przejdź do strony Mateusz App | Portal Ogloszeniowy" aria-label="Przejdź do strony Mateusz App | Portal Ogloszeniowy">
-            <img src="Logo Mateusz przezroczyste pomarancz.png" alt="Logo Mateusz" />
+            <img src="assets/images/logo-mateusz-orange.png" alt="Logo Mateusz" />
           </button></a>
           <button class="logo-badge" id="brandRefresh" title="Odśwież aplikację" aria-label="Odśwież aplikację">
-            <img src="Logo Mateusz przezroczyste Refresh.png" alt="Logo Mateusz" />
+            <img src="assets/images/logo-refresh.png" alt="Logo Mateusz" />
           </button>
           <button class="theme-toggle" id="themeToggle" title="Zmień motyw (jasny / ciemny)" aria-label="Zmień motyw"></button>
         </div>
@@ -763,7 +763,14 @@
     <div class="cell-tooltip hidden" id="cellTooltip" role="status" aria-live="polite"></div>
 
     <!-- Local xlsx-js-style (better style read/write, stable offline) -->
-    <script src="vendor/xlsx-js-style.bundle.min.js"></script>
-    <script src="app.js?v=20260425-01"></script>
+    <script src="lib/xlsx-js-style.bundle.min.js"></script>
+    <script src="app/core.js?v=20260429-01"></script>
+    <script src="app/language.js?v=20260429-01"></script>
+    <script src="app/analysis.js?v=20260429-01"></script>
+    <script src="app/workbook.js?v=20260429-01"></script>
+    <script src="app/table.js?v=20260429-01"></script>
+    <script src="app/formulas.js?v=20260429-01"></script>
+    <script src="app/ui-controls.js?v=20260429-01"></script>
+    <script src="app/bootstrap.js?v=20260429-01"></script>
   </body>
 </html>

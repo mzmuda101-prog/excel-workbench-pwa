@@ -231,7 +231,7 @@ Things this project should avoid for now:
 
 Deeper internal notes still live in:
 
-- [NOTES-priority-plan.md](./NOTES-priority-plan.md)
-- [NOTES-workbook-patterns-from-real-files.md](./NOTES-workbook-patterns-from-real-files.md)
-- [NOTES-module-overlap-audit.md](./NOTES-module-overlap-audit.md)
-- [NOTES-filter-press-workbench.md](./NOTES-filter-press-workbench.md)
+- [NOTES-priority-plan.md](./docs/notes/NOTES-priority-plan.md)
+- [NOTES-workbook-patterns-from-real-files.md](./docs/notes/NOTES-workbook-patterns-from-real-files.md)
+- [NOTES-module-overlap-audit.md](./docs/notes/NOTES-module-overlap-audit.md)
+- [NOTES-filter-press-workbench.md](./docs/notes/NOTES-filter-press-workbench.md)

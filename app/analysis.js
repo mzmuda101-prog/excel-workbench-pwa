@@ -1,0 +1,2798 @@
+// Sheet/workbook insights and analytical helpers.
+
+function valuesEqual(a, b) {
+  if (a === b) return true;
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  if ((a === null || a === undefined) && (b === null || b === undefined)) return true;
+  return false;
+}
+
+function makeHeadersUnique(headers) {
+  const seen = new Map();
+  return headers.map((header, index) => {
+    const base = String(header || `Kolumna ${index + 1}`).trim() || `Kolumna ${index + 1}`;
+    const count = seen.get(base) || 0;
+    seen.set(base, count + 1);
+    return count ? `${base} (${count + 1})` : base;
+  });
+}
+
+function formatPercent(part, total) {
+  if (!total) return "0%";
+  return `${Math.round((part / total) * 100)}%`;
+}
+
+function createEmptyInsight(text) {
+  const el = document.createElement("div");
+  el.className = "insight-empty";
+  el.textContent = text;
+  return el;
+}
+
+function renderInsightList(container, items, emptyText) {
+  if (!container) return;
+  container.replaceChildren();
+  if (!items || !items.length) {
+    container.appendChild(createEmptyInsight(emptyText));
+    return;
+  }
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = `insight-item${item.tone ? ` ${item.tone}` : ""}`;
+
+    const label = document.createElement("div");
+    label.className = "insight-label";
+    label.textContent = item.label;
+
+    const value = document.createElement("div");
+    value.className = "insight-value";
+    value.textContent = item.value;
+
+    row.appendChild(label);
+    row.appendChild(value);
+    container.appendChild(row);
+  });
+}
+
+function renderInsightFlags(items) {
+  if (!insightFlagsEl) return;
+  insightFlagsEl.replaceChildren();
+  if (!items || !items.length) {
+    insightFlagsEl.appendChild(createEmptyInsight("Brak istotnych flag dla aktualnego pliku."));
+    return;
+  }
+  items.forEach((item) => {
+    const badge = document.createElement("div");
+    badge.className = `insight-flag${item.tone ? ` ${item.tone}` : ""}`;
+    badge.textContent = item.label;
+    insightFlagsEl.appendChild(badge);
+  });
+}
+
+function cleanSectionLabel(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function formatColRange(startColAbs, endColAbs = startColAbs) {
+  const start = XLSX.utils.encode_col(startColAbs);
+  const end = XLSX.utils.encode_col(endColAbs);
+  return start === end ? start : `${start}:${end}`;
+}
+
+function getCellDisplayText(sheet, rowAbs, colAbs) {
+  if (!sheet) return "";
+  const ref = XLSX.utils.encode_cell({ r: rowAbs, c: colAbs });
+  const cell = sheet[ref];
+  if (!cell) return "";
+  return cleanSectionLabel(cell.w ?? cell.v ?? "");
+}
+
+function inferSectionKindLabel(kind) {
+  if (kind === "table") return "Tabela";
+  if (kind === "group") return "Blok";
+  if (kind === "candidate") return "Nagłówek";
+  if (kind === "subheader") return "Sekcja";
+  return "Układ";
+}
+
+function addSection(sections, seen, entry) {
+  if (!entry || !entry.label) return;
+  const key = `${entry.kind}|${entry.label}|${entry.rowIndex0 ?? ""}|${entry.headerRow ?? ""}|${entry.colIndex ?? ""}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  sections.push(entry);
+}
+
+function detectSections(sheet, headerRow, data) {
+  if (!sheet || !data || !data.headers || !data.headers.length) return [];
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const sections = [];
+  const seen = new Set();
+  const headerAbsRow = headerRow - 1;
+
+  addSection(sections, seen, {
+    kind: "table",
+    label: "Tabela danych",
+    meta: `Nagłówek: wiersz ${headerRow} • kolumny ${formatColRange(data.startCol || 0, (data.startCol || 0) + data.headers.length - 1)}`,
+    tone: "info",
+    action: "scroll-top",
+  });
+
+  const scanHeaderMax = Math.min(range.e.r, range.s.r + 7);
+  for (let r = range.s.r; r <= scanHeaderMax; r++) {
+    const texts = [];
+    let filled = 0;
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const txt = getCellDisplayText(sheet, r, c);
+      if (!txt) continue;
+      filled += 1;
+      if (texts.length < 3) texts.push(txt);
+    }
+    if (filled < 2) continue;
+    addSection(sections, seen, {
+      kind: "candidate",
+      label: r + 1 === headerRow ? `Aktualny wiersz nagłówka: ${r + 1}` : `Możliwy wiersz nagłówka: ${r + 1}`,
+      meta: texts.join(" • "),
+      tone: r + 1 === headerRow ? "info" : "",
+      action: r + 1 === headerRow ? "scroll-top" : "set-header",
+      headerRow: r + 1,
+    });
+  }
+
+  const merges = Array.isArray(data.merges) ? data.merges : [];
+  merges
+    .filter((merge) => merge && merge.s && merge.e)
+    .sort((a, b) => (a.s.r - b.s.r) || (a.s.c - b.s.c))
+    .forEach((merge) => {
+      const colspan = merge.e.c - merge.s.c + 1;
+      if (colspan < 2) return;
+      const label = getCellDisplayText(sheet, merge.s.r, merge.s.c);
+      if (!label) return;
+      const isAboveHeader = merge.s.r < headerAbsRow;
+      const overlapsTable = merge.e.c >= (data.startCol || 0) && merge.s.c <= (data.startCol || 0) + data.headers.length - 1;
+      if (!isAboveHeader && !overlapsTable) return;
+      addSection(sections, seen, {
+        kind: "group",
+        label,
+        meta: `Wiersz ${merge.s.r + 1} • kolumny ${formatColRange(merge.s.c, merge.e.c)}`,
+        tone: isAboveHeader ? "" : "info",
+        action: overlapsTable ? "scroll-col" : "set-header",
+        colIndex: Math.max(0, merge.s.c - (data.startCol || 0)),
+        headerRow: merge.s.r + 1,
+      });
+    });
+
+  baseRows
+    .filter((row) => row && row.isSubheader)
+    .slice(0, 8)
+    .forEach((row) => {
+      const firstText = row.values.find((value) => typeof value === "string" && cleanSectionLabel(value));
+      if (!firstText) return;
+      addSection(sections, seen, {
+        kind: "subheader",
+        label: cleanSectionLabel(firstText),
+        meta: `Wiersz danych ${row.rowIndex0 + 1}`,
+        tone: "",
+        action: "scroll-row",
+        rowIndex0: row.rowIndex0,
+      });
+    });
+
+  return sections.slice(0, 14);
+}
+
+function renderSections() {
+  if (!sectionNavigatorEl) return;
+  sectionNavigatorEl.replaceChildren();
+  if (!currentSections.length) {
+    sectionNavigatorEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby wykryc sekcje i bloki layoutu."));
+    return;
+  }
+
+  currentSections.forEach((section, index) => {
+    const item = document.createElement("div");
+    item.className = `section-nav-item${section.tone ? ` ${section.tone}` : ""}`;
+
+    const top = document.createElement("div");
+    top.className = "section-nav-top";
+
+    const title = document.createElement("div");
+    title.className = "section-nav-title";
+    title.textContent = section.label;
+
+    const kind = document.createElement("div");
+    kind.className = "section-nav-kind";
+    kind.textContent = inferSectionKindLabel(section.kind);
+
+    top.appendChild(title);
+    top.appendChild(kind);
+
+    const meta = document.createElement("div");
+    meta.className = "section-nav-meta";
+    meta.textContent = section.meta || "Sekcja arkusza";
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+
+    const primary = document.createElement("button");
+    primary.className = "btn ghost btn-sm";
+    primary.type = "button";
+    primary.dataset.sectionIndex = String(index);
+    primary.dataset.sectionAction = section.action || "scroll-top";
+    primary.textContent = section.action === "set-header" ? "Ustaw nagłówek" : "Skocz";
+    actions.appendChild(primary);
+
+    item.appendChild(top);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    sectionNavigatorEl.appendChild(item);
+  });
+}
+
+function renderSheetInspectorSummary() {
+  if (!sheetInspectorSummaryEl) return;
+  sheetInspectorSummaryEl.replaceChildren();
+
+  if (!currentHeaders.length || !baseRows.length) {
+    sheetInspectorSummaryEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby zobaczyc szybkie podsumowanie struktury i najwazniejszych sygnalow."));
+    return;
+  }
+
+  const blockCount = currentRepeatingBlocks.reduce((sum, group) => sum + (Array.isArray(group.blocks) ? group.blocks.length : 0), 0);
+  const flaggedProfiles = currentColumnProfiles.filter((profile) => Array.isArray(profile.flags) && profile.flags.length).length;
+  const chips = [
+    { label: "Kolumny", value: String(currentHeaders.length) },
+    { label: "Sekcje", value: String(currentSections.length), tone: currentSections.length ? "" : "info" },
+    { label: "Bloki", value: String(blockCount), tone: blockCount ? "info" : "" },
+    { label: "Kolumny z flagami", value: String(flaggedProfiles), tone: flaggedProfiles ? "warning" : "" },
+  ];
+
+  const topProfile = currentColumnProfiles[0];
+  if (topProfile) {
+    chips.push({
+      label: "Top sygnal",
+      value: topProfile.flags.length ? `${topProfile.header} • ${topProfile.flags[0]}` : `${topProfile.header} • ${topProfile.type}`,
+      tone: topProfile.flags.length ? "warning" : "info",
+      wide: true,
+    });
+  }
+
+  chips.forEach((chip) => {
+    const item = document.createElement("div");
+    item.className = `sheet-inspector-chip${chip.tone ? ` ${chip.tone}` : ""}${chip.wide ? " wide" : ""}`;
+
+    const label = document.createElement("div");
+    label.className = "sheet-inspector-chip-label";
+    label.textContent = chip.label;
+
+    const value = document.createElement("div");
+    value.className = "sheet-inspector-chip-value";
+    value.textContent = chip.value;
+
+    item.appendChild(label);
+    item.appendChild(value);
+    sheetInspectorSummaryEl.appendChild(item);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "sheet-inspector-actions";
+
+  const suggestedHeader = currentSections.find((section) => section.action === "set-header" && section.headerRow && section.headerRow !== currentHeaderRow);
+  if (suggestedHeader) {
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.inspectorAction = "set-header";
+    btn.dataset.inspectorHeaderRow = String(suggestedHeader.headerRow);
+    btn.textContent = `Ustaw naglowek: ${suggestedHeader.headerRow}`;
+    actions.appendChild(btn);
+  }
+
+  if (canUseLongView()) {
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.inspectorAction = "toggle-long";
+    btn.textContent = tableViewMode === "long" ? "Wroc do widoku klasycznego" : "Przelacz na Wide-to-Long";
+    actions.appendChild(btn);
+  }
+
+  if (topProfile) {
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.inspectorAction = "focus-col";
+    btn.dataset.profileColIndex = String(topProfile.colIdx);
+    btn.textContent = `Skocz do kolumny: ${topProfile.header}`;
+    actions.appendChild(btn);
+  }
+
+  if (actions.childNodes.length) {
+    sheetInspectorSummaryEl.appendChild(actions);
+  }
+}
+
+function focusSection(section) {
+  if (!section) return;
+  if (section.action === "set-header" && section.headerRow) {
+    if (autoHeaderRowEl) autoHeaderRowEl.checked = false;
+    headerRowEl.value = String(section.headerRow);
+    toast(`Ustawiono wiersz nagłówka ${section.headerRow}`, "info");
+    loadBtn.click();
+    return;
+  }
+
+  if (section.action === "scroll-row" && Number.isFinite(section.rowIndex0)) {
+    const rowEl = tbodyEl.querySelector(`tr[data-row-index="${section.rowIndex0}"]`);
+    if (rowEl) {
+      rowEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      return;
+    }
+    toast("Ta sekcja nie miesci sie w aktualnym limicie wierszy", "info");
+    return;
+  }
+
+  if (section.action === "scroll-col" && Number.isFinite(section.colIndex)) {
+    const cells = theadEl.querySelectorAll(".guide-row .guide-cell");
+    const cell = cells[section.colIndex];
+    if (cell && tableWrapEl) {
+      const targetLeft = Math.max(0, cell.offsetLeft - 64);
+      tableWrapEl.scrollTo({ left: targetLeft, behavior: "smooth" });
+      syncHorizontalScrollbar();
+      return;
+    }
+  }
+
+  if (tableWrapEl) {
+    tableWrapEl.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    syncHorizontalScrollbar();
+  }
+}
+
+function parseRepeatedHeader(header) {
+  const raw = cleanSectionLabel(header);
+  if (!raw) return null;
+  const match = raw.match(/^(.*?)(\d+)$/);
+  if (!match) return { base: raw, order: 1 };
+  const base = cleanSectionLabel(match[1]);
+  const order = Number(match[2]);
+  if (!base || !Number.isFinite(order)) return { base: raw, order: 1 };
+  return { base, order };
+}
+
+function normalizeAnalysisKey(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function pluralizeDays(days) {
+  const n = Math.abs(days);
+  if (n === 1) return "dzien";
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "dni";
+  return "dni";
+}
+
+function formatDurationDays(days) {
+  if (!Number.isFinite(days)) return "brak";
+  const rounded = Math.max(0, Math.round(days));
+  const months = Math.floor(rounded / 30);
+  const restDays = rounded % 30;
+  const parts = [];
+  if (months > 0) parts.push(`${months} mies.`);
+  if (restDays > 0 || !parts.length) parts.push(`${restDays} ${pluralizeDays(restDays)}`);
+  return parts.join(" ");
+}
+
+function pluralizeEntityLabel(label) {
+  if (label === "Osoba") return "Osoby";
+  if (label === "Pracownik") return "Pracownicy";
+  if (label === "Wlasciciel") return "Wlasciciele";
+  return `${label}y`;
+}
+
+function computeMedian(values) {
+  const nums = values.filter((value) => Number.isFinite(value)).slice().sort((a, b) => a - b);
+  if (!nums.length) return null;
+  const mid = Math.floor(nums.length / 2);
+  if (nums.length % 2 === 1) return nums[mid];
+  return (nums[mid - 1] + nums[mid]) / 2;
+}
+
+function diffDays(start, end) {
+  if (!(start instanceof Date) || !(end instanceof Date)) return null;
+  const a = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const b = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const ms = b.getTime() - a.getTime();
+  if (!Number.isFinite(ms)) return null;
+  const days = Math.round(ms / 86400000);
+  return days >= 0 ? days : null;
+}
+
+function parseDurationDaysFlexible(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value >= 0 ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const text = normalizeAnalysisKey(value);
+  if (!text) return null;
+  const monthMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(m|mies|miesiac|miesiace|miesiecy|month|months)\b/);
+  const dayMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(d|dzien|dni|day|days)\b/);
+  if (!monthMatch && !dayMatch) {
+    if (/^\d+(?:[.,]\d+)?$/.test(text)) {
+      const numeric = Number(text.replace(",", "."));
+      return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+    }
+    return null;
+  }
+  const months = monthMatch ? Number(monthMatch[1].replace(",", ".")) : 0;
+  const days = dayMatch ? Number(dayMatch[1].replace(",", ".")) : 0;
+  const total = (months * 30) + days;
+  return Number.isFinite(total) && total >= 0 ? total : null;
+}
+
+function findAnalysisColumnIndex(candidates, matchers) {
+  for (const matcher of matchers) {
+    const hit = candidates.find((candidate) => matcher(candidate.norm, candidate.base));
+    if (hit) return hit.idx;
+  }
+  return -1;
+}
+
+function collectDurationBlockStats(group) {
+  const firstBlock = group && Array.isArray(group.blocks) ? group.blocks[0] : null;
+  if (!firstBlock || !Array.isArray(firstBlock.headers) || !firstBlock.headers.length) return [];
+
+  const stats = firstBlock.headers.map((header, idx) => ({
+    idx,
+    header,
+    nonEmptyCount: 0,
+    dateCount: 0,
+    durationCount: 0,
+    textCount: 0,
+    uniqueText: new Set(),
+  }));
+
+  const rowSample = viewRows.slice(0, 400);
+  rowSample.forEach((row) => {
+    group.blocks.forEach((block) => {
+      stats.forEach((entry) => {
+        const absIdx = block.startIndex + entry.idx;
+        const raw = row.values[absIdx] ?? getDisplayValue(row, absIdx);
+        const text = String(raw ?? "").trim();
+        if (!text) return;
+        entry.nonEmptyCount += 1;
+
+        const asDate = parseDateFlexible(raw);
+        if (asDate instanceof Date) {
+          entry.dateCount += 1;
+          return;
+        }
+
+        const asDuration = parseDurationDaysFlexible(raw);
+        if (asDuration !== null) {
+          entry.durationCount += 1;
+          return;
+        }
+
+        entry.textCount += 1;
+        entry.uniqueText.add(normalizeAnalysisKey(text));
+      });
+    });
+  });
+
+  return stats.map((entry) => ({
+    ...entry,
+    uniqueTextCount: entry.uniqueText.size,
+  }));
+}
+
+function inferDurationAnalysisConfigFromData(group) {
+  const stats = collectDurationBlockStats(group);
+  if (!stats.length) return null;
+
+  const entityCandidate = stats
+    .filter((entry) => entry.textCount > 0)
+    .sort((a, b) => {
+      const scoreA = (a.textCount * 5) + Math.min(a.uniqueTextCount, 25);
+      const scoreB = (b.textCount * 5) + Math.min(b.uniqueTextCount, 25);
+      return scoreB - scoreA || a.idx - b.idx;
+    })[0];
+
+  const dateCandidates = stats
+    .filter((entry) => entry.dateCount > 0)
+    .sort((a, b) => b.dateCount - a.dateCount || a.idx - b.idx);
+
+  const durationCandidate = stats
+    .filter((entry) => entry.durationCount > 0)
+    .sort((a, b) => b.durationCount - a.durationCount || a.idx - b.idx)[0];
+
+  if (!entityCandidate) return null;
+  if (!dateCandidates.length && !durationCandidate) return null;
+
+  const orderedDateCandidates = dateCandidates.slice().sort((a, b) => a.idx - b.idx);
+  const startCandidate = orderedDateCandidates[0] || null;
+  const endCandidate = orderedDateCandidates[1] || null;
+
+  return {
+    entityIdx: entityCandidate.idx,
+    startIdx: startCandidate ? startCandidate.idx : -1,
+    endIdx: endCandidate ? endCandidate.idx : -1,
+    durationIdx: durationCandidate ? durationCandidate.idx : -1,
+    entityLabel: "Osoba",
+    entityHeader: entityCandidate.header || "Osoba",
+    inferred: true,
+  };
+}
+
+function detectDurationAnalysisConfig(group) {
+  const firstBlock = group && Array.isArray(group.blocks) ? group.blocks[0] : null;
+  if (!firstBlock || !Array.isArray(firstBlock.headers) || !firstBlock.headers.length) return null;
+
+  const candidates = firstBlock.headers.map((header, idx) => {
+    const base = parseRepeatedHeader(header)?.base || cleanSectionLabel(header) || String(header || "");
+    return {
+      idx,
+      header,
+      base,
+      norm: normalizeAnalysisKey(base),
+    };
+  });
+
+  const entityIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => /\b(imie|nazwisko|osoba|pracownik|opiekun|wlasciciel|owner|assignee|user|agent|operator)\b/.test(norm),
+    (norm) => norm.includes("imie") || norm.includes("nazwisk"),
+  ]);
+  const startIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => norm === "od" || norm === "data od",
+    (norm) => /\b(start|from|poczatek|rozpoczecie|rozpoczecia)\b/.test(norm),
+  ]);
+  const endIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => norm === "do" || norm === "data do",
+    (norm) => /\b(koniec|zakonczenie|end|to|until)\b/.test(norm),
+  ]);
+  const durationIdx = findAnalysisColumnIndex(candidates, [
+    (norm) => norm.includes("dlugosc") || norm.includes("czas"),
+    (norm) => /\b(duration|age|days)\b/.test(norm),
+  ]);
+
+  const inferred = inferDurationAnalysisConfigFromData(group);
+
+  const resolvedEntityIdx = entityIdx >= 0 ? entityIdx : (inferred?.entityIdx ?? -1);
+  const resolvedStartIdx = startIdx >= 0 ? startIdx : (inferred?.startIdx ?? -1);
+  const resolvedEndIdx = endIdx >= 0 ? endIdx : (inferred?.endIdx ?? -1);
+  const resolvedDurationIdx = durationIdx >= 0 ? durationIdx : (inferred?.durationIdx ?? -1);
+
+  if (resolvedEntityIdx < 0 || (resolvedStartIdx < 0 && resolvedDurationIdx < 0)) return null;
+
+  const entityBase = candidates[resolvedEntityIdx]?.base || inferred?.entityHeader || "Wartosc";
+  const normEntity = normalizeAnalysisKey(entityBase);
+  let entityLabel = "Wartosc";
+  if (normEntity.includes("imie") || normEntity.includes("nazwisk") || normEntity.includes("osoba")) entityLabel = "Osoba";
+  else if (normEntity.includes("pracownik")) entityLabel = "Pracownik";
+  else if (normEntity.includes("owner") || normEntity.includes("wlasciciel")) entityLabel = "Wlasciciel";
+  else if (inferred?.inferred) entityLabel = "Osoba";
+  else if (entityBase) entityLabel = entityBase;
+
+  return {
+    entityIdx: resolvedEntityIdx,
+    startIdx: resolvedStartIdx,
+    endIdx: resolvedEndIdx,
+    durationIdx: resolvedDurationIdx,
+    entityLabel,
+    entityHeader: entityBase,
+    inferred: !!(inferred && (entityIdx < 0 || startIdx < 0 || endIdx < 0 || durationIdx < 0)),
+  };
+}
+
+function buildDurationAnalysisFromRows(group, rows, meta = {}) {
+  const config = detectDurationAnalysisConfig(group);
+  if (!config) {
+    return { status: "no-config", group, ...meta };
+  }
+
+  const today = new Date();
+  const records = [];
+  const aggregate = new Map();
+
+  rows.forEach((row) => {
+    group.blocks.forEach((block, blockIndex) => {
+      const entityCol = block.startIndex + config.entityIdx;
+      const startCol = config.startIdx >= 0 ? block.startIndex + config.startIdx : -1;
+      const endCol = config.endIdx >= 0 ? block.startIndex + config.endIdx : -1;
+      const durationCol = config.durationIdx >= 0 ? block.startIndex + config.durationIdx : -1;
+
+      const entityValue = String(row.values[entityCol] ?? "").trim();
+      if (!entityValue) return;
+
+      const startDate = startCol >= 0 ? parseDateFlexible(row.values[startCol] ?? getDisplayValue(row, startCol)) : null;
+      const endDate = endCol >= 0 ? parseDateFlexible(row.values[endCol] ?? getDisplayValue(row, endCol)) : null;
+      let durationDays = null;
+      let isOpen = false;
+
+      if (startDate instanceof Date) {
+        if (endDate instanceof Date) {
+          durationDays = diffDays(startDate, endDate);
+        } else {
+          durationDays = diffDays(startDate, today);
+          isOpen = durationDays !== null;
+        }
+      }
+
+      if (durationDays === null && durationCol >= 0) {
+        durationDays = parseDurationDaysFlexible(row.values[durationCol] ?? getDisplayValue(row, durationCol));
+      }
+
+      records.push({
+        entity: entityValue,
+        durationDays,
+        isOpen,
+        isClosed: durationDays !== null && !isOpen,
+        blockLabel: block.label,
+        blockIndex: blockIndex + 1,
+        rowIndex0: row.rowIndex0,
+      });
+    });
+  });
+
+  const filteredRecords = records.filter((record) => {
+    if (!Number.isFinite(record.durationDays)) return false;
+    if (durationAnalysisState.statusFilter === "open") return record.isOpen;
+    if (durationAnalysisState.statusFilter === "closed") return !record.isOpen;
+    return true;
+  });
+
+  filteredRecords.forEach((record) => {
+    const key = normalizeAnalysisKey(record.entity);
+    const entry = aggregate.get(key) || {
+      entity: record.entity,
+      durations: [],
+      openCount: 0,
+      minDays: null,
+      maxDays: null,
+      blocks: new Set(),
+      rowIndexes: new Set(),
+    };
+    entry.durations.push(record.durationDays);
+    if (record.isOpen) entry.openCount += 1;
+    entry.minDays = entry.minDays === null ? record.durationDays : Math.min(entry.minDays, record.durationDays);
+    entry.maxDays = entry.maxDays === null ? record.durationDays : Math.max(entry.maxDays, record.durationDays);
+    entry.blocks.add(record.blockLabel);
+    entry.rowIndexes.add(record.rowIndex0);
+    aggregate.set(key, entry);
+  });
+
+  const entries = Array.from(aggregate.values())
+    .map((entry) => ({
+      entity: entry.entity,
+      averageDays: entry.durations.length ? entry.durations.reduce((sum, value) => sum + value, 0) / entry.durations.length : null,
+      medianDays: computeMedian(entry.durations),
+      count: entry.durations.length,
+      openCount: entry.openCount,
+      minDays: entry.minDays,
+      maxDays: entry.maxDays,
+      blockCount: entry.blocks.size,
+      rowCount: entry.rowIndexes.size,
+    }))
+    .sort((a, b) => {
+      const metricMap = {
+        avg: "averageDays",
+        median: "medianDays",
+        count: "count",
+        min: "minDays",
+        max: "maxDays",
+      };
+      const metric = metricMap[durationAnalysisState.sortMetric] || "averageDays";
+      const left = Number(a[metric] || 0);
+      const right = Number(b[metric] || 0);
+      const diff = right - left;
+      if (Math.abs(diff) > 0.001) return diff;
+      const countDiff = b.count - a.count;
+      if (countDiff) return countDiff;
+      return a.entity.localeCompare(b.entity, "pl");
+    });
+
+  if (!entries.length) {
+    return { status: "no-records", config, group, records, filteredRecords, ...meta };
+  }
+
+  const totalDurationRecords = filteredRecords.length;
+  const totalOpen = filteredRecords.filter((record) => record.isOpen).length;
+  const totalClosed = filteredRecords.filter((record) => !record.isOpen).length;
+  const allDurations = filteredRecords.map((record) => record.durationDays).filter((value) => Number.isFinite(value));
+  const totalDays = allDurations.reduce((sum, value) => sum + value, 0);
+
+  return {
+    status: "ok",
+    config,
+    group,
+    entries,
+    records,
+    filteredRecords,
+    ...meta,
+    summary: {
+      uniqueEntities: entries.length,
+      totalDurationRecords,
+      totalOpen,
+      totalClosed,
+      averageDays: totalDurationRecords ? totalDays / totalDurationRecords : null,
+      medianDays: computeMedian(allDurations),
+      minDays: allDurations.length ? Math.min(...allDurations) : null,
+      maxDays: allDurations.length ? Math.max(...allDurations) : null,
+      visibleRows: rows.length,
+      sourceRows: rows.length,
+    },
+  };
+}
+
+function tryBuildDurationAnalysisFromAlternateHeaders() {
+  if (!workbook || !currentSheetName) return null;
+  const sheet = workbook.Sheets[currentSheetName];
+  if (!sheet) return null;
+
+  const candidateRows = [];
+  const seen = new Set();
+  const minHeader = 1;
+  const maxHeader = Math.max(minHeader, currentHeaderRow + 4);
+
+  for (let row = Math.max(minHeader, currentHeaderRow - 3); row <= maxHeader; row++) {
+    if (row === currentHeaderRow) continue;
+    if (seen.has(row)) continue;
+    seen.add(row);
+    candidateRows.push(row);
+  }
+
+  let best = null;
+
+  candidateRows.forEach((headerRow) => {
+    try {
+      const data = buildRows(sheet, headerRow, workbook);
+      const groups = detectRepeatingBlocks(sheet, headerRow, data);
+      const group = Array.isArray(groups) && groups.length ? groups[0] : null;
+      if (!group || !Array.isArray(group.blocks) || group.blocks.length < 2) return;
+
+      const shadowRows = markSubheaderRows(data.rows.slice());
+      const result = buildDurationAnalysisFromRows(group, shadowRows, {
+        helperHeaderRow: headerRow,
+        helperMode: true,
+      });
+      if (!result || result.status !== "ok") return;
+
+      const score = (result.summary.totalDurationRecords * 10) + result.summary.uniqueEntities;
+      if (!best || score > best.score) {
+        best = { ...result, score };
+      }
+    } catch {
+      // Ignore helper header candidates that fail to parse well.
+    }
+  });
+
+  return best;
+}
+
+function buildDurationAnalysis() {
+  const group = getActiveRepeatingGroup();
+  if (!group || !Array.isArray(group.blocks) || group.blocks.length < 2) {
+    const fallback = tryBuildDurationAnalysisFromAlternateHeaders();
+    return fallback || { status: "no-group" };
+  }
+
+  const currentResult = buildDurationAnalysisFromRows(group, viewRows, {
+    helperHeaderRow: currentHeaderRow,
+    helperMode: false,
+  });
+
+  if (currentResult.status === "ok") {
+    return currentResult;
+  }
+
+  const fallback = tryBuildDurationAnalysisFromAlternateHeaders();
+  return fallback || currentResult;
+}
+
+function renderDurationAnalysis() {
+  if (!durationAnalysisSummaryEl || !durationAnalysisListEl) return;
+  durationAnalysisSummaryEl.replaceChildren();
+  durationAnalysisListEl.replaceChildren();
+
+  const analysis = buildDurationAnalysis();
+
+  if (analysis.status === "no-group") {
+    durationAnalysisSummaryEl.appendChild(createEmptyInsight("Wykryj najpierw powtarzalne bloki kolumn. Ten panel najlepiej dziala na arkuszach z cyklami albo seriami podobnych pol."));
+    return;
+  }
+
+  if (analysis.status === "no-config") {
+    durationAnalysisSummaryEl.appendChild(createEmptyInsight("Wykryto bloki, ale nie udalo sie znalezc pary typu osoba + od/do albo osoba + dlugosc. Jesli naglowek jest nietypowy, modul probuje tez zgadywac po danych, ale tu to wciaz za malo."));
+    return;
+  }
+
+  if (analysis.status === "no-records") {
+    durationAnalysisSummaryEl.appendChild(createEmptyInsight("Bloki zostaly rozpoznane, ale w aktualnym widoku nie ma rekordow z pelnymi danymi czasu dla tej samej wartosci."));
+    return;
+  }
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "sheet-inspector-summary";
+  [
+    { label: pluralizeEntityLabel(analysis.config.entityLabel), value: String(analysis.summary.uniqueEntities) },
+    { label: "Rekordy czasu", value: String(analysis.summary.totalDurationRecords) },
+    { label: "Sredni czas", value: formatDurationDays(analysis.summary.averageDays) },
+    { label: "Mediana", value: formatDurationDays(analysis.summary.medianDays) },
+    { label: "Min", value: formatDurationDays(analysis.summary.minDays) },
+    { label: "Max", value: formatDurationDays(analysis.summary.maxDays) },
+    { label: "W toku", value: String(analysis.summary.totalOpen), tone: analysis.summary.totalOpen ? "info" : "" },
+    { label: "Zamkniete", value: String(analysis.summary.totalClosed) },
+  ].forEach((item) => {
+    const chip = document.createElement("div");
+    chip.className = `sheet-inspector-chip${item.tone ? ` ${item.tone}` : ""}`;
+
+    const label = document.createElement("div");
+    label.className = "sheet-inspector-chip-label";
+    label.textContent = item.label;
+
+    const value = document.createElement("div");
+    value.className = "sheet-inspector-chip-value";
+    value.textContent = item.value;
+
+    chip.appendChild(label);
+    chip.appendChild(value);
+    summaryGrid.appendChild(chip);
+  });
+  durationAnalysisSummaryEl.appendChild(summaryGrid);
+
+  const note = document.createElement("div");
+  note.className = "duration-analysis-note";
+  const filtered = analysis.summary.visibleRows !== analysis.summary.sourceRows;
+  note.textContent = filtered
+    ? `Analiza dotyczy aktualnie przefiltrowanego widoku (${analysis.summary.visibleRows} z ${analysis.summary.sourceRows} wierszy). Otwarte rekordy bez daty "do" sa liczone do dzisiaj.`
+    : 'Analiza dotyczy calego aktualnego widoku arkusza. Otwarte rekordy bez daty "do" sa liczone do dzisiaj.';
+  if (analysis.config.inferred) {
+    note.textContent += " Uklad kolumn zostal czesciowo odgadniety na podstawie danych, bo naglowek nie byl idealny.";
+  }
+  if (analysis.helperMode && Number.isFinite(analysis.helperHeaderRow) && analysis.helperHeaderRow !== currentHeaderRow) {
+    note.textContent += ` Do tej analizy uzyto pomocniczo wiersza naglowka ${analysis.helperHeaderRow}, bo lepiej pasowal niz aktualnie wybrany ${currentHeaderRow}.`;
+  }
+  durationAnalysisSummaryEl.appendChild(note);
+
+  const controls = document.createElement("div");
+  controls.className = "duration-analysis-controls";
+
+  const statusField = document.createElement("label");
+  statusField.className = "field";
+  statusField.append("Status");
+  const statusSelect = document.createElement("select");
+  statusSelect.dataset.durationControl = "status";
+  [
+    { value: "all", label: "Wszystkie" },
+    { value: "closed", label: "Tylko zamkniete" },
+    { value: "open", label: "Tylko otwarte" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    statusSelect.appendChild(option);
+  });
+  statusSelect.value = durationAnalysisState.statusFilter;
+  statusField.appendChild(statusSelect);
+
+  const sortField = document.createElement("label");
+  sortField.className = "field";
+  sortField.append("Sortuj po");
+  const sortSelect = document.createElement("select");
+  sortSelect.dataset.durationControl = "sort";
+  [
+    { value: "avg", label: "Sredniej" },
+    { value: "median", label: "Medianie" },
+    { value: "count", label: "Liczbie rekordow" },
+    { value: "max", label: "Maksimum" },
+    { value: "min", label: "Minimum" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    sortSelect.appendChild(option);
+  });
+  sortSelect.value = durationAnalysisState.sortMetric;
+  sortField.appendChild(sortSelect);
+
+  const countField = document.createElement("label");
+  countField.className = "field";
+  countField.append("Pokaz rekordow");
+  const countSelect = document.createElement("select");
+  countSelect.dataset.durationControl = "count";
+  ["14", "24", "40", "80", "999"].forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value === "999" ? "Wszystkie" : value;
+    countSelect.appendChild(option);
+  });
+  countSelect.value = String(durationAnalysisState.showCount);
+  countField.appendChild(countSelect);
+
+  controls.appendChild(statusField);
+  controls.appendChild(sortField);
+  controls.appendChild(countField);
+  durationAnalysisSummaryEl.appendChild(controls);
+
+  const actions = document.createElement("div");
+  actions.className = "section-nav-actions";
+  if (canUseLongView()) {
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn ghost btn-sm";
+    toggleBtn.type = "button";
+    toggleBtn.dataset.durationAction = "toggle-long";
+    toggleBtn.textContent = tableViewMode === "long" ? "Widok klasyczny" : "Wide-to-Long";
+    actions.appendChild(toggleBtn);
+  }
+  if (filtered) {
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "btn ghost btn-sm";
+    resetBtn.type = "button";
+    resetBtn.dataset.durationAction = "reset-filters";
+    resetBtn.textContent = "Pokaz calosc";
+    actions.appendChild(resetBtn);
+  }
+  durationAnalysisSummaryEl.appendChild(actions);
+
+  const listNote = document.createElement("div");
+  listNote.className = "duration-analysis-note";
+  const visibleCount = Math.min(durationAnalysisState.showCount, analysis.entries.length);
+  listNote.textContent = analysis.entries.length > visibleCount
+    ? `Pokazano ${visibleCount} z ${analysis.entries.length} wynikow.`
+    : `Pokazano wszystkie wyniki: ${analysis.entries.length}.`;
+  durationAnalysisListEl.appendChild(listNote);
+
+  analysis.entries.slice(0, durationAnalysisState.showCount).forEach((entry, index) => {
+    const item = document.createElement("div");
+    item.className = "duration-person-item";
+
+    const top = document.createElement("div");
+    top.className = "duration-person-top";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "duration-person-title-wrap";
+
+    const rank = document.createElement("div");
+    rank.className = "duration-person-rank";
+    rank.textContent = String(index + 1);
+
+    const title = document.createElement("div");
+    title.className = "duration-person-title";
+    title.textContent = entry.entity;
+
+    const value = document.createElement("div");
+    value.className = "duration-person-value";
+    value.textContent = formatDurationDays(entry.averageDays);
+
+    titleWrap.appendChild(rank);
+    titleWrap.appendChild(title);
+    top.appendChild(titleWrap);
+    top.appendChild(value);
+
+    const meta = document.createElement("div");
+    meta.className = "duration-person-meta";
+    const avgDaysText = entry.averageDays !== null ? `${Math.round(entry.averageDays * 10) / 10} dni` : "brak";
+    const medianDaysText = entry.medianDays !== null ? `${Math.round(entry.medianDays * 10) / 10} dni` : "brak";
+    meta.textContent = `Srednio ${avgDaysText} • mediana ${medianDaysText} • rekordy ${entry.count} • w toku ${entry.openCount} • zakres ${formatDurationDays(entry.minDays)} -> ${formatDurationDays(entry.maxDays)}`;
+
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "section-nav-actions";
+
+    const filterBtn = document.createElement("button");
+    filterBtn.className = "btn ghost btn-sm";
+    filterBtn.type = "button";
+    filterBtn.dataset.durationAction = "filter-entity";
+    filterBtn.dataset.durationEntity = entry.entity;
+    filterBtn.textContent = "Pokaz w tabeli";
+    actionsRow.appendChild(filterBtn);
+
+    item.appendChild(top);
+    item.appendChild(meta);
+    item.appendChild(actionsRow);
+    durationAnalysisListEl.appendChild(item);
+  });
+}
+
+function inferAggregationValueKind(header, profile) {
+  const norm = normalizeAnalysisKey(header);
+  if (profile?.measureType === "date_range") return "duration";
+  if (profile?.durationCount > 0 || norm.includes("dlugosc") || norm.includes("czas")) return "duration";
+  if (profile?.numericCount > 0) return "number";
+  return "text";
+}
+
+function formatAggregationMetricValue(value, kind = "number") {
+  if (!Number.isFinite(value)) return "brak";
+  if (kind === "duration") return formatDurationDays(value);
+  const rounded = Math.round(value * 100) / 100;
+  return String(rounded).replace(".", ",");
+}
+
+function collectAggregationProfiles(model) {
+  if (!model || !Array.isArray(model.headers) || !Array.isArray(model.rows)) return [];
+  return model.headers.map((header, idx) => {
+    const profile = {
+      header,
+      idx,
+      nonEmptyCount: 0,
+      numericCount: 0,
+      durationCount: 0,
+      dateCount: 0,
+      textCount: 0,
+      uniqueValues: new Set(),
+    };
+
+    model.rows.forEach((row) => {
+      const raw = row.values?.[idx];
+      const display = getDisplayValue(row, idx);
+      const text = String(display ?? raw ?? "").trim();
+      if (!text) return;
+      profile.nonEmptyCount += 1;
+      profile.uniqueValues.add(normalizeAnalysisKey(text));
+
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        profile.numericCount += 1;
+        return;
+      }
+
+      const duration = parseDurationDaysFlexible(raw ?? display);
+      if (duration !== null) {
+        profile.durationCount += 1;
+        return;
+      }
+
+      const asDate = parseDateFlexible(raw ?? display);
+      if (asDate instanceof Date) {
+        profile.dateCount += 1;
+        return;
+      }
+
+      profile.textCount += 1;
+    });
+
+    profile.uniqueCount = profile.uniqueValues.size;
+    return profile;
+  });
+}
+
+function detectAggregationDateRangeCandidates(model, profiles) {
+  const candidates = [];
+  const startRegex = /\b(od|start|data od|from|poczatek|rozpoczecie)\b/;
+  const endRegex = /\b(do|end|data do|to|until|koniec|zakonczenie)\b/;
+
+  profiles.forEach((profile, idx) => {
+    if (profile.dateCount <= 0) return;
+    const base = parseRepeatedHeader(model.headers[idx])?.base || cleanSectionLabel(model.headers[idx]) || model.headers[idx];
+    const norm = normalizeAnalysisKey(base);
+    if (!startRegex.test(norm)) return;
+
+    let endIdx = -1;
+    for (let next = idx + 1; next < profiles.length; next++) {
+      if (profiles[next].dateCount <= 0) continue;
+      const nextBase = parseRepeatedHeader(model.headers[next])?.base || cleanSectionLabel(model.headers[next]) || model.headers[next];
+      const nextNorm = normalizeAnalysisKey(nextBase);
+      if (endRegex.test(nextNorm)) {
+        endIdx = next;
+        break;
+      }
+      if (next > idx + 2) break;
+    }
+    if (endIdx < 0) return;
+
+    candidates.push({
+      key: `date_range:${idx}:${endIdx}`,
+      label: `${model.headers[idx]} -> ${model.headers[endIdx]}`,
+      kind: "duration",
+      measureType: "date_range",
+      startIdx: idx,
+      endIdx,
+      getValue: (row) => {
+        const start = parseDateFlexible(row.values?.[idx] ?? getDisplayValue(row, idx));
+        const end = parseDateFlexible(row.values?.[endIdx] ?? getDisplayValue(row, endIdx));
+        if (!(start instanceof Date) || !(end instanceof Date)) return null;
+        return diffDays(start, end);
+      },
+    });
+  });
+
+  return candidates;
+}
+
+function detectAggregationMeasureCandidates(model, profiles) {
+  const candidates = [{
+    key: "count_rows",
+    label: "Liczba wierszy",
+    kind: "count",
+    measureType: "count_rows",
+    getValue: () => 1,
+  }];
+
+  detectAggregationDateRangeCandidates(model, profiles).forEach((candidate) => {
+    candidates.push(candidate);
+  });
+
+  profiles.forEach((profile) => {
+    if (profile.nonEmptyCount <= 0) return;
+    if (profile.numericCount <= 0 && profile.durationCount <= 0) return;
+    const kind = inferAggregationValueKind(profile.header, profile);
+    candidates.push({
+      key: `column:${profile.idx}`,
+      label: profile.header,
+      kind,
+      measureType: "column",
+      colIdx: profile.idx,
+      getValue: (row) => {
+        const raw = row.values?.[profile.idx];
+        if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+        return parseDurationDaysFlexible(raw ?? getDisplayValue(row, profile.idx));
+      },
+      getRawText: (row) => {
+        const raw = row.values?.[profile.idx];
+        return raw != null ? String(raw).trim() : "";
+      },
+    });
+  });
+
+  return candidates;
+}
+
+function resolveAggregationGroupOptions(profiles) {
+  return profiles
+    .filter((profile) => profile.nonEmptyCount > 0)
+    .sort((a, b) => {
+      const aTextScore = a.textCount > 0 ? 1 : 0;
+      const bTextScore = b.textCount > 0 ? 1 : 0;
+      if (aTextScore !== bTextScore) return bTextScore - aTextScore;
+      return a.idx - b.idx;
+    })
+    .map((profile) => ({
+      value: profile.header,
+      label: profile.header,
+      idx: profile.idx,
+    }));
+}
+
+function chooseDefaultAggregationGroup(groupOptions) {
+  if (!groupOptions.length) return "";
+  const preferred = groupOptions.find((option) => /\b(imie|nazwisko|osoba|pracownik|owner|assignee|blok)\b/.test(normalizeAnalysisKey(option.label)));
+  return preferred ? preferred.value : groupOptions[0].value;
+}
+
+function chooseDefaultAggregationMeasure(measures) {
+  if (!measures.length) return "count_rows";
+  const dateRange = measures.find((candidate) => candidate.measureType === "date_range");
+  if (dateRange) return dateRange.key;
+  const duration = measures.find((candidate) => candidate.kind === "duration");
+  if (duration) return duration.key;
+  const numeric = measures.find((candidate) => candidate.measureType === "column");
+  return numeric ? numeric.key : "count_rows";
+}
+
+function chooseDefaultAggregationMethod(measure) {
+  if (!measure || measure.measureType === "count_rows") return "count";
+  return "avg";
+}
+
+function getNormalizedAggregationWorkbenchContext() {
+  const headerCandidates = getAggregationHeaderCandidateRows();
+  let resolvedHeaderRow = currentHeaderRow;
+  let context = null;
+
+  if (aggregationWorkbenchState.headerRowChoice === "auto") {
+    headerCandidates.forEach((candidateRow) => {
+      const candidateContext = collectAggregationContextForHeaderRow(
+        candidateRow,
+        aggregationWorkbenchState.sourceMode,
+        aggregationWorkbenchState.scopeMode
+      );
+      const score = scoreAggregationContext(candidateContext);
+      if (!context || score > context.score) {
+        context = { ...candidateContext, score };
+        resolvedHeaderRow = candidateRow;
+      }
+    });
+  } else {
+    const explicitRow = Number.isFinite(aggregationWorkbenchState.customHeaderRow)
+      ? aggregationWorkbenchState.customHeaderRow
+      : currentHeaderRow;
+    resolvedHeaderRow = explicitRow > 0 ? explicitRow : currentHeaderRow;
+    context = collectAggregationContextForHeaderRow(
+      resolvedHeaderRow,
+      aggregationWorkbenchState.sourceMode,
+      aggregationWorkbenchState.scopeMode
+    );
+  }
+
+  if (!context) {
+    context = collectAggregationContextForHeaderRow(
+      currentHeaderRow,
+      aggregationWorkbenchState.sourceMode,
+      aggregationWorkbenchState.scopeMode
+    );
+    resolvedHeaderRow = currentHeaderRow;
+  }
+
+  const { model, profiles, groupOptions, measures, longAvailable } = context;
+
+  const nextGroupBy = groupOptions.some((option) => option.value === aggregationWorkbenchState.groupBy)
+    ? aggregationWorkbenchState.groupBy
+    : chooseDefaultAggregationGroup(groupOptions);
+  const nextMeasure = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure)
+    ? aggregationWorkbenchState.measure
+    : chooseDefaultAggregationMeasure(measures);
+  const measure = measures.find((candidate) => candidate.key === nextMeasure) || measures[0] || null;
+  const allowedAggregations = measure?.measureType === "count_rows"
+    ? ["count"]
+    : ["avg", "median", "min", "max", "sum", "count", "distinct"];
+  const nextAggregation = allowedAggregations.includes(aggregationWorkbenchState.aggregation)
+    ? aggregationWorkbenchState.aggregation
+    : chooseDefaultAggregationMethod(measure);
+
+  aggregationWorkbenchState.groupBy = nextGroupBy;
+  aggregationWorkbenchState.measure = nextMeasure;
+  aggregationWorkbenchState.aggregation = nextAggregation;
+  if (aggregationWorkbenchState.sourceMode === "long" && !longAvailable) {
+    aggregationWorkbenchState.sourceMode = "auto";
+  }
+
+  return {
+    ...context,
+    model,
+    profiles,
+    groupOptions,
+    measures,
+    measure,
+    longAvailable,
+    allowedAggregations,
+    headerCandidates,
+    resolvedHeaderRow,
+  };
+}
+
+function computeAggregateMetric(values, aggregation) {
+  if (aggregation === "distinct") {
+    const unique = new Set(values.map((v) => String(v).trim()).filter((v) => v));
+    return unique.size;
+  }
+  const nums = values.filter((value) => Number.isFinite(value));
+  if (aggregation === "count") return nums.length;
+  if (!nums.length) return null;
+  if (aggregation === "sum") return nums.reduce((sum, value) => sum + value, 0);
+  if (aggregation === "avg") return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+  if (aggregation === "median") return computeMedian(nums);
+  if (aggregation === "min") return Math.min(...nums);
+  if (aggregation === "max") return Math.max(...nums);
+  return null;
+}
+
+function buildAggregationWorkbenchResult() {
+  const context = getNormalizedAggregationWorkbenchContext();
+  const { model, groupOptions, measures, measure } = context;
+  if (!model?.headers?.length || !model?.rows?.length) {
+    return { status: "empty", ...context };
+  }
+  if (!groupOptions.length || !measure) {
+    return { status: "no-options", ...context };
+  }
+
+  const groupIdx = model.headers.indexOf(aggregationWorkbenchState.groupBy);
+  if (groupIdx < 0) {
+    return { status: "no-options", ...context };
+  }
+
+  const isDistinct = aggregationWorkbenchState.aggregation === "distinct";
+  const measureFilterMode = aggregationWorkbenchState.measureFilterMode || "all";
+  const measureFilterValue = aggregationWorkbenchState.measureFilterValue || "";
+  const buckets = new Map();
+  model.rows.forEach((row) => {
+    if (measureFilterMode !== "all" && measureFilterValue) {
+      const rowMeasureText = measure.getRawText
+        ? measure.getRawText(row)
+        : getDisplayValue(row, measure.colIdx) || "";
+      const rowMeasureLower = rowMeasureText.toLowerCase();
+      const filterLower = measureFilterValue.toLowerCase();
+      if (measureFilterMode === "contains" && !rowMeasureLower.includes(filterLower)) return;
+      if (measureFilterMode === "exact" && rowMeasureLower !== filterLower) return;
+    }
+    const rawGroup = row.values?.[groupIdx];
+    const groupLabel = String(getDisplayValue(row, groupIdx) || rawGroup || "(puste)").trim() || "(puste)";
+    const key = normalizeAnalysisKey(groupLabel) || "(puste)";
+    const entry = buckets.get(key) || {
+      label: groupLabel,
+      values: [],
+      rowIndexes: new Set(),
+    };
+    if (isDistinct) {
+      const rawValue = measure.getRawText
+        ? measure.getRawText(row)
+        : measure.colIdx != null
+          ? getDisplayValue(row, measure.colIdx) || ""
+          : "";
+      entry.values.push(rawValue);
+    } else {
+      const measureValue = measure.getValue(row);
+      if (measure.measureType === "count_rows") {
+        entry.values.push(1);
+      } else if (Number.isFinite(measureValue)) {
+        entry.values.push(measureValue);
+      }
+    }
+    entry.rowIndexes.add(row.rowIndex0);
+    buckets.set(key, entry);
+  });
+
+  const rawEntries = Array.from(buckets.values())
+    .map((entry) => {
+      const count = entry.values.filter((value) => Number.isFinite(value)).length;
+      return {
+        label: entry.label,
+        count,
+        average: computeAggregateMetric(entry.values, "avg"),
+        median: computeAggregateMetric(entry.values, "median"),
+        min: computeAggregateMetric(entry.values, "min"),
+        max: computeAggregateMetric(entry.values, "max"),
+        sum: computeAggregateMetric(entry.values, "sum"),
+        primary: computeAggregateMetric(entry.values, aggregationWorkbenchState.aggregation),
+      };
+    })
+    .filter((entry) => {
+      if (aggregationWorkbenchState.aggregation === "distinct") return true;
+      return entry.count > 0 || aggregationWorkbenchState.aggregation === "count";
+    });
+
+  const totalPrimary = rawEntries.reduce((sum, e) => sum + (e.primary || 0), 0);
+  const maxPrimary = rawEntries.length > 0 ? Math.max(...rawEntries.map(e => e.primary || 0)) : 0;
+
+  const entries = rawEntries
+    .filter((entry) => {
+      if (aggregationWorkbenchState.havingMode === "all") return true;
+      const primary = entry.primary || 0;
+      const value = aggregationWorkbenchState.havingValue;
+      if (aggregationWorkbenchState.havingMode === "above_value") return primary > value;
+      if (aggregationWorkbenchState.havingMode === "above_percent") return totalPrimary > 0 && (primary / totalPrimary) * 100 > value;
+      if (aggregationWorkbenchState.havingMode === "above_max_percent") return maxPrimary > 0 && (primary / maxPrimary) * 100 > value;
+      return true;
+    })
+    .sort((a, b) => {
+      const diff = Number(b.primary || 0) - Number(a.primary || 0);
+      if (Math.abs(diff) > 0.001) return diff;
+      const countDiff = b.count - a.count;
+      if (countDiff) return countDiff;
+      return a.label.localeCompare(b.label, "pl");
+    });
+
+  if (!entries.length) {
+    return { status: "no-results", ...context };
+  }
+
+  return {
+    status: "ok",
+    ...context,
+    entries,
+    summary: {
+      groups: entries.length,
+      sourceRows: model.rows.length,
+      measuredRows: entries.reduce((sum, entry) => sum + entry.count, 0),
+    },
+  };
+}
+
+function renderAggregationWorkbench() {
+  if (!aggregationWorkbenchSummaryEl || !aggregationWorkbenchListEl) return;
+  aggregationWorkbenchSummaryEl.replaceChildren();
+  aggregationWorkbenchListEl.replaceChildren();
+
+  const result = buildAggregationWorkbenchResult();
+  if (result.status === "empty") {
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby uruchomic agregacje."));
+    return;
+  }
+  if (result.status === "no-options") {
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Brak sensownych opcji grupowania lub mierzenia dla aktualnego zrodla danych."));
+    return;
+  }
+  if (result.status === "no-results") {
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Aktualna kombinacja grupowania i mierzenia nie zwrocila zadnych wynikow."));
+    return;
+  }
+
+  const measure = result.measure;
+  const isDistinctMode = aggregationWorkbenchState.aggregation === "distinct";
+  const primaryKind = isDistinctMode ? "number" : (measure?.kind === "duration" ? "duration" : "number");
+  const aggregationLabels = {
+    count: "Liczebnosc",
+    avg: "Srednia",
+    median: "Mediana",
+    min: "Minimum",
+    max: "Maksimum",
+    sum: "Suma",
+    distinct: "Unikalnych",
+  };
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "sheet-inspector-summary";
+  [
+    { label: "Grupy", value: String(result.summary.groups) },
+    { label: "Wiersze zrodla", value: String(result.summary.sourceRows) },
+    { label: "Zmierzonych rekordow", value: String(result.summary.measuredRows) },
+    { label: aggregationLabels[aggregationWorkbenchState.aggregation] || "Wynik", value: formatAggregationMetricValue(result.entries[0]?.primary, primaryKind), tone: "info" },
+  ].forEach((item) => {
+    const chip = document.createElement("div");
+    chip.className = `sheet-inspector-chip${item.tone ? ` ${item.tone}` : ""}`;
+    const label = document.createElement("div");
+    label.className = "sheet-inspector-chip-label";
+    label.textContent = item.label;
+    const value = document.createElement("div");
+    value.className = "sheet-inspector-chip-value";
+    value.textContent = item.value;
+    chip.appendChild(label);
+    chip.appendChild(value);
+    summaryGrid.appendChild(chip);
+  });
+  aggregationWorkbenchSummaryEl.appendChild(summaryGrid);
+
+  const controls = document.createElement("div");
+  controls.className = "aggregation-controls";
+
+  const sourceField = document.createElement("label");
+  sourceField.className = "field";
+  sourceField.append("Zrodlo");
+  const sourceSelect = document.createElement("select");
+  sourceSelect.dataset.aggregationControl = "source";
+  [
+    { value: "auto", label: "Auto" },
+    { value: "wide", label: "Widok klasyczny" },
+    ...(result.longAvailable ? [{ value: "long", label: "Wide-to-Long" }] : []),
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    sourceSelect.appendChild(option);
+  });
+  sourceSelect.value = aggregationWorkbenchState.sourceMode;
+  sourceField.appendChild(sourceSelect);
+
+  const scopeField = document.createElement("label");
+  scopeField.className = "field";
+  scopeField.append("Zakres");
+  const scopeSelect = document.createElement("select");
+  scopeSelect.dataset.aggregationControl = "scope";
+  [
+    { value: "filtered", label: "Aktualny widok" },
+    { value: "all", label: "Caly arkusz" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    scopeSelect.appendChild(option);
+  });
+  scopeSelect.value = aggregationWorkbenchState.scopeMode;
+  scopeField.appendChild(scopeSelect);
+
+  const headerField = document.createElement("label");
+  headerField.className = "field";
+  headerField.append("Naglowek agregacji");
+  const headerRowWrap = document.createElement("div");
+  headerRowWrap.className = "aggregation-header-row";
+  const headerSelect = document.createElement("select");
+  headerSelect.dataset.aggregationControl = "header";
+  const headerNumberInput = document.createElement("input");
+  headerNumberInput.dataset.aggregationControl = "header-number";
+  headerNumberInput.type = "number";
+  headerNumberInput.min = "1";
+  headerNumberInput.step = "1";
+  headerNumberInput.inputMode = "numeric";
+  headerNumberInput.placeholder = "nr wiersza";
+  headerRowWrap.appendChild(headerSelect);
+  headerRowWrap.appendChild(headerNumberInput);
+  headerField.appendChild(headerRowWrap);
+  const autoOpt = document.createElement("option");
+  autoOpt.value = "auto";
+  autoOpt.textContent = `Auto (najlepszy: ${result.resolvedHeaderRow})`;
+  headerSelect.appendChild(autoOpt);
+  const manualOpt = document.createElement("option");
+  manualOpt.value = "manual";
+  manualOpt.textContent = "Wlasny numer";
+  headerSelect.appendChild(manualOpt);
+  headerSelect.value = aggregationWorkbenchState.headerRowChoice;
+  headerNumberInput.value = String(aggregationWorkbenchState.customHeaderRow || currentHeaderRow);
+  headerNumberInput.disabled = aggregationWorkbenchState.headerRowChoice !== "manual";
+
+  const groupField = document.createElement("label");
+  groupField.className = "field";
+  groupField.append("Grupuj po");
+  const groupSelect = document.createElement("select");
+  groupSelect.dataset.aggregationControl = "group";
+  groupField.appendChild(groupSelect);
+  result.groupOptions.forEach((option) => {
+    const opt = document.createElement("option");
+    opt.value = option.value;
+    opt.textContent = option.label;
+    groupSelect.appendChild(opt);
+  });
+  groupSelect.value = aggregationWorkbenchState.groupBy;
+
+  const measureField = document.createElement("label");
+  measureField.className = "field";
+  measureField.append("Mierz");
+  const measureSelect = document.createElement("select");
+  measureSelect.dataset.aggregationControl = "measure";
+  measureField.appendChild(measureSelect);
+  result.measures.forEach((candidate) => {
+    const opt = document.createElement("option");
+    opt.value = candidate.key;
+    opt.textContent = candidate.label;
+    measureSelect.appendChild(opt);
+  });
+  measureSelect.value = aggregationWorkbenchState.measure;
+
+  const aggregationField = document.createElement("label");
+  aggregationField.className = "field";
+  aggregationField.append("Agregacja");
+  const aggregationSelect = document.createElement("select");
+  aggregationSelect.dataset.aggregationControl = "aggregation";
+  aggregationField.appendChild(aggregationSelect);
+  const aggregationTooltips = {
+    count: "Ile wierszy jest w kazdej grupie (np. 15 wierszy w Krakowie)",
+    avg: "Srednia wartosc (np. sredni czas lub srednia kwota)",
+    median: "Srodkowa wartosc (polowa wartosci jest mniejsza, polowa wieksza)",
+    min: "Najmniejsza wartosc w grupie",
+    max: "Najwieksza wartosc w grupie",
+    sum: "Laczna suma wszystkich wartosci w grupie",
+    distinct: "Ile roznych, niepowtarzalnych wartosci (np. 5 roznych klientow)",
+  };
+  result.allowedAggregations.forEach((key) => {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = aggregationLabels[key];
+    opt.title = aggregationTooltips[key] || "";
+    aggregationSelect.appendChild(opt);
+  });
+  aggregationSelect.value = aggregationWorkbenchState.aggregation;
+
+  const matchField = document.createElement("label");
+  matchField.className = "field";
+  matchField.append("Dopasowanie tekstu");
+  const matchSelect = document.createElement("select");
+  matchSelect.dataset.aggregationControl = "match";
+  [
+    { value: "contains", label: "Zawiera" },
+    { value: "exact", label: "Dokladnie" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    matchSelect.appendChild(option);
+  });
+  matchSelect.value = aggregationWorkbenchState.matchMode;
+  matchField.appendChild(matchSelect);
+
+const measureFilterField = document.createElement("label");
+  measureFilterField.className = "field";
+  measureFilterField.append("Zawiera w mierze");
+  const measureFilterSelect = document.createElement("select");
+  measureFilterSelect.dataset.aggregationControl = "measurefilter";
+  [
+    { value: "all", label: "Wszystkie", title: "Pokaz wszystkie wiersze bez filtrowania" },
+    { value: "contains", label: "Zawiera", title: "Znajdz wiersze zawierajace szukany tekst (np. czesc imienia)" },
+    { value: "exact", label: "Dokladnie", title: "Znajdz wiersze dokladnie rowne szukanej wartosci" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    option.title = item.title || "";
+    measureFilterSelect.appendChild(option);
+  });
+  measureFilterSelect.value = aggregationWorkbenchState.measureFilterMode || "all";
+  measureFilterField.appendChild(measureFilterSelect);
+
+  const measureFilterInput = document.createElement("input");
+  measureFilterInput.type = "text";
+  measureFilterInput.className = "aggregation-measurefilter-value";
+  measureFilterInput.dataset.aggregationControl = "measurefilter-value";
+  measureFilterInput.value = aggregationWorkbenchState.measureFilterValue || "";
+  measureFilterInput.placeholder = "szukaj...";
+  measureFilterInput.title = "Szukana wartosc w kolumnie mierzonej";
+  measureFilterInput.style.display = aggregationWorkbenchState.measureFilterMode === "all" ? "none" : "inline-block";
+  measureFilterField.appendChild(measureFilterInput);
+
+  const showCountField = document.createElement("label");
+  showCountField.className = "field";
+  showCountField.append("Pokaz wynikow");
+  const showCountSelect = document.createElement("select");
+  showCountSelect.dataset.aggregationControl = "count";
+  ["10", "20", "40", "80", "999"].forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value === "999" ? "Wszystkie" : value;
+    showCountSelect.appendChild(option);
+  });
+  showCountSelect.value = String(aggregationWorkbenchState.showCount);
+  showCountField.appendChild(showCountSelect);
+
+  const havingField = document.createElement("label");
+  havingField.className = "field";
+  havingField.append("Filtrowanie grup");
+  const havingSelect = document.createElement("select");
+  havingSelect.dataset.aggregationControl = "having";
+  [
+    { value: "all", label: "Wszystkie", title: "Pokaz wszystkie grupy bez ograniczen" },
+    { value: "above_value", label: " Wartosc >", title: "Pokaz tylko grupy z wartoscia wieksza niz podana liczba" },
+    { value: "above_percent", label: "% sumy >", title: "Pokaz grupy ktore stanowia wiecej niz X% lacznej sumy wszystkich grup" },
+    { value: "above_max_percent", label: "% max >", title: "Pokaz grupy wieksze niz polowa najsilniejszej grupy" },
+  ].forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    option.title = item.title;
+    havingSelect.appendChild(option);
+  });
+  havingSelect.value = aggregationWorkbenchState.havingMode;
+  havingField.appendChild(havingSelect);
+
+  const havingValueInput = document.createElement("input");
+  havingValueInput.type = "number";
+  havingValueInput.className = "aggregation-having-value";
+  havingValueInput.dataset.aggregationControl = "having-value";
+  havingValueInput.value = String(aggregationWorkbenchState.havingValue);
+  havingValueInput.min = "0";
+  havingValueInput.step = "1";
+  havingValueInput.title = "Podaj wartosc progową (np. 10 oznacza >10)";
+  havingValueInput.style.display = aggregationWorkbenchState.havingMode === "all" ? "none" : "inline-block";
+  havingField.appendChild(havingValueInput);
+
+  [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
+  aggregationWorkbenchSummaryEl.appendChild(controls);
+
+  const note = document.createElement("div");
+  note.className = "duration-analysis-note";
+  const headerModeText = aggregationWorkbenchState.headerRowChoice === "auto"
+    ? `auto -> wiersz ${result.resolvedHeaderRow}`
+    : `wiersz ${result.resolvedHeaderRow}`;
+  const havingText = aggregationWorkbenchState.havingMode === "all"
+    ? ""
+    : aggregationWorkbenchState.havingMode === "above_value"
+      ? ` • filtr: > ${aggregationWorkbenchState.havingValue}`
+      : ` • filtr: > ${aggregationWorkbenchState.havingValue}%`;
+  note.textContent = `Aktualne zrodlo: ${result.model.mode === "long" ? "Wide-to-Long" : "widok klasyczny"} • zakres: ${aggregationWorkbenchState.scopeMode === "all" ? "caly arkusz" : "aktualny widok"} • naglowek: ${headerModeText}${result.helperMode ? " (pomocniczy)" : ""} • dopasowanie: ${aggregationWorkbenchState.matchMode === "exact" ? "dokladnie" : "zawiera"}${havingText}.`;
+  aggregationWorkbenchSummaryEl.appendChild(note);
+
+  const currentSearch = aggregationWorkbenchState.resultSearch || "";
+  const filteredEntries = currentSearch
+    ? result.entries.filter((e) => e.label.toLowerCase().includes(currentSearch.toLowerCase()))
+    : result.entries;
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "aggregation-result-search-wrap";
+
+  const searchLabel = document.createElement("span");
+  searchLabel.textContent = "Szukaj:";
+  searchLabel.style.fontSize = "12px";
+  searchLabel.style.color = "var(--muted)";
+  searchWrap.appendChild(searchLabel);
+
+  const resultSearchInput = document.createElement("input");
+  resultSearchInput.type = "text";
+  resultSearchInput.className = "aggregation-result-search";
+  resultSearchInput.placeholder = "np. Julian...";
+  resultSearchInput.title = "Wpisz tekst ktory ma sie zawierac w nazwie grupy (np. czesc imienia)";
+  resultSearchInput.style.flex = "1";
+  resultSearchInput.style.minWidth = "100px";
+  resultSearchInput.style.padding = "4px 8px";
+  resultSearchInput.style.borderRadius = "var(--r-sm)";
+  resultSearchInput.style.border = "1px solid var(--border)";
+  resultSearchInput.style.fontSize = "13px";
+  resultSearchInput.value = currentSearch;
+  searchWrap.appendChild(resultSearchInput);
+
+  const searchCount = document.createElement("span");
+  searchCount.style.fontSize = "12px";
+  searchCount.style.color = "var(--muted)";
+  searchCount.style.marginLeft = "8px";
+  searchCount.style.whiteSpace = "nowrap";
+  searchCount.textContent = currentSearch ? `${filteredEntries.length} z ${result.entries.length}` : "";
+  searchWrap.appendChild(searchCount);
+
+  aggregationWorkbenchListEl.appendChild(searchWrap);
+
+  const showCount = Math.min(aggregationWorkbenchState.showCount, filteredEntries.length);
+  filteredEntries.slice(0, showCount).forEach((entry, index) => {
+    const item = document.createElement("div");
+    item.className = "aggregation-item";
+
+    const top = document.createElement("div");
+    top.className = "duration-person-top";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "duration-person-title-wrap";
+
+    const rank = document.createElement("div");
+    rank.className = "duration-person-rank";
+    rank.textContent = String(index + 1);
+
+    const title = document.createElement("div");
+    title.className = "duration-person-title";
+    title.textContent = entry.label;
+
+    const value = document.createElement("div");
+    value.className = "duration-person-value";
+    value.textContent = formatAggregationMetricValue(entry.primary, primaryKind);
+
+    titleWrap.appendChild(rank);
+    titleWrap.appendChild(title);
+    top.appendChild(titleWrap);
+    top.appendChild(value);
+
+    const meta = document.createElement("div");
+    meta.className = "duration-person-meta";
+    meta.textContent = `Liczba ${entry.count} • srednia ${formatAggregationMetricValue(entry.average, primaryKind)} • mediana ${formatAggregationMetricValue(entry.median, primaryKind)} • zakres ${formatAggregationMetricValue(entry.min, primaryKind)} -> ${formatAggregationMetricValue(entry.max, primaryKind)}`;
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.aggregationAction = "filter-group";
+    btn.dataset.aggregationValue = entry.label;
+    btn.textContent = "Szukaj w tabeli";
+    actions.appendChild(btn);
+
+    item.appendChild(top);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    aggregationWorkbenchListEl.appendChild(item);
+  });
+}
+
+function buildMergedLabelMap(merges, sheet, tableStartCol, tableEndCol, headerAbsRow) {
+  const labels = new Map();
+  merges
+    .filter((merge) => merge && merge.s && merge.e && merge.s.r < headerAbsRow)
+    .forEach((merge) => {
+      if (merge.e.c < tableStartCol || merge.s.c > tableEndCol) return;
+      const label = getCellDisplayText(sheet, merge.s.r, merge.s.c);
+      if (!label) return;
+      const startIndex = Math.max(0, merge.s.c - tableStartCol);
+      labels.set(startIndex, label);
+    });
+  return labels;
+}
+
+function isMeaningfulSheetCell(cell) {
+  if (!cell || typeof cell !== "object") return false;
+  if (cell.f) return true;
+  if (cell.l && (cell.l.Target || cell.l.target)) return true;
+  if (Array.isArray(cell.c) && cell.c.length) return true;
+  if (cell.v instanceof Date) return true;
+  if (typeof cell.v === "number" && Number.isFinite(cell.v)) return true;
+  if (typeof cell.v === "boolean") return true;
+  if (typeof cell.v === "string" && cell.v.trim() !== "") return true;
+  if (typeof cell.w === "string" && cell.w.trim() !== "") return true;
+  return false;
+}
+
+function computeEffectiveSheetRange(sheet, headerRow) {
+  const fallback = XLSX.utils.decode_range(sheet["!ref"]);
+  const headerIndex0 = Math.max(0, (headerRow || 1) - 1);
+  let minCol = fallback.e.c;
+  let maxCol = fallback.s.c;
+  let maxRow = headerIndex0;
+  let found = false;
+
+  Object.keys(sheet).forEach((key) => {
+    if (!key || key[0] === "!") return;
+    const cell = sheet[key];
+    if (!isMeaningfulSheetCell(cell)) return;
+    const ref = XLSX.utils.decode_cell(key);
+    if (ref.r < headerIndex0) {
+      minCol = Math.min(minCol, ref.c);
+      maxCol = Math.max(maxCol, ref.c);
+      found = true;
+      return;
+    }
+    minCol = Math.min(minCol, ref.c);
+    maxCol = Math.max(maxCol, ref.c);
+    maxRow = Math.max(maxRow, ref.r);
+    found = true;
+  });
+
+  for (let c = fallback.s.c; c <= fallback.e.c; c++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r: headerIndex0, c })];
+    if (!isMeaningfulSheetCell(cell)) continue;
+    minCol = Math.min(minCol, c);
+    maxCol = Math.max(maxCol, c);
+    found = true;
+  }
+
+  if (!found) {
+    return fallback;
+  }
+
+  const merges = Array.isArray(sheet["!merges"]) ? sheet["!merges"] : [];
+  merges.forEach((merge) => {
+    if (!merge || !merge.s || !merge.e) return;
+    const anchor = sheet[XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
+    if (!isMeaningfulSheetCell(anchor)) return;
+    minCol = Math.min(minCol, merge.s.c);
+    maxCol = Math.max(maxCol, merge.e.c);
+    if (merge.e.r >= headerIndex0) {
+      maxRow = Math.max(maxRow, merge.e.r);
+    }
+  });
+
+  return {
+    s: { r: fallback.s.r, c: Math.max(fallback.s.c, minCol) },
+    e: { r: Math.max(headerIndex0, maxRow), c: Math.max(Math.max(fallback.s.c, minCol), maxCol) },
+  };
+}
+
+function buildGroupFromSignature(headers, startIndex, span, repeatCount, tableStartCol, mergedLabels) {
+  const bases = headers
+    .slice(startIndex, startIndex + span)
+    .map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header))
+    .filter(Boolean);
+  const uniqueBases = Array.from(new Set(bases));
+  const blocks = [];
+
+  for (let i = 0; i < repeatCount; i++) {
+    const blockStart = startIndex + (i * span);
+    const blockEnd = blockStart + span - 1;
+    blocks.push({
+      label: mergedLabels.get(blockStart) || `Blok ${i + 1}`,
+      span,
+      startIndex: blockStart,
+      endIndex: blockEnd,
+      startAbs: tableStartCol + blockStart,
+      endAbs: tableStartCol + blockEnd,
+      headers: headers.slice(blockStart, blockEnd + 1),
+    });
+  }
+
+  return {
+    label: repeatCount >= 2 ? `Powtarzalny układ: ${repeatCount} bloków` : "Powtarzalny układ kolumn",
+    kind: "repeating-signature",
+    meta: `${repeatCount} bloków po ${span} kolumny`,
+    prefixCount: startIndex,
+    prefixLabel: startIndex > 0 ? formatColRange(tableStartCol, tableStartCol + startIndex - 1) : "",
+    families: uniqueBases.slice(0, 8).map((label) => ({ label, count: repeatCount })),
+    blocks,
+  };
+}
+
+function detectSignatureRepeatingBlocks(headers, tableStartCol, mergedLabels) {
+  if (!Array.isArray(headers) || headers.length < 4) return [];
+
+  let best = null;
+  const maxSpan = Math.min(12, Math.floor(headers.length / 2));
+
+  for (let startIndex = 0; startIndex < headers.length - 3; startIndex++) {
+    for (let span = 2; span <= maxSpan; span++) {
+      if (startIndex + (span * 2) > headers.length) break;
+
+      const template = headers.slice(startIndex, startIndex + span).map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header));
+      if (!template.some(Boolean)) continue;
+
+      let repeatCount = 1;
+      let nextStart = startIndex + span;
+
+      while (nextStart + span <= headers.length) {
+        const candidate = headers.slice(nextStart, nextStart + span).map((header) => parseRepeatedHeader(header)?.base || cleanSectionLabel(header));
+        if (candidate.length !== template.length) break;
+        if (!candidate.every((value, idx) => value === template[idx])) break;
+        repeatCount += 1;
+        nextStart += span;
+      }
+
+      if (repeatCount < 2) continue;
+
+      const score = (repeatCount * span * 100) - startIndex;
+      if (!best || score > best.score) {
+        best = { score, startIndex, span, repeatCount };
+      }
+    }
+  }
+
+  if (!best) return [];
+  return [buildGroupFromSignature(headers, best.startIndex, best.span, best.repeatCount, tableStartCol, mergedLabels)];
+}
+
+function detectRepeatingBlocks(sheet, headerRow, data) {
+  if (!sheet || !data || !Array.isArray(data.headers) || !data.headers.length) return [];
+  const merges = Array.isArray(data.merges) ? data.merges : [];
+  const headerAbsRow = headerRow - 1;
+  const tableStartCol = data.startCol || 0;
+  const tableEndCol = tableStartCol + data.headers.length - 1;
+  const mergedLabels = buildMergedLabelMap(merges, sheet, tableStartCol, tableEndCol, headerAbsRow);
+
+  const signatureGroups = detectSignatureRepeatingBlocks(data.headers, tableStartCol, mergedLabels);
+  if (signatureGroups.length) {
+    return signatureGroups;
+  }
+
+  const groups = [];
+
+  const mergeBlocks = merges
+    .filter((merge) => merge && merge.s && merge.e && merge.s.r < headerAbsRow && merge.e.c >= tableStartCol && merge.s.c <= tableEndCol)
+    .sort((a, b) => a.s.c - b.s.c);
+
+  if (mergeBlocks.length >= 2) {
+    const bySpan = new Map();
+    mergeBlocks.forEach((merge) => {
+      const span = merge.e.c - merge.s.c + 1;
+      if (span < 2) return;
+      const label = getCellDisplayText(sheet, merge.s.r, merge.s.c);
+      if (!label) return;
+      const list = bySpan.get(span) || [];
+      const startIndex = Math.max(0, merge.s.c - tableStartCol);
+      const endIndex = Math.min(data.headers.length - 1, merge.e.c - tableStartCol);
+      list.push({
+        label,
+        span,
+        startIndex,
+        endIndex,
+        startAbs: merge.s.c,
+        endAbs: merge.e.c,
+        headers: data.headers.slice(startIndex, endIndex + 1),
+      });
+      bySpan.set(span, list);
+    });
+
+    bySpan.forEach((blocks, span) => {
+      if (blocks.length < 2) return;
+      const familyMap = new Map();
+      blocks.forEach((block) => {
+        block.headers.forEach((header) => {
+          const parsed = parseRepeatedHeader(header);
+          const key = parsed ? parsed.base : header;
+          familyMap.set(key, (familyMap.get(key) || 0) + 1);
+        });
+      });
+      const families = Array.from(familyMap.entries())
+        .filter(([, count]) => count >= 2)
+        .map(([label, count]) => ({ label, count }))
+        .slice(0, 8);
+
+      groups.push({
+        label: `Powtarzalny układ: ${blocks.length} bloków`,
+        kind: "merged",
+        meta: `${blocks.length} bloków po ${span} kolumny • ${blocks[0].label} -> ${blocks[blocks.length - 1].label}`,
+        prefixCount: blocks[0].startIndex,
+        prefixLabel: blocks[0].startIndex > 0 ? formatColRange(tableStartCol, tableStartCol + blocks[0].startIndex - 1) : "",
+        families,
+        blocks,
+      });
+    });
+  }
+
+  if (groups.length) return groups.slice(0, 4);
+
+  const familyMap = new Map();
+  data.headers.forEach((header, index) => {
+    const parsed = parseRepeatedHeader(header);
+    if (!parsed) return;
+    const entry = familyMap.get(parsed.base) || { label: parsed.base, indexes: [], orders: [] };
+    entry.indexes.push(index);
+    entry.orders.push(parsed.order);
+    familyMap.set(parsed.base, entry);
+  });
+  const families = Array.from(familyMap.values())
+    .filter((entry) => entry.indexes.length >= 3)
+    .sort((a, b) => b.indexes.length - a.indexes.length);
+
+  if (!families.length) return [];
+
+  return [{
+    label: "Powtarzalne rodziny kolumn",
+    kind: "family",
+    meta: `${families.length} rodzin powtarzalnych kolumn`,
+    prefixCount: 0,
+    prefixLabel: "",
+    families: families.slice(0, 10).map((entry) => ({ label: entry.label, count: entry.indexes.length })),
+    blocks: families.slice(0, 10).map((entry) => ({
+      label: entry.label,
+      span: 1,
+      startIndex: entry.indexes[0],
+      endIndex: entry.indexes[entry.indexes.length - 1],
+      startAbs: tableStartCol + entry.indexes[0],
+      endAbs: tableStartCol + entry.indexes[entry.indexes.length - 1],
+      headers: entry.indexes.map((idx) => data.headers[idx]),
+    })),
+  }];
+}
+
+function renderRepeatingBlocks() {
+  if (!repeatBlockDetectorEl) return;
+  repeatBlockDetectorEl.replaceChildren();
+  if (!currentRepeatingBlocks.length) {
+    repeatBlockDetectorEl.appendChild(createEmptyInsight("Brak wyraznych powtarzalnych blokow dla aktualnego arkusza. Najlepiej dziala na szerokich tabelach z cyklami, etapami albo seriami podobnych kolumn."));
+    return;
+  }
+
+  currentRepeatingBlocks.forEach((group, groupIndex) => {
+    const summary = document.createElement("div");
+    summary.className = "repeat-summary";
+    const prefixNote = group.prefixCount ? ` • stałe kolumny przed blokami: ${group.prefixLabel}` : "";
+    summary.textContent = `${group.meta || group.label}${prefixNote}`;
+    repeatBlockDetectorEl.appendChild(summary);
+
+    group.blocks.slice(0, 10).forEach((block, blockIndex) => {
+      const item = document.createElement("div");
+      item.className = "repeat-block-item";
+
+      const top = document.createElement("div");
+      top.className = "repeat-block-top";
+
+      const title = document.createElement("div");
+      title.className = "repeat-block-title";
+      title.textContent = block.label;
+
+      const badge = document.createElement("div");
+      badge.className = "repeat-block-badge";
+      badge.textContent = `${block.span} kol.`;
+
+      top.appendChild(title);
+      top.appendChild(badge);
+
+      const meta = document.createElement("div");
+      meta.className = "repeat-block-meta";
+      const headerPreview = block.headers.slice(0, 4).join(" • ");
+      meta.textContent = `Kolumny ${formatColRange(block.startAbs, block.endAbs)}${headerPreview ? ` • ${headerPreview}` : ""}`;
+
+      const actions = document.createElement("div");
+      actions.className = "section-nav-actions";
+
+      const btn = document.createElement("button");
+      btn.className = "btn ghost btn-sm";
+      btn.type = "button";
+      btn.dataset.repeatGroupIndex = String(groupIndex);
+      btn.dataset.repeatBlockIndex = String(blockIndex);
+      btn.textContent = "Skocz do bloku";
+      actions.appendChild(btn);
+
+      item.appendChild(top);
+      item.appendChild(meta);
+      item.appendChild(actions);
+
+      if (group.families && group.families.length) {
+        const familyList = document.createElement("div");
+        familyList.className = "repeat-family-list";
+        group.families.slice(0, 6).forEach((family) => {
+          const chip = document.createElement("div");
+          chip.className = "repeat-family-chip";
+          chip.textContent = `${family.label} ×${family.count}`;
+          familyList.appendChild(chip);
+        });
+        item.appendChild(familyList);
+      }
+
+      repeatBlockDetectorEl.appendChild(item);
+    });
+  });
+}
+
+function focusRepeatingBlock(groupIndex, blockIndex) {
+  const group = currentRepeatingBlocks[groupIndex];
+  const block = group && group.blocks ? group.blocks[blockIndex] : null;
+  if (!block || !tableWrapEl) return;
+  const cells = theadEl.querySelectorAll(".guide-row .guide-cell");
+  const cell = cells[block.startIndex];
+  if (!cell) {
+    toast("Tego bloku nie widac jeszcze w aktualnym widoku arkusza", "info");
+    return;
+  }
+  const targetLeft = Math.max(0, cell.offsetLeft - 64);
+  tableWrapEl.scrollTo({ left: targetLeft, behavior: "smooth" });
+  syncHorizontalScrollbar();
+}
+
+function collectWorkbookStats(wb, fileName) {
+  const book = wb && wb.Workbook ? wb.Workbook : {};
+  const sheetsMeta = Array.isArray(book.Sheets) ? book.Sheets : [];
+  let hiddenSheets = 0;
+  let veryHiddenSheets = 0;
+  sheetsMeta.forEach((sheetMeta) => {
+    const hidden = Number(sheetMeta && sheetMeta.Hidden);
+    if (hidden === 1) hiddenSheets += 1;
+    if (hidden === 2) veryHiddenSheets += 1;
+  });
+
+  const definedNames = Array.isArray(book.Names) ? book.Names.length : 0;
+  const ext = String(fileName || "").toLowerCase();
+  const hasMacros = !!wb?.vbaraw || ext.endsWith(".xlsm");
+
+  return {
+    sheets: Array.isArray(wb?.SheetNames) ? wb.SheetNames.length : 0,
+    hiddenSheets,
+    veryHiddenSheets,
+    definedNames,
+    hasMacros,
+  };
+}
+
+function collectSheetInsights() {
+  const workbookItems = currentWorkbookStats ? [
+    { label: "Arkusze", value: String(currentWorkbookStats.sheets) },
+    { label: "Ukryte arkusze", value: String(currentWorkbookStats.hiddenSheets), tone: currentWorkbookStats.hiddenSheets ? "warning" : "" },
+    { label: "Very hidden", value: String(currentWorkbookStats.veryHiddenSheets), tone: currentWorkbookStats.veryHiddenSheets ? "warning" : "" },
+    { label: "Nazwane zakresy", value: String(currentWorkbookStats.definedNames), tone: currentWorkbookStats.definedNames ? "info" : "" },
+  ] : [];
+
+  if (!currentHeaders.length || !baseRows.length) {
+    return {
+      workbookRows: workbookItems,
+      rows: [],
+      flags: currentWorkbookStats?.hasMacros ? [{ label: "Plik makr .xlsm", tone: "warning" }] : [],
+    };
+  }
+
+  const totalRows = baseRows.length;
+  const visibleRows = viewRows.length;
+  const totalCols = currentHeaders.length;
+  const duplicateHeaders = currentSheetStats?.duplicateHeaderCount || 0;
+  const duplicateRows = (() => {
+    const keys = baseRows.map((row) => JSON.stringify(row.values.map((value) => value instanceof Date ? value.toISOString() : value ?? "")));
+    return keys.length - new Set(keys).size;
+  })();
+
+  let numericColumns = 0;
+  let dateColumns = 0;
+  let longTextColumns = 0;
+  let sparseColumns = 0;
+
+  currentHeaders.forEach((_, colIdx) => {
+    let nonEmpty = 0;
+    let numeric = 0;
+    let dates = 0;
+    let maxLen = 0;
+    baseRows.forEach((row) => {
+      const value = row.values[colIdx];
+      if (value === null || value === undefined || String(value).trim() === "") return;
+      nonEmpty += 1;
+      if (typeof value === "number") numeric += 1;
+      if (parseDateFlexible(value) instanceof Date) dates += 1;
+      maxLen = Math.max(maxLen, String(getDisplayValue(row, colIdx)).length);
+    });
+    if (nonEmpty && numeric / nonEmpty >= 0.8) numericColumns += 1;
+    if (nonEmpty && dates / nonEmpty >= 0.8) dateColumns += 1;
+    if (maxLen > 150) longTextColumns += 1;
+    if (totalRows && nonEmpty / totalRows <= 0.4) sparseColumns += 1;
+  });
+
+  const sheetItems = [
+    { label: "Widoczne / wszystkie wiersze", value: `${visibleRows} / ${totalRows}`, tone: visibleRows !== totalRows ? "info" : "" },
+    { label: "Kolumny", value: String(totalCols) },
+    { label: "Formuły", value: String(currentSheetStats?.formulaCount || 0), tone: (currentSheetStats?.formulaCount || 0) ? "info" : "" },
+    {
+      label: "Scalenia (zakresy / komorki)",
+      value: `${currentSheetStats?.mergeRegions || 0} / ${currentSheetStats?.mergedCells || 0}`,
+      tone: (currentSheetStats?.mergeRegions || 0) ? "info" : "",
+    },
+    { label: "Ukryte kolumny / wiersze", value: `${currentSheetStats?.hiddenColumns || 0} / ${currentSheetStats?.hiddenRows || 0}`, tone: ((currentSheetStats?.hiddenColumns || 0) || (currentSheetStats?.hiddenRows || 0)) ? "warning" : "" },
+    { label: "Kolumny liczbowe / datowe", value: `${numericColumns} / ${dateColumns}` },
+    { label: "Rzadkie kolumny", value: `${sparseColumns} (${formatPercent(sparseColumns, totalCols)})`, tone: sparseColumns ? "warning" : "" },
+    { label: "Długie teksty", value: String(longTextColumns), tone: longTextColumns ? "info" : "" },
+  ];
+
+  const flags = [];
+  if (currentWorkbookStats?.hasMacros) flags.push({ label: "Plik makr .xlsm", tone: "warning" });
+  if (duplicateHeaders) flags.push({ label: `Zdublowane nagłówki: ${duplicateHeaders}`, tone: "warning" });
+  if (duplicateRows) flags.push({ label: `Duplikaty wierszy: ${duplicateRows}`, tone: duplicateRows > 0 ? "warning" : "" });
+  if ((currentSheetStats?.formulaMissingResultCount || 0) > 0) {
+    flags.push({ label: `Formuły bez wyniku: ${currentSheetStats.formulaMissingResultCount}`, tone: "warning" });
+  }
+  if ((currentSheetStats?.commentCount || 0) > 0) flags.push({ label: `Komentarze: ${currentSheetStats.commentCount}`, tone: "info" });
+  if ((currentSheetStats?.hyperlinkCount || 0) > 0) flags.push({ label: `Linki: ${currentSheetStats.hyperlinkCount}`, tone: "info" });
+  if (currentWorkbookStats?.veryHiddenSheets) flags.push({ label: "Są arkusze very hidden", tone: "warning" });
+
+  return {
+    workbookRows: workbookItems,
+    rows: sheetItems,
+    flags,
+  };
+}
+
+function isKpiLabelCandidate(text) {
+  const label = cleanSectionLabel(text);
+  if (!label || label.length < 3 || label.length > 48) return false;
+  if (/^\d+$/.test(label)) return false;
+  const lowered = label.toLowerCase();
+  const keywords = [
+    "suma",
+    "razem",
+    "wartosc",
+    "wartość",
+    "koszt",
+    "budzet",
+    "budżet",
+    "roznica",
+    "różnica",
+    "saldo",
+    "marza",
+    "marża",
+    "przychod",
+    "przychód",
+    "wynik",
+    "netto",
+    "brutto",
+    "plan",
+    "wykonanie",
+    "liczba",
+    "ilosc",
+    "ilość",
+    "procent",
+    "udzial",
+    "udział",
+    "kpi",
+  ];
+  return keywords.some((keyword) => lowered.includes(keyword)) || /[:\-]$/.test(label);
+}
+
+function isKpiValueCandidate(cell, displayText) {
+  if (!cell) return false;
+  const display = cleanSectionLabel(displayText);
+  if (!display) return false;
+  if (typeof cell.v === "number" && Number.isFinite(cell.v)) return true;
+  if (cell.v instanceof Date) return true;
+  if (/%|zl|zł|pln|eur|usd/i.test(display)) return true;
+  if (/^-?\d[\d\s,.\u00A0]*$/.test(display)) return true;
+  return false;
+}
+
+function normalizeKpiLabel(label) {
+  const raw = cleanSectionLabel(label).toLowerCase();
+  if (!raw) return "";
+  return raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(na|do|od|i|oraz|jeszcze|samochod|samochodu|wartosc|wartosc)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferKpiSemanticBucket(label) {
+  const normalized = normalizeKpiLabel(label);
+  if (!normalized) return "";
+  if (/budzet/.test(normalized)) return "budget";
+  if (/koszt|suma|razem|subtotal/.test(normalized)) return "total";
+  if (/roznic|saldo|wynik/.test(normalized)) return "difference";
+  if (/marz|procent|udzial|wykonanie/.test(normalized)) return "ratio";
+  return normalized;
+}
+
+function scoreKpiLabelQuality(label) {
+  const clean = cleanSectionLabel(label);
+  const normalized = normalizeKpiLabel(label);
+  if (!clean || !normalized) return 0;
+  let score = normalized.length;
+  if (normalized.includes(" ")) score += 4;
+  if (clean.length >= 16) score += 4;
+  if (/^(suma|razem|subtotal|wynik)$/i.test(normalized)) score -= 8;
+  if (/koszt|budzet|roznic|saldo|marza|wykonanie|przychod|brutto|netto/i.test(normalized)) score += 6;
+  return score;
+}
+
+function dedupeKpiEntries(entries) {
+  const bestByKey = new Map();
+  entries.forEach((entry) => {
+    const semantic = inferKpiSemanticBucket(entry.label);
+    const valueKey = cleanSectionLabel(entry.value);
+    const key = `${semantic}|${valueKey}`;
+    const existing = bestByKey.get(key);
+    if (!existing) {
+      bestByKey.set(key, {
+        ...entry,
+        aliases: [],
+      });
+      return;
+    }
+    if (entry.label !== existing.label && !existing.aliases.includes(entry.label)) {
+      existing.aliases.push(entry.label);
+    }
+    const existingCompositeScore = existing.score + scoreKpiLabelQuality(existing.label);
+    const entryCompositeScore = entry.score + scoreKpiLabelQuality(entry.label);
+    if (entryCompositeScore > existingCompositeScore) {
+      bestByKey.set(key, {
+        ...entry,
+        aliases: Array.from(new Set([existing.label, ...existing.aliases])),
+      });
+    }
+  });
+  return Array.from(bestByKey.values());
+}
+
+function pushKpiEntry(entries, seen, labelText, valueText, valueRef, labelRef, valueCell, scoreExtras = 0) {
+  const cleanLabel = cleanSectionLabel(labelText).replace(/[:\-]\s*$/, "");
+  const cleanValue = cleanSectionLabel(valueText);
+  if (!cleanLabel || !cleanValue) return;
+  const seenKey = `${normalizeKpiLabel(cleanLabel)}|${valueRef}`;
+  if (seen.has(seenKey)) return;
+  seen.add(seenKey);
+
+  const decoded = XLSX.utils.decode_cell(valueRef);
+  let score = scoreExtras;
+  if (typeof valueCell?.v === "number") score += 3;
+  if (valueCell?.f) score += 2;
+  if (/%|zl|zł|pln|eur|usd/i.test(cleanValue)) score += 2;
+  if (isKpiLabelCandidate(cleanLabel)) score += 2;
+
+  entries.push({
+    label: cleanLabel,
+    value: cleanValue,
+    address: valueRef,
+    labelAddress: labelRef,
+    rowIndex0: decoded.r,
+    colAbs: decoded.c,
+    score,
+  });
+}
+
+function findDistantSameRowKpiTarget(sheet, rowIndex0, labelColAbs, endColAbs) {
+  if (!sheet) return null;
+  const farCandidates = [];
+  const maxOffset = Math.min(6, endColAbs - labelColAbs);
+  for (let offset = 3; offset <= maxOffset; offset++) {
+    const candidateCol = labelColAbs + offset;
+    let gapHasContent = false;
+    for (let mid = labelColAbs + 1; mid < candidateCol; mid++) {
+      if (getCellDisplayText(sheet, rowIndex0, mid)) {
+        gapHasContent = true;
+        break;
+      }
+    }
+    if (gapHasContent) continue;
+    const valueRef = XLSX.utils.encode_cell({ r: rowIndex0, c: candidateCol });
+    const valueCell = sheet[valueRef];
+    const valueDisplay = cleanSectionLabel(getCellDisplayText(sheet, rowIndex0, candidateCol));
+    if (!isKpiValueCandidate(valueCell, valueDisplay)) continue;
+    farCandidates.push({
+      valueRef,
+      valueCell,
+      valueDisplay,
+      colAbs: candidateCol,
+    });
+  }
+  return farCandidates.length === 1 ? farCandidates[0] : null;
+}
+
+function scanKpiZone(sheet, entries, seen, rowStart, rowEnd, colStart, colEnd) {
+  for (let r = rowStart; r <= rowEnd; r++) {
+    for (let c = colStart; c <= colEnd; c++) {
+      const labelText = getCellDisplayText(sheet, r, c);
+      if (!isKpiLabelCandidate(labelText)) continue;
+
+      const candidates = [
+        { row: r, col: c + 1 },
+        { row: r, col: c + 2 },
+        { row: r + 1, col: c },
+      ];
+
+      candidates.forEach((candidate) => {
+        if (candidate.row > rowEnd || candidate.col > colEnd) return;
+        const valueRef = XLSX.utils.encode_cell({ r: candidate.row, c: candidate.col });
+        const valueCell = sheet[valueRef];
+        const valueDisplay = cleanSectionLabel(getCellDisplayText(sheet, candidate.row, candidate.col));
+        if (!isKpiValueCandidate(valueCell, valueDisplay)) return;
+        let score = 0;
+        if (candidate.row === r) score += 2;
+        if (candidate.col === c + 1) score += 1;
+        pushKpiEntry(
+          entries,
+          seen,
+          labelText,
+          valueDisplay,
+          valueRef,
+          XLSX.utils.encode_cell({ r, c }),
+          valueCell,
+          score
+        );
+      });
+
+      const distantTarget = findDistantSameRowKpiTarget(sheet, r, c, colEnd);
+      if (distantTarget) {
+        pushKpiEntry(
+          entries,
+          seen,
+          labelText,
+          distantTarget.valueDisplay,
+          distantTarget.valueRef,
+          XLSX.utils.encode_cell({ r, c }),
+          distantTarget.valueCell,
+          4
+        );
+      }
+    }
+  }
+
+  for (let r = rowStart; r <= rowEnd; r++) {
+    for (let c = colStart; c <= colEnd; c++) {
+      const valueRef = XLSX.utils.encode_cell({ r, c });
+      const valueCell = sheet[valueRef];
+      const valueDisplay = cleanSectionLabel(getCellDisplayText(sheet, r, c));
+      if (!isKpiValueCandidate(valueCell, valueDisplay)) continue;
+
+      const leftLabel = c > colStart ? getCellDisplayText(sheet, r, c - 1) : "";
+      const twoLeftLabel = c - 2 >= colStart ? getCellDisplayText(sheet, r, c - 2) : "";
+      const aboveLabel = r > rowStart ? getCellDisplayText(sheet, r - 1, c) : "";
+      const diagLabel = (r > rowStart && c > colStart) ? getCellDisplayText(sheet, r - 1, c - 1) : "";
+      const candidates = [
+        { label: leftLabel, ref: c > colStart ? XLSX.utils.encode_cell({ r, c: c - 1 }) : valueRef, bonus: 2 },
+        { label: twoLeftLabel, ref: c - 2 >= colStart ? XLSX.utils.encode_cell({ r, c: c - 2 }) : valueRef, bonus: 1 },
+        { label: aboveLabel, ref: r > rowStart ? XLSX.utils.encode_cell({ r: r - 1, c }) : valueRef, bonus: 1 },
+        { label: diagLabel, ref: (r > rowStart && c > colStart) ? XLSX.utils.encode_cell({ r: r - 1, c: c - 1 }) : valueRef, bonus: 0 },
+      ];
+
+      candidates.forEach((candidate) => {
+        if (!isKpiLabelCandidate(candidate.label)) return;
+        pushKpiEntry(
+          entries,
+          seen,
+          candidate.label,
+          valueDisplay,
+          valueRef,
+          candidate.ref,
+          valueCell,
+          candidate.bonus
+        );
+      });
+    }
+  }
+}
+
+function collectKpiEntries(sheet, headerRow) {
+  if (!sheet) return { entries: [], anchorRow: headerRow || 1 };
+  const inferredAnchorRow = Math.max(1, detectHeaderRowSimple(sheet));
+  const anchorRow = Math.max(1, headerRow || 1, inferredAnchorRow);
+  if (anchorRow <= 1) return { entries: [], anchorRow };
+  const entries = [];
+  const seen = new Set();
+  const effectiveRange = computeEffectiveSheetRange(sheet, anchorRow);
+  const startRow = Math.max(effectiveRange.s.r, anchorRow - 8);
+  const endRow = Math.max(startRow, anchorRow - 1);
+  const endCol = effectiveRange.e.c;
+
+  scanKpiZone(sheet, entries, seen, startRow, endRow, effectiveRange.s.c, endCol);
+
+  const bottomStartRow = Math.max(anchorRow, effectiveRange.e.r - 4);
+  if (bottomStartRow <= effectiveRange.e.r) {
+    scanKpiZone(sheet, entries, seen, bottomStartRow, effectiveRange.e.r, effectiveRange.s.c, endCol);
+  }
+
+  return {
+    anchorRow,
+    entries: dedupeKpiEntries(entries).sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.address.localeCompare(b.address, "pl");
+    })
+    .slice(0, 8),
+  };
+}
+
+function renderKpiExtractor() {
+  if (!kpiSummaryEl || !kpiListEl) return;
+  kpiSummaryEl.replaceChildren();
+  kpiListEl.replaceChildren();
+
+  if (!currentHeaders.length || !currentKpiEntries.length) {
+    renderInsightList(kpiSummaryEl, [], "Brak wykrytych KPI lub podsumowan dla aktualnego arkusza.");
+    kpiListEl.appendChild(createEmptyInsight("Nie wykryto wiarygodnych KPI nad aktualna tabela danych."));
+    return;
+  }
+
+  renderInsightList(kpiSummaryEl, [
+    { label: "Kandydaci KPI", value: String(currentKpiEntries.length), tone: "info" },
+    {
+      label: "Źródło",
+      value: currentKpiAnchorRow === currentHeaderRow
+        ? `Wiersze nad nagłówkiem ${currentHeaderRow}`
+        : `Wiersze nad wykrytym nagłówkiem ${currentKpiAnchorRow}`,
+      tone: currentKpiAnchorRow === currentHeaderRow ? "" : "info",
+    },
+  ], "Brak podsumowania KPI.");
+
+  currentKpiEntries.forEach((entry) => {
+    const item = document.createElement("div");
+    item.className = "kpi-card";
+
+    const label = document.createElement("div");
+    label.className = "kpi-label";
+    label.textContent = entry.label;
+
+    const value = document.createElement("div");
+    value.className = "kpi-value";
+    value.textContent = entry.value;
+    value.title = entry.aliases?.length
+      ? `${entry.label}: ${entry.value}\nRowniez jako: ${entry.aliases.join(", ")}`
+      : `${entry.label}: ${entry.value}`;
+
+    const meta = document.createElement("div");
+    meta.className = "kpi-meta";
+    meta.textContent = entry.aliases?.length
+      ? `${entry.address} • etykieta ${entry.labelAddress} • również jako: ${entry.aliases.slice(0, 2).join(", ")}${entry.aliases.length > 2 ? ` +${entry.aliases.length - 2}` : ""}`
+      : `${entry.address} • etykieta ${entry.labelAddress}`;
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.kpiAddress = entry.address;
+    btn.textContent = "Pokaż źródło";
+
+    actions.appendChild(btn);
+    item.appendChild(label);
+    item.appendChild(value);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    kpiListEl.appendChild(item);
+  });
+}
+
+function focusKpiEntry(address) {
+  const entry = currentKpiEntries.find((item) => item.address === address);
+  if (!entry) return;
+  const rowEl = tbodyEl.querySelector(`tr[data-row-index="${entry.rowIndex0}"]`);
+  if (rowEl) {
+    rowEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  } else {
+    toast(`Źródło KPI jest nad aktualną tabelą: wiersz ${entry.rowIndex0 + 1}`, "info");
+    if (tableWrapEl) {
+      tableWrapEl.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+  const relativeColIdx = entry.colAbs - currentStartCol;
+  if (Number.isFinite(relativeColIdx) && relativeColIdx >= 0) {
+    focusColumnProfile(relativeColIdx);
+  }
+}
+
+function inferColumnProfileType(stats) {
+  if (!stats || !stats.nonEmpty) return "pusta";
+  const ratio = (count) => (stats.nonEmpty ? count / stats.nonEmpty : 0);
+  const numberRatio = ratio(stats.numericCount);
+  const dateRatio = ratio(stats.dateCount);
+  const formulaRatio = ratio(stats.formulaCount);
+  const textRatio = ratio(stats.textCount);
+
+  if (formulaRatio >= 0.8) return "formuly";
+  if (dateRatio >= 0.8) return "daty";
+  if (numberRatio >= 0.8) return "liczby";
+  if (textRatio >= 0.8) return "tekst";
+  return "mixed";
+}
+
+function formatColumnProfileRange(profile) {
+  if (!profile) return "";
+  if (profile.type === "liczby" && Number.isFinite(profile.minValue) && Number.isFinite(profile.maxValue)) {
+    return `${profile.minValue} -> ${profile.maxValue}`;
+  }
+  if (profile.type === "daty" && profile.minDate instanceof Date && profile.maxDate instanceof Date) {
+    return `${toDisplay(profile.minDate)} -> ${toDisplay(profile.maxDate)}`;
+  }
+  return "";
+}
+
+function collectColumnProfiles() {
+  if (!currentHeaders.length || !baseRows.length) return [];
+  const totalRows = baseRows.length;
+  const profiles = currentHeaders.map((header, colIdx) => {
+    const stats = {
+      nonEmpty: 0,
+      numericCount: 0,
+      dateCount: 0,
+      textCount: 0,
+      formulaCount: 0,
+      longTextCount: 0,
+      minValue: null,
+      maxValue: null,
+      minDate: null,
+      maxDate: null,
+      unique: new Map(),
+    };
+
+    baseRows.forEach((row) => {
+      const value = row.values[colIdx];
+      const displayValue = getDisplayValue(row, colIdx);
+      const text = String(displayValue ?? "").trim();
+      if (text === "") return;
+
+      stats.nonEmpty += 1;
+      stats.unique.set(text, (stats.unique.get(text) || 0) + 1);
+      if (text.length > 60) stats.longTextCount += 1;
+
+      if (typeof value === "string" && value.startsWith("=")) stats.formulaCount += 1;
+      if (typeof value === "number") {
+        stats.numericCount += 1;
+        stats.minValue = stats.minValue == null ? value : Math.min(stats.minValue, value);
+        stats.maxValue = stats.maxValue == null ? value : Math.max(stats.maxValue, value);
+      }
+
+      const asDate = parseDateFlexible(value);
+      if (asDate instanceof Date) {
+        stats.dateCount += 1;
+        stats.minDate = !stats.minDate || asDate < stats.minDate ? asDate : stats.minDate;
+        stats.maxDate = !stats.maxDate || asDate > stats.maxDate ? asDate : stats.maxDate;
+      }
+
+      if (typeof value === "string" && !(parseDateFlexible(value) instanceof Date) && !value.startsWith("=")) {
+        stats.textCount += 1;
+      } else if (!(value instanceof Date) && typeof value !== "number" && typeof value !== "string") {
+        stats.textCount += 1;
+      }
+    });
+
+    const emptyCount = totalRows - stats.nonEmpty;
+    const uniqueCount = stats.unique.size;
+    const topValues = Array.from(stats.unique.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([label, count]) => ({ label, count }));
+    const type = inferColumnProfileType(stats);
+    const flags = [];
+    let score = 0;
+
+    if (stats.nonEmpty && stats.nonEmpty / totalRows <= 0.4) {
+      flags.push("rzadka");
+      score += 2;
+    }
+    if (type === "mixed") {
+      flags.push("mixed");
+      score += 3;
+    }
+    if (stats.longTextCount > 0) {
+      flags.push("dlugie teksty");
+      score += 1;
+    }
+    if (uniqueCount > Math.max(20, totalRows * 0.9) && type === "tekst") {
+      flags.push("prawie same unikalne");
+      score += 1;
+    }
+    if (stats.formulaCount > 0 && stats.formulaCount / stats.nonEmpty >= 0.8) {
+      flags.push("kolumna formul");
+      score += 1;
+    }
+    if (emptyCount === totalRows) {
+      flags.push("pusta");
+      score += 4;
+    }
+
+    return {
+      header,
+      colIdx,
+      colAbs: currentStartCol + colIdx,
+      nonEmpty: stats.nonEmpty,
+      emptyCount,
+      emptyPct: totalRows ? Math.round((emptyCount / totalRows) * 100) : 0,
+      uniqueCount,
+      type,
+      topValues,
+      rangeLabel: formatColumnProfileRange({
+        type,
+        minValue: stats.minValue,
+        maxValue: stats.maxValue,
+        minDate: stats.minDate,
+        maxDate: stats.maxDate,
+      }),
+      flags,
+      score,
+    };
+  });
+
+  return profiles.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.emptyPct !== b.emptyPct) return b.emptyPct - a.emptyPct;
+    return a.header.localeCompare(b.header, "pl");
+  });
+}
+
+function renderColumnProfiles() {
+  if (!columnProfilerEl) return;
+  columnProfilerEl.replaceChildren();
+  if (!currentColumnProfiles.length) {
+    columnProfilerEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby zobaczyc profil kolumn i szybkie sygnaly problemowosci."));
+    return;
+  }
+
+  currentColumnProfiles.slice(0, 14).forEach((profile, index) => {
+    const item = document.createElement("div");
+    item.className = "column-profile-item";
+
+    const top = document.createElement("div");
+    top.className = "column-profile-top";
+
+    const title = document.createElement("div");
+    title.className = "column-profile-title";
+    title.textContent = profile.header;
+
+    const kind = document.createElement("div");
+    kind.className = "column-profile-kind";
+    kind.textContent = profile.type;
+
+    top.appendChild(title);
+    top.appendChild(kind);
+
+    const meta = document.createElement("div");
+    meta.className = "column-profile-meta";
+    meta.textContent = `Kolumna ${XLSX.utils.encode_col(profile.colAbs)} • puste ${profile.emptyPct}% • unikalne ${profile.uniqueCount}`;
+
+    const stats = document.createElement("div");
+    stats.className = "column-profile-stats";
+    if (profile.rangeLabel) {
+      const rangeChip = document.createElement("div");
+      rangeChip.className = "column-profile-chip";
+      rangeChip.textContent = profile.rangeLabel;
+      stats.appendChild(rangeChip);
+    }
+    profile.topValues.forEach((entry) => {
+      const chip = document.createElement("div");
+      chip.className = "column-profile-chip";
+      chip.textContent = `${entry.label.slice(0, 24)}${entry.label.length > 24 ? "..." : ""} ×${entry.count}`;
+      stats.appendChild(chip);
+    });
+
+    if (profile.flags.length) {
+      const flags = document.createElement("div");
+      flags.className = "column-profile-flags";
+      profile.flags.forEach((flag) => {
+        const badge = document.createElement("div");
+        badge.className = "column-profile-flag";
+        badge.textContent = flag;
+        flags.appendChild(badge);
+      });
+      item.appendChild(top);
+      item.appendChild(meta);
+      if (stats.childNodes.length) item.appendChild(stats);
+      item.appendChild(flags);
+    } else {
+      item.appendChild(top);
+      item.appendChild(meta);
+      if (stats.childNodes.length) item.appendChild(stats);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "section-nav-actions";
+    const btn = document.createElement("button");
+    btn.className = "btn ghost btn-sm";
+    btn.type = "button";
+    btn.dataset.profileColIndex = String(profile.colIdx);
+    btn.textContent = "Skocz do kolumny";
+    actions.appendChild(btn);
+    item.appendChild(actions);
+
+    columnProfilerEl.appendChild(item);
+  });
+}
+
+function focusColumnProfile(colIdx) {
+  if (!Number.isFinite(colIdx)) return;
+  const cells = theadEl.querySelectorAll(".guide-row .guide-cell");
+  const cell = cells[colIdx];
+  if (cell && tableWrapEl) {
+    const targetLeft = Math.max(0, cell.offsetLeft - 64);
+    tableWrapEl.scrollTo({ left: targetLeft, behavior: "smooth" });
+    syncHorizontalScrollbar();
+    return;
+  }
+  toast("Ta kolumna nie miesci sie jeszcze w aktualnym widoku tabeli", "info");
+}
+
+function renderInsights() {
+  const data = collectSheetInsights();
+  renderInsightList(
+    workbookInsightsEl,
+    data.workbookRows || [],
+    "Wczytaj plik, aby zobaczyc metadane skoroszytu."
+  );
+  renderInsightList(
+    sheetInsightsEl,
+    data.rows || [],
+    "Wczytaj arkusz, aby zobaczyc sygnaly jakosci danych i struktury."
+  );
+  renderInsightFlags(data.flags || []);
+}
