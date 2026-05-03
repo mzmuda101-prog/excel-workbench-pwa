@@ -152,9 +152,9 @@ function renderFormulaWorkbench() {
     renderInsightList(
       formulaWorkbenchSummaryEl,
       [],
-      "Aktualny arkusz nie ma wykrytych formuł albo nie został jeszcze wczytany."
+      t("formulaNoFormulas")
     );
-    formulaWorkbenchListEl.appendChild(createEmptyInsight("Brak formuł do pokazania dla aktualnego arkusza."));
+    formulaWorkbenchListEl.appendChild(createEmptyInsight(t("formulaNoList")));
     return;
   }
 
@@ -166,38 +166,38 @@ function renderFormulaWorkbench() {
   });
   const topFunction = Array.from(functionCounts.entries()).sort((a, b) => b[1] - a[1])[0];
   const summaryItems = [
-    { label: "Formuły", value: String(currentFormulaEntries.length) },
+    { label: t("formulaSummaryFormulas"), value: String(currentFormulaEntries.length) },
     {
-      label: "Bez wyniku",
+      label: t("formulaSummaryMissing"),
       value: String(currentFormulaEntries.filter((entry) => entry.missingResult).length),
       tone: currentFormulaEntries.some((entry) => entry.missingResult) ? "warning" : "",
     },
     {
-      label: "Z błędem",
+      label: t("formulaSummaryErrors"),
       value: String(currentFormulaEntries.filter((entry) => entry.hasError).length),
       tone: currentFormulaEntries.some((entry) => entry.hasError) ? "warning" : "",
     },
     {
-      label: "Top funkcja",
-      value: topFunction ? `${topFunction[0]} ×${topFunction[1]}` : "Brak",
+      label: t("formulaSummaryTop"),
+      value: topFunction ? `${topFunction[0]} ×${topFunction[1]}` : t("aggregationNone"),
       tone: topFunction ? "info" : "",
     },
     {
-      label: "Widoczne po filtrze",
+      label: t("formulaSummaryVisible"),
       value: String(filtered.length),
       tone: filtered.length !== currentFormulaEntries.length ? "info" : "",
     },
     {
-      label: "Grupy",
+      label: t("formulaSummaryGroups"),
       value: String(grouped.length),
       tone: grouped.length < filtered.length ? "info" : "",
     },
   ];
 
-  renderInsightList(formulaWorkbenchSummaryEl, summaryItems, "Brak podsumowania formuł.");
+  renderInsightList(formulaWorkbenchSummaryEl, summaryItems, t("formulaNoSummary"));
 
   if (!filtered.length) {
-    formulaWorkbenchListEl.appendChild(createEmptyInsight("Brak formuł pasujących do bieżącego filtru."));
+    formulaWorkbenchListEl.appendChild(createEmptyInsight(t("formulaNoFilterMatch")));
     return;
   }
 
@@ -211,7 +211,7 @@ function renderFormulaWorkbench() {
     const title = document.createElement("div");
     title.className = "formula-item-title";
     title.textContent = group.entries.length > 1
-      ? `${group.header} • ${group.entries.length} takich samych`
+      ? `${group.header} • ${t("formulaSameCount", { count: group.entries.length })}`
       : `${group.firstEntry.address} • ${group.header}`;
 
     const kind = document.createElement("div");
@@ -228,10 +228,10 @@ function renderFormulaWorkbench() {
 
     const meta = document.createElement("div");
     meta.className = "formula-item-meta";
-    const resultLabel = group.missingResult ? "brak wyniku" : (group.resultText || "pusty wynik");
+    const resultLabel = group.missingResult ? t("formulaSummaryMissing").toLowerCase() : (group.resultText || t("formulaEmptyResult"));
     const addressLabel = formatFormulaAddressSample(group.entries);
-    const outsideTable = group.inTable ? "" : " • poza tabela";
-    meta.textContent = `Adresy: ${addressLabel} • wynik: ${resultLabel}${outsideTable}`;
+    const outsideTable = group.inTable ? "" : ` • ${t("formulaOutsideTable")}`;
+    meta.textContent = `${t("formulaAddresses")}: ${addressLabel} • ${t("formulaResultLabel")}: ${resultLabel}${outsideTable}`;
 
     const actions = document.createElement("div");
     actions.className = "section-nav-actions";
@@ -240,7 +240,7 @@ function renderFormulaWorkbench() {
     btn.className = "btn ghost btn-sm";
     btn.type = "button";
     btn.dataset.formulaAddress = group.firstEntry.address;
-    btn.textContent = group.entries.length > 1 ? "Skocz do pierwszej komórki" : "Skocz do komórki";
+    btn.textContent = group.entries.length > 1 ? t("formulaJumpFirst") : t("formulaJumpCell");
 
     actions.appendChild(btn);
     item.appendChild(top);

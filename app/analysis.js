@@ -1008,7 +1008,7 @@ function inferAggregationValueKind(header, profile) {
 }
 
 function formatAggregationMetricValue(value, kind = "number") {
-  if (!Number.isFinite(value)) return "brak";
+  if (!Number.isFinite(value)) return t("aggregationMissing");
   if (kind === "duration") return formatDurationDays(value);
   const rounded = Math.round(value * 100) / 100;
   return String(rounded).replace(".", ",");
@@ -1061,6 +1061,66 @@ function collectAggregationProfiles(model) {
   });
 }
 
+function classifyAggregationHeader(header) {
+  const norm = normalizeAnalysisKey(header);
+  if (/\b(id|uuid|guid|nr|lp|numer|number|no|kod|code|pesel|nip|regon|phone|telefon|email|mail)\b/.test(norm)) return "id";
+  if (/\b(imie|nazwisko|osoba|pracownik|employee|person|owner|assignee|agent|user|uzytkownik|manager|opiekun)\b/.test(norm)) return "person";
+  if (/\b(status|stage|etap|stan|alert|priority|priorytet|type|typ|rodzaj|category|kategoria|segment|tag)\b/.test(norm)) return "category";
+  if (/\b(customer|klient|client|kontrahent|firma|company|vendor|supplier|dostawca|account)\b/.test(norm)) return "entity";
+  if (/\b(product|produkt|sku|item|towar|material|usluga|service|projekt|project|task|zadanie)\b/.test(norm)) return "item";
+  if (/\b(country|kraj|city|miasto|region|wojewodztwo|powiat|teren|lokalizacja|location|department|dzial|team|zespol)\b/.test(norm)) return "place";
+  if (/\b(month|miesiac|week|tydzien|quarter|kwartal|year|rok|data|date|created|closed|start|end|od|do)\b/.test(norm)) return "time";
+  return "other";
+}
+
+function scoreAggregationGroupProfile(profile, totalRows) {
+  if (!profile || profile.nonEmptyCount <= 0) return -1000;
+  const nonEmptyRatio = totalRows > 0 ? profile.nonEmptyCount / totalRows : 0;
+  const uniqueRatio = profile.nonEmptyCount > 0 ? profile.uniqueCount / profile.nonEmptyCount : 1;
+  const textRatio = profile.nonEmptyCount > 0 ? profile.textCount / profile.nonEmptyCount : 0;
+  const dateRatio = profile.nonEmptyCount > 0 ? profile.dateCount / profile.nonEmptyCount : 0;
+  const numericRatio = profile.nonEmptyCount > 0 ? profile.numericCount / profile.nonEmptyCount : 0;
+  const kind = classifyAggregationHeader(profile.header);
+  let score = 0;
+
+  score += Math.min(24, nonEmptyRatio * 24);
+  if (profile.uniqueCount >= 2 && profile.uniqueCount <= 80) score += 18;
+  if (profile.uniqueCount >= 2 && uniqueRatio <= 0.65) score += 18;
+  if (profile.uniqueCount >= 2 && uniqueRatio <= 0.25) score += 8;
+  if (textRatio >= 0.5) score += 16;
+  if (dateRatio >= 0.75) score -= 10;
+  if (numericRatio >= 0.75) score -= 16;
+  if (profile.uniqueCount <= 1) score -= 28;
+  if (profile.uniqueCount > 120 || uniqueRatio > 0.9) score -= 30;
+  if (profile.idx <= 4) score += 4;
+
+  if (kind === "person") score += 34;
+  if (kind === "category") score += 32;
+  if (kind === "entity") score += 24;
+  if (kind === "place") score += 22;
+  if (kind === "item") score += uniqueRatio <= 0.8 ? 18 : 8;
+  if (kind === "time") score += profile.uniqueCount <= 36 ? 10 : -8;
+  if (kind === "id") score -= 42;
+
+  return score;
+}
+
+function describeAggregationGroupProfile(profile) {
+  if (!profile) return "";
+  const kind = classifyAggregationHeader(profile.header);
+  const labels = {
+    person: "osoba/wlasciciel",
+    category: "status/kategoria",
+    entity: "klient/firma",
+    place: "miejsce/dzial",
+    item: "produkt/projekt",
+    time: "czas/data",
+    id: "identyfikator",
+    other: "kolumna",
+  };
+  return `${labels[kind] || "kolumna"} • ${profile.uniqueCount} unikalnych • ${profile.nonEmptyCount} niepustych`;
+}
+
 function detectAggregationDateRangeCandidates(model, profiles) {
   const candidates = [];
   const startRegex = /\b(od|start|data od|from|poczatek|rozpoczecie)\b/;
@@ -1107,7 +1167,7 @@ function detectAggregationDateRangeCandidates(model, profiles) {
 function detectAggregationMeasureCandidates(model, profiles) {
   const candidates = [{
     key: "count_rows",
-    label: "Liczba wierszy",
+    label: t("measureOccurrences"),
     kind: "count",
     measureType: "count_rows",
     getValue: () => 1,
@@ -1119,8 +1179,8 @@ function detectAggregationMeasureCandidates(model, profiles) {
 
   profiles.forEach((profile) => {
     if (profile.nonEmptyCount <= 0) return;
-    if (profile.numericCount <= 0 && profile.durationCount <= 0) return;
     const kind = inferAggregationValueKind(profile.header, profile);
+    if (profile.numericCount <= 0 && profile.durationCount <= 0 && kind !== "text") return;
     candidates.push({
       key: `column:${profile.idx}`,
       label: profile.header,
@@ -1128,6 +1188,10 @@ function detectAggregationMeasureCandidates(model, profiles) {
       measureType: "column",
       colIdx: profile.idx,
       getValue: (row) => {
+        if (kind === "text") {
+          const raw = row.values?.[profile.idx];
+          return String(getDisplayValue(row, profile.idx) || raw || "").trim();
+        }
         const raw = row.values?.[profile.idx];
         if (typeof raw === "number" && Number.isFinite(raw)) return raw;
         return parseDurationDaysFlexible(raw ?? getDisplayValue(row, profile.idx));
@@ -1143,25 +1207,30 @@ function detectAggregationMeasureCandidates(model, profiles) {
 }
 
 function resolveAggregationGroupOptions(profiles) {
+  const totalRows = Math.max(...profiles.map((profile) => profile.nonEmptyCount), 0);
   return profiles
     .filter((profile) => profile.nonEmptyCount > 0)
-    .sort((a, b) => {
-      const aTextScore = a.textCount > 0 ? 1 : 0;
-      const bTextScore = b.textCount > 0 ? 1 : 0;
-      if (aTextScore !== bTextScore) return bTextScore - aTextScore;
-      return a.idx - b.idx;
-    })
     .map((profile) => ({
+      profile,
+      score: scoreAggregationGroupProfile(profile, totalRows),
+    }))
+    .sort((a, b) => {
+      if (Math.abs(b.score - a.score) > 0.001) return b.score - a.score;
+      return a.profile.idx - b.profile.idx;
+    })
+    .map(({ profile, score }) => ({
       value: profile.header,
       label: profile.header,
       idx: profile.idx,
+      score,
+      meta: describeAggregationGroupProfile(profile),
     }));
 }
 
 function chooseDefaultAggregationGroup(groupOptions) {
   if (!groupOptions.length) return "";
-  const preferred = groupOptions.find((option) => /\b(imie|nazwisko|osoba|pracownik|owner|assignee|blok)\b/.test(normalizeAnalysisKey(option.label)));
-  return preferred ? preferred.value : groupOptions[0].value;
+  const preferred = groupOptions.find((option) => option.score >= 10);
+  return (preferred || groupOptions[0]).value;
 }
 
 function chooseDefaultAggregationMeasure(measures) {
@@ -1176,6 +1245,7 @@ function chooseDefaultAggregationMeasure(measures) {
 
 function chooseDefaultAggregationMethod(measure) {
   if (!measure || measure.measureType === "count_rows") return "count";
+  if (measure.kind === "text") return "count";
   return "avg";
 }
 
@@ -1223,18 +1293,28 @@ function getNormalizedAggregationWorkbenchContext() {
   const nextGroupBy = groupOptions.some((option) => option.value === aggregationWorkbenchState.groupBy)
     ? aggregationWorkbenchState.groupBy
     : chooseDefaultAggregationGroup(groupOptions);
+  const nextGroupBy2 = groupOptions.some((option) => option.value === aggregationWorkbenchState.groupBy2 && option.value !== nextGroupBy)
+    ? aggregationWorkbenchState.groupBy2
+    : "";
+  const nextGroupBy3 = groupOptions.some((option) => option.value === aggregationWorkbenchState.groupBy3 && option.value !== nextGroupBy && option.value !== nextGroupBy2)
+    ? aggregationWorkbenchState.groupBy3
+    : "";
   const nextMeasure = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure)
     ? aggregationWorkbenchState.measure
     : chooseDefaultAggregationMeasure(measures);
   const measure = measures.find((candidate) => candidate.key === nextMeasure) || measures[0] || null;
   const allowedAggregations = measure?.measureType === "count_rows"
     ? ["count"]
+    : measure?.kind === "text"
+      ? ["count", "distinct"]
     : ["avg", "median", "min", "max", "sum", "count", "distinct"];
   const nextAggregation = allowedAggregations.includes(aggregationWorkbenchState.aggregation)
     ? aggregationWorkbenchState.aggregation
     : chooseDefaultAggregationMethod(measure);
 
   aggregationWorkbenchState.groupBy = nextGroupBy;
+  aggregationWorkbenchState.groupBy2 = nextGroupBy2;
+  aggregationWorkbenchState.groupBy3 = nextGroupBy3;
   aggregationWorkbenchState.measure = nextMeasure;
   aggregationWorkbenchState.aggregation = nextAggregation;
   if (aggregationWorkbenchState.sourceMode === "long" && !longAvailable) {
@@ -1260,8 +1340,13 @@ function computeAggregateMetric(values, aggregation) {
     const unique = new Set(values.map((v) => String(v).trim()).filter((v) => v));
     return unique.size;
   }
+  if (aggregation === "count") {
+    return values.filter((value) => {
+      if (Number.isFinite(value)) return true;
+      return String(value ?? "").trim() !== "";
+    }).length;
+  }
   const nums = values.filter((value) => Number.isFinite(value));
-  if (aggregation === "count") return nums.length;
   if (!nums.length) return null;
   if (aggregation === "sum") return nums.reduce((sum, value) => sum + value, 0);
   if (aggregation === "avg") return nums.reduce((sum, value) => sum + value, 0) / nums.length;
@@ -1281,8 +1366,13 @@ function buildAggregationWorkbenchResult() {
     return { status: "no-options", ...context };
   }
 
-  const groupIdx = model.headers.indexOf(aggregationWorkbenchState.groupBy);
-  if (groupIdx < 0) {
+  const groupHeaders = [
+    aggregationWorkbenchState.groupBy,
+    aggregationWorkbenchState.groupBy2,
+    aggregationWorkbenchState.groupBy3,
+  ].filter(Boolean);
+  const groupIndexes = groupHeaders.map((header) => model.headers.indexOf(header)).filter((idx) => idx >= 0);
+  if (!groupIndexes.length) {
     return { status: "no-options", ...context };
   }
 
@@ -1300,11 +1390,15 @@ function buildAggregationWorkbenchResult() {
       if (measureFilterMode === "contains" && !rowMeasureLower.includes(filterLower)) return;
       if (measureFilterMode === "exact" && rowMeasureLower !== filterLower) return;
     }
-    const rawGroup = row.values?.[groupIdx];
-    const groupLabel = String(getDisplayValue(row, groupIdx) || rawGroup || "(puste)").trim() || "(puste)";
-    const key = normalizeAnalysisKey(groupLabel) || "(puste)";
+    const groupLabels = groupIndexes.map((groupIdx) => {
+      const rawGroup = row.values?.[groupIdx];
+      return String(getDisplayValue(row, groupIdx) || rawGroup || "(puste)").trim() || "(puste)";
+    });
+    const groupLabel = groupLabels.join(" / ");
+    const key = groupLabels.map((label) => normalizeAnalysisKey(label) || "(puste)").join("\u001f");
     const entry = buckets.get(key) || {
       label: groupLabel,
+      groupLabels,
       values: [],
       rowIndexes: new Set(),
     };
@@ -1321,6 +1415,8 @@ function buildAggregationWorkbenchResult() {
         entry.values.push(1);
       } else if (Number.isFinite(measureValue)) {
         entry.values.push(measureValue);
+      } else if (typeof measureValue === "string" && measureValue.trim()) {
+        entry.values.push(measureValue.trim());
       }
     }
     entry.rowIndexes.add(row.rowIndex0);
@@ -1329,9 +1425,11 @@ function buildAggregationWorkbenchResult() {
 
   const rawEntries = Array.from(buckets.values())
     .map((entry) => {
-      const count = entry.values.filter((value) => Number.isFinite(value)).length;
+      const count = computeAggregateMetric(entry.values, "count");
       return {
         label: entry.label,
+        groupLabels: entry.groupLabels,
+        filterLabel: entry.groupLabels?.[0] || entry.label,
         count,
         average: computeAggregateMetric(entry.values, "avg"),
         median: computeAggregateMetric(entry.values, "median"),
@@ -1390,15 +1488,15 @@ function renderAggregationWorkbench() {
 
   const result = buildAggregationWorkbenchResult();
   if (result.status === "empty") {
-    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Wczytaj arkusz, aby uruchomic agregacje."));
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight(t("aggregationNoData")));
     return;
   }
   if (result.status === "no-options") {
-    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Brak sensownych opcji grupowania lub mierzenia dla aktualnego zrodla danych."));
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight(t("aggregationNoOptions")));
     return;
   }
   if (result.status === "no-results") {
-    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight("Aktualna kombinacja grupowania i mierzenia nie zwrocila zadnych wynikow."));
+    aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight(t("aggregationNoResults")));
     return;
   }
 
@@ -1406,21 +1504,26 @@ function renderAggregationWorkbench() {
   const isDistinctMode = aggregationWorkbenchState.aggregation === "distinct";
   const primaryKind = isDistinctMode ? "number" : (measure?.kind === "duration" ? "duration" : "number");
   const aggregationLabels = {
-    count: "Liczebnosc",
-    avg: "Srednia",
-    median: "Mediana",
-    min: "Minimum",
-    max: "Maksimum",
-    sum: "Suma",
-    distinct: "Unikalnych",
+    count: t("aggregationCount"),
+    avg: t("aggregationAvg"),
+    median: t("aggregationMedian"),
+    min: t("aggregationMin"),
+    max: t("aggregationMax"),
+    sum: t("aggregationSum"),
+    distinct: t("aggregationDistinct"),
   };
+  const groupDepth = [
+    aggregationWorkbenchState.groupBy,
+    aggregationWorkbenchState.groupBy2,
+    aggregationWorkbenchState.groupBy3,
+  ].filter(Boolean).length;
 
   const summaryGrid = document.createElement("div");
   summaryGrid.className = "sheet-inspector-summary";
   [
-    { label: "Grupy", value: String(result.summary.groups) },
-    { label: "Wiersze zrodla", value: String(result.summary.sourceRows) },
-    { label: "Zmierzonych rekordow", value: String(result.summary.measuredRows) },
+    { label: t("aggregationGroups"), value: String(result.summary.groups) },
+    { label: t("aggregationSourceRows"), value: String(result.summary.sourceRows) },
+    { label: t("aggregationMeasuredRows"), value: String(result.summary.measuredRows) },
     { label: aggregationLabels[aggregationWorkbenchState.aggregation] || "Wynik", value: formatAggregationMetricValue(result.entries[0]?.primary, primaryKind), tone: "info" },
   ].forEach((item) => {
     const chip = document.createElement("div");
@@ -1442,12 +1545,12 @@ function renderAggregationWorkbench() {
 
   const sourceField = document.createElement("label");
   sourceField.className = "field";
-  sourceField.append("Zrodlo");
+  sourceField.append(t("aggregationSource"));
   const sourceSelect = document.createElement("select");
   sourceSelect.dataset.aggregationControl = "source";
   [
-    { value: "auto", label: "Auto" },
-    { value: "wide", label: "Widok klasyczny" },
+    { value: "auto", label: t("aggregationAuto") },
+    { value: "wide", label: t("aggregationClassic") },
     ...(result.longAvailable ? [{ value: "long", label: "Wide-to-Long" }] : []),
   ].forEach((item) => {
     const option = document.createElement("option");
@@ -1460,12 +1563,12 @@ function renderAggregationWorkbench() {
 
   const scopeField = document.createElement("label");
   scopeField.className = "field";
-  scopeField.append("Zakres");
+  scopeField.append(t("aggregationScope"));
   const scopeSelect = document.createElement("select");
   scopeSelect.dataset.aggregationControl = "scope";
   [
-    { value: "filtered", label: "Aktualny widok" },
-    { value: "all", label: "Caly arkusz" },
+    { value: "filtered", label: t("aggregationCurrentView") },
+    { value: "all", label: t("aggregationWholeSheet") },
   ].forEach((item) => {
     const option = document.createElement("option");
     option.value = item.value;
@@ -1477,7 +1580,7 @@ function renderAggregationWorkbench() {
 
   const headerField = document.createElement("label");
   headerField.className = "field";
-  headerField.append("Naglowek agregacji");
+  headerField.append(t("aggregationHeader"));
   const headerRowWrap = document.createElement("div");
   headerRowWrap.className = "aggregation-header-row";
   const headerSelect = document.createElement("select");
@@ -1494,11 +1597,11 @@ function renderAggregationWorkbench() {
   headerField.appendChild(headerRowWrap);
   const autoOpt = document.createElement("option");
   autoOpt.value = "auto";
-  autoOpt.textContent = `Auto (najlepszy: ${result.resolvedHeaderRow})`;
+  autoOpt.textContent = `${t("aggregationAuto")} (${result.resolvedHeaderRow})`;
   headerSelect.appendChild(autoOpt);
   const manualOpt = document.createElement("option");
   manualOpt.value = "manual";
-  manualOpt.textContent = "Wlasny numer";
+  manualOpt.textContent = t("aggregationCustomNumber");
   headerSelect.appendChild(manualOpt);
   headerSelect.value = aggregationWorkbenchState.headerRowChoice;
   headerNumberInput.value = String(aggregationWorkbenchState.customHeaderRow || currentHeaderRow);
@@ -1506,7 +1609,7 @@ function renderAggregationWorkbench() {
 
   const groupField = document.createElement("label");
   groupField.className = "field";
-  groupField.append("Grupuj po");
+  groupField.append(t("aggregationGroupBy"));
   const groupSelect = document.createElement("select");
   groupSelect.dataset.aggregationControl = "group";
   groupField.appendChild(groupSelect);
@@ -1514,13 +1617,46 @@ function renderAggregationWorkbench() {
     const opt = document.createElement("option");
     opt.value = option.value;
     opt.textContent = option.label;
+    opt.title = option.meta || "";
     groupSelect.appendChild(opt);
   });
   groupSelect.value = aggregationWorkbenchState.groupBy;
 
+  const groupField2 = document.createElement("label");
+  groupField2.className = "field";
+  groupField2.append(t("aggregationGroupBy2"));
+  const groupSelect2 = document.createElement("select");
+  groupSelect2.dataset.aggregationControl = "group2";
+  groupField2.appendChild(groupSelect2);
+  [{ value: "", label: t("aggregationNone") }, ...result.groupOptions].forEach((option) => {
+    const opt = document.createElement("option");
+    opt.value = option.value;
+    opt.textContent = option.label;
+    opt.title = option.meta || "";
+    opt.disabled = Boolean(option.value && option.value === aggregationWorkbenchState.groupBy);
+    groupSelect2.appendChild(opt);
+  });
+  groupSelect2.value = aggregationWorkbenchState.groupBy2;
+
+  const groupField3 = document.createElement("label");
+  groupField3.className = "field";
+  groupField3.append(t("aggregationGroupBy3"));
+  const groupSelect3 = document.createElement("select");
+  groupSelect3.dataset.aggregationControl = "group3";
+  groupField3.appendChild(groupSelect3);
+  [{ value: "", label: t("aggregationNone") }, ...result.groupOptions].forEach((option) => {
+    const opt = document.createElement("option");
+    opt.value = option.value;
+    opt.textContent = option.label;
+    opt.title = option.meta || "";
+    opt.disabled = Boolean(option.value && (option.value === aggregationWorkbenchState.groupBy || option.value === aggregationWorkbenchState.groupBy2));
+    groupSelect3.appendChild(opt);
+  });
+  groupSelect3.value = aggregationWorkbenchState.groupBy3;
+
   const measureField = document.createElement("label");
   measureField.className = "field";
-  measureField.append("Mierz");
+  measureField.append(t("aggregationMeasure"));
   const measureSelect = document.createElement("select");
   measureSelect.dataset.aggregationControl = "measure";
   measureField.appendChild(measureSelect);
@@ -1534,7 +1670,7 @@ function renderAggregationWorkbench() {
 
   const aggregationField = document.createElement("label");
   aggregationField.className = "field";
-  aggregationField.append("Agregacja");
+  aggregationField.append(t("aggregationMethod"));
   const aggregationSelect = document.createElement("select");
   aggregationSelect.dataset.aggregationControl = "aggregation";
   aggregationField.appendChild(aggregationSelect);
@@ -1558,12 +1694,12 @@ function renderAggregationWorkbench() {
 
   const matchField = document.createElement("label");
   matchField.className = "field";
-  matchField.append("Dopasowanie tekstu");
+  matchField.append(t("aggregationMatchText"));
   const matchSelect = document.createElement("select");
   matchSelect.dataset.aggregationControl = "match";
   [
-    { value: "contains", label: "Zawiera" },
-    { value: "exact", label: "Dokladnie" },
+    { value: "contains", label: t("aggregationContains") },
+    { value: "exact", label: t("aggregationExact") },
   ].forEach((item) => {
     const option = document.createElement("option");
     option.value = item.value;
@@ -1575,13 +1711,13 @@ function renderAggregationWorkbench() {
 
 const measureFilterField = document.createElement("label");
   measureFilterField.className = "field";
-  measureFilterField.append("Zawiera w mierze");
+  measureFilterField.append(t("aggregationMeasureFilter"));
   const measureFilterSelect = document.createElement("select");
   measureFilterSelect.dataset.aggregationControl = "measurefilter";
   [
-    { value: "all", label: "Wszystkie", title: "Pokaz wszystkie wiersze bez filtrowania" },
-    { value: "contains", label: "Zawiera", title: "Znajdz wiersze zawierajace szukany tekst (np. czesc imienia)" },
-    { value: "exact", label: "Dokladnie", title: "Znajdz wiersze dokladnie rowne szukanej wartosci" },
+    { value: "all", label: t("aggregationAll"), title: "" },
+    { value: "contains", label: t("aggregationContains"), title: "" },
+    { value: "exact", label: t("aggregationExact"), title: "" },
   ].forEach((item) => {
     const option = document.createElement("option");
     option.value = item.value;
@@ -1604,13 +1740,13 @@ const measureFilterField = document.createElement("label");
 
   const showCountField = document.createElement("label");
   showCountField.className = "field";
-  showCountField.append("Pokaz wynikow");
+  showCountField.append(t("aggregationShowResults"));
   const showCountSelect = document.createElement("select");
   showCountSelect.dataset.aggregationControl = "count";
   ["10", "20", "40", "80", "999"].forEach((value) => {
     const option = document.createElement("option");
     option.value = value;
-    option.textContent = value === "999" ? "Wszystkie" : value;
+    option.textContent = value === "999" ? t("aggregationAll") : value;
     showCountSelect.appendChild(option);
   });
   showCountSelect.value = String(aggregationWorkbenchState.showCount);
@@ -1618,11 +1754,11 @@ const measureFilterField = document.createElement("label");
 
   const havingField = document.createElement("label");
   havingField.className = "field";
-  havingField.append("Filtrowanie grup");
+  havingField.append(t("aggregationGroupFilter"));
   const havingSelect = document.createElement("select");
   havingSelect.dataset.aggregationControl = "having";
   [
-    { value: "all", label: "Wszystkie", title: "Pokaz wszystkie grupy bez ograniczen" },
+    { value: "all", label: t("aggregationAll"), title: "" },
     { value: "above_value", label: " Wartosc >", title: "Pokaz tylko grupy z wartoscia wieksza niz podana liczba" },
     { value: "above_percent", label: "% sumy >", title: "Pokaz grupy ktore stanowia wiecej niz X% lacznej sumy wszystkich grup" },
     { value: "above_max_percent", label: "% max >", title: "Pokaz grupy wieksze niz polowa najsilniejszej grupy" },
@@ -1647,20 +1783,28 @@ const measureFilterField = document.createElement("label");
   havingValueInput.style.display = aggregationWorkbenchState.havingMode === "all" ? "none" : "inline-block";
   havingField.appendChild(havingValueInput);
 
-  [sourceField, scopeField, headerField, groupField, measureField, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
+  [sourceField, scopeField, headerField, groupField, groupField2, groupField3, measureField, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
   aggregationWorkbenchSummaryEl.appendChild(controls);
 
   const note = document.createElement("div");
   note.className = "duration-analysis-note";
   const headerModeText = aggregationWorkbenchState.headerRowChoice === "auto"
-    ? `auto -> wiersz ${result.resolvedHeaderRow}`
-    : `wiersz ${result.resolvedHeaderRow}`;
+    ? t("aggregationHeaderAuto", { row: result.resolvedHeaderRow })
+    : t("aggregationHeaderRow", { row: result.resolvedHeaderRow });
   const havingText = aggregationWorkbenchState.havingMode === "all"
     ? ""
     : aggregationWorkbenchState.havingMode === "above_value"
-      ? ` • filtr: > ${aggregationWorkbenchState.havingValue}`
-      : ` • filtr: > ${aggregationWorkbenchState.havingValue}%`;
-  note.textContent = `Aktualne zrodlo: ${result.model.mode === "long" ? "Wide-to-Long" : "widok klasyczny"} • zakres: ${aggregationWorkbenchState.scopeMode === "all" ? "caly arkusz" : "aktualny widok"} • naglowek: ${headerModeText}${result.helperMode ? " (pomocniczy)" : ""} • dopasowanie: ${aggregationWorkbenchState.matchMode === "exact" ? "dokladnie" : "zawiera"}${havingText}.`;
+      ? t("aggregationHavingValue", { value: aggregationWorkbenchState.havingValue })
+      : t("aggregationHavingPercent", { value: aggregationWorkbenchState.havingValue });
+  note.textContent = t("aggregationNote", {
+    source: result.model.mode === "long" ? "Wide-to-Long" : t("aggregationClassic"),
+    scope: aggregationWorkbenchState.scopeMode === "all" ? t("aggregationWholeSheet") : t("aggregationCurrentView"),
+    header: headerModeText,
+    helper: result.helperMode ? t("aggregationHelper") : "",
+    depth: groupDepth,
+    match: aggregationWorkbenchState.matchMode === "exact" ? t("aggregationExact").toLowerCase() : t("aggregationContains").toLowerCase(),
+    having: havingText,
+  });
   aggregationWorkbenchSummaryEl.appendChild(note);
 
   const currentSearch = aggregationWorkbenchState.resultSearch || "";
@@ -1671,7 +1815,7 @@ const measureFilterField = document.createElement("label");
   searchWrap.className = "aggregation-result-search-wrap";
 
   const searchLabel = document.createElement("span");
-  searchLabel.textContent = "Szukaj:";
+  searchLabel.textContent = t("aggregationSearch");
   searchLabel.style.fontSize = "12px";
   searchLabel.style.color = "var(--muted)";
   searchWrap.appendChild(searchLabel);
@@ -1679,7 +1823,7 @@ const measureFilterField = document.createElement("label");
   const resultSearchInput = document.createElement("input");
   resultSearchInput.type = "text";
   resultSearchInput.className = "aggregation-result-search";
-  resultSearchInput.placeholder = "np. Julian...";
+  resultSearchInput.placeholder = t("aggregationSearchPlaceholder");
   resultSearchInput.title = "Wpisz tekst ktory ma sie zawierac w nazwie grupy (np. czesc imienia)";
   resultSearchInput.style.flex = "1";
   resultSearchInput.style.minWidth = "100px";
@@ -1730,7 +1874,13 @@ const measureFilterField = document.createElement("label");
 
     const meta = document.createElement("div");
     meta.className = "duration-person-meta";
-    meta.textContent = `Liczba ${entry.count} • srednia ${formatAggregationMetricValue(entry.average, primaryKind)} • mediana ${formatAggregationMetricValue(entry.median, primaryKind)} • zakres ${formatAggregationMetricValue(entry.min, primaryKind)} -> ${formatAggregationMetricValue(entry.max, primaryKind)}`;
+    meta.textContent = t("aggregationMeta", {
+      count: entry.count,
+      avg: formatAggregationMetricValue(entry.average, primaryKind),
+      median: formatAggregationMetricValue(entry.median, primaryKind),
+      min: formatAggregationMetricValue(entry.min, primaryKind),
+      max: formatAggregationMetricValue(entry.max, primaryKind),
+    });
 
     const actions = document.createElement("div");
     actions.className = "section-nav-actions";
@@ -1738,8 +1888,8 @@ const measureFilterField = document.createElement("label");
     btn.className = "btn ghost btn-sm";
     btn.type = "button";
     btn.dataset.aggregationAction = "filter-group";
-    btn.dataset.aggregationValue = entry.label;
-    btn.textContent = "Szukaj w tabeli";
+    btn.dataset.aggregationValue = entry.filterLabel || entry.label;
+    btn.textContent = t("aggregationSearchTable");
     actions.appendChild(btn);
 
     item.appendChild(top);
@@ -2179,6 +2329,13 @@ function collectSheetInsights() {
   ];
 
   const flags = [];
+  const normalizedHeaders = currentHeaders.map((header) => normalizeAnalysisKey(header));
+  const hasStatusHeader = normalizedHeaders.some((header) => /\b(status|stage|etap|stan|alert|priority|priorytet)\b/.test(header));
+  const hasOwnerHeader = normalizedHeaders.some((header) => /\b(imie|nazwisko|osoba|pracownik|owner|assignee|agent|opiekun)\b/.test(header));
+  const hasStartDateHeader = normalizedHeaders.some((header) => /\b(od|start|data od|from|poczatek|rozpoczecie|created)\b/.test(header));
+  const hasEndDateHeader = normalizedHeaders.some((header) => /\b(do|end|data do|to|until|koniec|zakonczenie|closed)\b/.test(header));
+  const processSignalCount = [hasStatusHeader, hasOwnerHeader, hasStartDateHeader && hasEndDateHeader].filter(Boolean).length;
+  if (processSignalCount >= 2) flags.push({ label: "Wygląda jak arkusz procesu / SLA", tone: "info" });
   if (currentWorkbookStats?.hasMacros) flags.push({ label: "Plik makr .xlsm", tone: "warning" });
   if (duplicateHeaders) flags.push({ label: `Zdublowane nagłówki: ${duplicateHeaders}`, tone: "warning" });
   if (duplicateRows) flags.push({ label: `Duplikaty wierszy: ${duplicateRows}`, tone: duplicateRows > 0 ? "warning" : "" });

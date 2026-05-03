@@ -144,10 +144,11 @@ function toDisplay(value) {
 function formatLocalizedDateDisplay(date, options = {}) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
   const formatterOptions = {
-    day: "2-digit",
     month: options.month || "short",
-    year: options.year || "2-digit",
   };
+
+  if (options.day !== false) formatterOptions.day = "2-digit";
+  if (options.year !== false) formatterOptions.year = options.year || "2-digit";
 
   if (options.weekday) formatterOptions.weekday = options.weekday;
   if (options.timeStyle) {
@@ -158,7 +159,7 @@ function formatLocalizedDateDisplay(date, options = {}) {
     }
   }
 
-  return new Intl.DateTimeFormat("pl-PL", formatterOptions)
+  return new Intl.DateTimeFormat(I18N[currentLang]?.locale || "pl-PL", formatterOptions)
     .format(date)
     .replace(/\.$/g, "")
     .replace(/\s+/g, " ")
@@ -166,37 +167,46 @@ function formatLocalizedDateDisplay(date, options = {}) {
 }
 
 function localizeDisplayedDate(value, shown, cell = null) {
-  if (currentLang !== "pl") return shown;
   if (!shown || typeof shown !== "string") return shown;
 
-  const date = parseDateFlexible(value);
+  const formatHint = String(cell?.z || cell?.w || "").toLowerCase();
+  const hasMonthNameFormatHint = /(mmmm|mmm)/i.test(formatHint);
+  let date = parseDateFlexible(value);
+  if (hasMonthNameFormatHint && typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 12) {
+    date = new Date(2000, value - 1, 1);
+  }
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return shown;
 
   const normalizedShown = shown.trim().toLowerCase();
-  const formatHint = String(cell?.z || cell?.w || "").toLowerCase();
   const hasEnglishWeekdayWord = /\b(mon|monday|tue|tues|tuesday|wed|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday|sun|sunday)\b/i.test(
+    normalizedShown
+  );
+  const hasPolishWeekdayWord = /\b(pon|poniedzialek|poniedziałek|wt|wtorek|sr|śr|sroda|środa|czw|czwartek|pt|piatek|piątek|sob|sobota|niedz|niedziela)\b/i.test(
     normalizedShown
   );
   const hasEnglishMonthWord = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\b/i.test(
     normalizedShown
   );
+  const hasPolishMonthWord = /\b(sty|styczen|styczeń|lut|luty|mar|marzec|kwi|kwiecien|kwiecień|maj|cze|czerwiec|lip|lipiec|sie|sierpien|sierpień|wrz|wrzesien|wrzesień|paz|paź|pazdziernik|październik|lis|listopad|gru|grudzien|grudzień)\b/i.test(
+    normalizedShown
+  );
   const hasWeekdayFormatHint = /(dddd|ddd)/i.test(formatHint);
-  const hasMonthNameFormatHint = /(mmmm|mmm)/i.test(formatHint);
   const hasTime = /\b\d{1,2}:\d{2}(:\d{2})?\b/.test(shown) || /\b(h|hh|m|mm|s|ss)\b/i.test(formatHint);
+  const monthOnlyFormat = hasMonthNameFormatHint && !/[dy]/i.test(formatHint.replace(/m+/gi, ""));
 
-  if (!hasEnglishMonthWord && !hasMonthNameFormatHint && !hasEnglishWeekdayWord && !hasWeekdayFormatHint) {
+  if (!hasEnglishMonthWord && !hasPolishMonthWord && !hasMonthNameFormatHint && !hasEnglishWeekdayWord && !hasPolishWeekdayWord && !hasWeekdayFormatHint) {
     return shown;
   }
 
   const weekday =
-    hasEnglishWeekdayWord || hasWeekdayFormatHint
+    hasEnglishWeekdayWord || hasPolishWeekdayWord || hasWeekdayFormatHint
       ? /dddd/i.test(formatHint) || /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(normalizedShown)
         ? "long"
         : "short"
       : undefined;
 
   const month =
-    /mmmm/i.test(formatHint) || /\b(january|february|march|april|june|july|august|september|october|november|december)\b/i.test(normalizedShown)
+    /mmmm/i.test(formatHint) || /\b(january|february|march|april|june|july|august|september|october|november|december|styczen|styczeń|kwiecien|kwiecień|czerwiec|sierpien|sierpień|wrzesien|wrzesień|pazdziernik|październik|listopad|grudzien|grudzień)\b/i.test(normalizedShown)
       ? "long"
       : "short";
 
@@ -207,7 +217,8 @@ function localizeDisplayedDate(value, shown, cell = null) {
     formatLocalizedDateDisplay(date, {
       weekday,
       month,
-      year,
+      day: monthOnlyFormat ? false : "2-digit",
+      year: monthOnlyFormat ? false : year,
       timeStyle,
     }) || shown
   );

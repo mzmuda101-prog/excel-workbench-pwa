@@ -127,6 +127,8 @@ if (aggregationWorkbenchSummaryEl) {
       aggregationWorkbenchState.headerRowChoice = "manual";
     }
     if (kind === "group") aggregationWorkbenchState.groupBy = control.value || "";
+    if (kind === "group2") aggregationWorkbenchState.groupBy2 = control.value || "";
+    if (kind === "group3") aggregationWorkbenchState.groupBy3 = control.value || "";
     if (kind === "measure") aggregationWorkbenchState.measure = control.value || "count_rows";
     if (kind === "aggregation") aggregationWorkbenchState.aggregation = control.value || "count";
     if (kind === "match") aggregationWorkbenchState.matchMode = control.value || "contains";

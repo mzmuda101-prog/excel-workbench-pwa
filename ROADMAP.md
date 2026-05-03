@@ -256,6 +256,9 @@ The inspiring workbook behaves like a process tracker with status logic and agin
 - detect status columns such as:
   `W trakcie`, `Zamknięte`, `PRZETERMINOWANY`
 - detect "open vs closed" lifecycle rules from paired date columns (`od` / `do`)
+- infer simple SLA thresholds from helper formulas, for example `W trakcie` plus `days > 60`
+- expose reusable operational presets:
+  employee workload, status breakdown, overdue list, closure-time leaderboard
 - auto-build SLA and aging summaries:
   in progress, closed, overdue, average closure time, longest open items
 - add workload views per employee / owner / assignee
@@ -274,10 +277,28 @@ The main sheet in the inspiring workbook uses repeated cycle blocks (`Imię i Na
 - show how many cycles/blocks were found and which columns belong to each block
 - offer one-click "analyze as repeated process cycles"
 - improve Wide-to-Long suggestions for cyclical Excel layouts
+- preserve cycle labels (`1 Cykl`, `2 Cykl`, etc.) as first-class grouping fields after Wide-to-Long conversion
+- detect helper sheets that flatten repeated cycles into analysis tables, then offer to aggregate either from the raw sheet or helper sheet
 
 Why:
 - this structure appears in real files, not only in synthetic examples
 - repeated operational cycles are one of the strongest areas where the workbench can outperform basic spreadsheet viewers
+
+### Aggregation Presets From Real Workbooks
+
+The RODO workbook suggests a useful next step for aggregation: generated presets based on detected workbook roles and column semantics.
+
+- suggest ready-to-run aggregations such as:
+  `Pracownik > Status`, `Pracownik > Alert`, `Cykl > Status`, `Miesiąc startu > Status`
+- add conditional measure filters inspired by `COUNTIFS`:
+  status equals X, alert equals Y, date between month boundaries
+- support result columns beyond one primary metric:
+  count, distinct count, average duration, total days, open count, closed count
+- let users save an aggregation setup as a reusable preset for other operational files
+
+Why:
+- the workbook already contains dashboard, pivot, and employee-analysis layers that are essentially reusable aggregation recipes
+- presets would make the app faster for the original obieg terenów workflow while still helping any process-tracking spreadsheet
 
 ### Workbook Inspiration Loop
 
