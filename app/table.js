@@ -836,6 +836,7 @@ function renderTable(modelOrHeaders, maybeRows) {
   syncSelectedCellInDom({ clearMissing: true });
   syncHorizontalScrollbar();
   applyZoom();
+  applyFreezeHeaders();
 }
 
 function buildRows(sheet, headerRow, wb) {

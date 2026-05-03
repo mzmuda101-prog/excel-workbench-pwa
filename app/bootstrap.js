@@ -260,6 +260,24 @@ if (wideLongToggleEl) {
     toast(tableViewMode === "long" ? "Wlaczono Wide-to-Long" : "Wrocono do klasycznego widoku", "info");
   });
 }
+if (freezeHeadersEl) {
+  freezeHeadersEl.addEventListener("change", () => {
+    applyFreezeHeaders();
+    toast(freezeHeadersEl.checked ? "Zablokowano wiersze naglowkow" : "Odblokowano wiersze naglowkow", "info");
+  });
+  applyFreezeHeaders();
+}
+window.addEventListener("resize", () => {
+  syncTableViewportHeight();
+  syncFrozenHeaderMetrics();
+}, { passive: true });
+window.addEventListener("orientationchange", () => {
+  window.setTimeout(() => {
+    syncTableViewportHeight();
+    syncFrozenHeaderMetrics();
+  }, 120);
+}, { passive: true });
+syncTableViewportHeight();
 if (readingToggle) {
   readingToggle.addEventListener("click", () => {
     const enabled = !rootEl.classList.contains("reading");

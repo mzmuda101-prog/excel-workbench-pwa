@@ -15,6 +15,7 @@ const emptyTitleEl = document.getElementById("emptyTitle");
 const emptySubEl = document.getElementById("emptySub");
 const DEFAULT_EMPTY_TITLE = emptyTitleEl.textContent;
 const DEFAULT_EMPTY_SUB = emptySubEl.textContent;
+const tablePanelEl = document.querySelector(".table-panel");
 
 const fileInput = document.getElementById("fileInput");
 const dropZone = document.getElementById("dropZone");
@@ -26,6 +27,7 @@ const autoHeaderRowEl = document.getElementById("autoHeaderRow");
 const displayModeEl = document.getElementById("displayMode");
 const maxRowsEl = document.getElementById("maxRows");
 const zoomLevelEl = document.getElementById("zoomLevel");
+const freezeHeadersEl = document.getElementById("freezeHeaders");
 const excelLayoutToggleEl = document.getElementById("excelLayoutToggle");
 const loadBtn = document.getElementById("loadBtn");
 
@@ -186,7 +188,7 @@ let aggregationWorkbenchState = {
   measureFilterValue: "",
   resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260429-01";
+const APP_BUILD_VERSION = "20260503-01";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -250,4 +252,31 @@ function applyZoom() {
   if (tableWrapEl) {
     tableWrapEl.style.setProperty("--table-zoom", String(zoom));
   }
+  syncFrozenHeaderMetrics();
+  syncTableViewportHeight();
+}
+
+function syncFrozenHeaderMetrics() {
+  if (!tableWrapEl || !theadEl) return;
+  const guideRow = theadEl.querySelector(".guide-row");
+  const guideHeight = guideRow ? Math.ceil(guideRow.getBoundingClientRect().height) : 0;
+  tableWrapEl.style.setProperty("--frozen-guide-height", `${guideHeight}px`);
+}
+
+function syncTableViewportHeight() {
+  if (!tablePanelEl) return;
+  const rect = tablePanelEl.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 720;
+  const bottomGap = window.matchMedia("(max-width: 768px)").matches ? 14 : 24;
+  const available = Math.floor(viewportHeight - rect.top - bottomGap);
+  const minHeight = window.matchMedia("(max-width: 768px)").matches ? 320 : 420;
+  tablePanelEl.style.setProperty("--table-panel-height", `${Math.max(minHeight, available)}px`);
+}
+
+function applyFreezeHeaders() {
+  if (!tableWrapEl) return;
+  const enabled = !freezeHeadersEl || freezeHeadersEl.checked;
+  tableWrapEl.classList.toggle("freeze-headers", enabled);
+  tableWrapEl.classList.toggle("headers-unlocked", !enabled);
+  syncFrozenHeaderMetrics();
 }
