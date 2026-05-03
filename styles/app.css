@@ -1923,6 +1923,8 @@ details.panel[open] > summary {
 .table-wrap {
   --table-zoom: 1;
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   min-width: 0;
   min-height: 0;
   flex: 1;

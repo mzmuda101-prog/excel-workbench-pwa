@@ -166,6 +166,7 @@ let hasUnsavedChanges = false;
 let focusedCellState = null;
 let selectedCellState = null;
 let syncingHorizontalScroll = false;
+let tableTouchAxisLock = null;
 let tooltipHideTimer = null;
 let durationAnalysisState = {
   statusFilter: "all",
@@ -188,7 +189,7 @@ let aggregationWorkbenchState = {
   measureFilterValue: "",
   resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260503-01";
+const APP_BUILD_VERSION = "20260503-02";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";
@@ -279,4 +280,48 @@ function applyFreezeHeaders() {
   tableWrapEl.classList.toggle("freeze-headers", enabled);
   tableWrapEl.classList.toggle("headers-unlocked", !enabled);
   syncFrozenHeaderMetrics();
+}
+
+function startTableTouchAxisLock(event) {
+  if (!tableWrapEl || !event.touches || event.touches.length !== 1) {
+    tableTouchAxisLock = null;
+    return;
+  }
+  const touch = event.touches[0];
+  tableTouchAxisLock = {
+    mode: "",
+    startX: touch.clientX,
+    startY: touch.clientY,
+    startScrollLeft: tableWrapEl.scrollLeft,
+  };
+}
+
+function updateTableTouchAxisLock(event) {
+  if (!tableWrapEl || !tableTouchAxisLock || !event.touches || event.touches.length !== 1) return;
+  const touch = event.touches[0];
+  const dx = touch.clientX - tableTouchAxisLock.startX;
+  const dy = touch.clientY - tableTouchAxisLock.startY;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+
+  if (!tableTouchAxisLock.mode && Math.max(absX, absY) > 8) {
+    if (absY > absX * 1.35) {
+      tableTouchAxisLock.mode = "vertical";
+    } else if (absX > absY * 1.15) {
+      tableTouchAxisLock.mode = "horizontal";
+    }
+  }
+
+  if (tableTouchAxisLock.mode === "vertical") {
+    tableWrapEl.scrollLeft = tableTouchAxisLock.startScrollLeft;
+    requestAnimationFrame(() => {
+      if (tableTouchAxisLock?.mode === "vertical") {
+        tableWrapEl.scrollLeft = tableTouchAxisLock.startScrollLeft;
+      }
+    });
+  }
+}
+
+function endTableTouchAxisLock() {
+  tableTouchAxisLock = null;
 }

@@ -753,6 +753,11 @@ function applyQuickSearch() {
 }
 
 if (tableWrapEl && tableScrollbarEl) {
+  tableWrapEl.addEventListener("touchstart", startTableTouchAxisLock, { passive: true });
+  tableWrapEl.addEventListener("touchmove", updateTableTouchAxisLock, { passive: true });
+  tableWrapEl.addEventListener("touchend", endTableTouchAxisLock, { passive: true });
+  tableWrapEl.addEventListener("touchcancel", endTableTouchAxisLock, { passive: true });
+
   tableWrapEl.addEventListener("scroll", () => {
     hideCellTooltip();
     if (syncingHorizontalScroll) return;
