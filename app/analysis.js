@@ -1002,6 +1002,7 @@ function renderDurationAnalysis() {
 function inferAggregationValueKind(header, profile) {
   const norm = normalizeAnalysisKey(header);
   if (profile?.measureType === "date_range") return "duration";
+  if (profile?.dateCount > 0 || /\b(data|date|created|closed|start|end|od|do|termin|deadline)\b/.test(norm)) return "date";
   if (profile?.durationCount > 0 || norm.includes("dlugosc") || norm.includes("czas")) return "duration";
   if (profile?.numericCount > 0) return "number";
   return "text";
@@ -1010,6 +1011,15 @@ function inferAggregationValueKind(header, profile) {
 function formatAggregationMetricValue(value, kind = "number") {
   if (!Number.isFinite(value)) return t("aggregationMissing");
   if (kind === "duration") return formatDurationDays(value);
+  if (kind === "date") {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return t("aggregationMissing");
+    return new Intl.DateTimeFormat(I18N[currentLang]?.locale || "pl-PL", {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    }).format(date);
+  }
   const rounded = Math.round(value * 100) / 100;
   return String(rounded).replace(".", ",");
 }
@@ -1036,6 +1046,13 @@ function collectAggregationProfiles(model) {
       profile.nonEmptyCount += 1;
       profile.uniqueValues.add(normalizeAnalysisKey(text));
 
+      const headerKind = classifyAggregationHeader(header);
+      const asDate = parseDateFlexible(raw ?? display);
+      if (asDate instanceof Date && (raw instanceof Date || typeof raw === "string" || headerKind === "time")) {
+        profile.dateCount += 1;
+        return;
+      }
+
       if (typeof raw === "number" && Number.isFinite(raw)) {
         profile.numericCount += 1;
         return;
@@ -1047,7 +1064,6 @@ function collectAggregationProfiles(model) {
         return;
       }
 
-      const asDate = parseDateFlexible(raw ?? display);
       if (asDate instanceof Date) {
         profile.dateCount += 1;
         return;
@@ -1180,7 +1196,7 @@ function detectAggregationMeasureCandidates(model, profiles) {
   profiles.forEach((profile) => {
     if (profile.nonEmptyCount <= 0) return;
     const kind = inferAggregationValueKind(profile.header, profile);
-    if (profile.numericCount <= 0 && profile.durationCount <= 0 && kind !== "text") return;
+    if (profile.numericCount <= 0 && profile.durationCount <= 0 && profile.dateCount <= 0 && kind !== "text") return;
     candidates.push({
       key: `column:${profile.idx}`,
       label: profile.header,
@@ -1192,13 +1208,17 @@ function detectAggregationMeasureCandidates(model, profiles) {
           const raw = row.values?.[profile.idx];
           return String(getDisplayValue(row, profile.idx) || raw || "").trim();
         }
+        if (kind === "date") {
+          const date = parseDateFlexible(row.values?.[profile.idx] ?? getDisplayValue(row, profile.idx));
+          return date instanceof Date && !Number.isNaN(date.getTime()) ? date.getTime() : null;
+        }
         const raw = row.values?.[profile.idx];
         if (typeof raw === "number" && Number.isFinite(raw)) return raw;
         return parseDurationDaysFlexible(raw ?? getDisplayValue(row, profile.idx));
       },
       getRawText: (row) => {
         const raw = row.values?.[profile.idx];
-        return raw != null ? String(raw).trim() : "";
+        return String(getDisplayValue(row, profile.idx) || raw || "").trim();
       },
     });
   });
@@ -1239,14 +1259,70 @@ function chooseDefaultAggregationMeasure(measures) {
   if (dateRange) return dateRange.key;
   const duration = measures.find((candidate) => candidate.kind === "duration");
   if (duration) return duration.key;
-  const numeric = measures.find((candidate) => candidate.measureType === "column");
+  const date = measures.find((candidate) => candidate.kind === "date");
+  if (date) return date.key;
+  const numeric = measures.find((candidate) => candidate.measureType === "column" && candidate.kind === "number");
   return numeric ? numeric.key : "count_rows";
 }
 
 function chooseDefaultAggregationMethod(measure) {
   if (!measure || measure.measureType === "count_rows") return "count";
   if (measure.kind === "text") return "count";
+  if (measure.kind === "date") return "earliest";
   return "avg";
+}
+
+function resolveSelectedAggregationMeasures(measures) {
+  const selectedKeys = [
+    aggregationWorkbenchState.measure,
+    aggregationWorkbenchState.measure2,
+    aggregationWorkbenchState.measure3,
+  ].filter(Boolean);
+  const seen = new Set();
+  return selectedKeys
+    .map((key) => measures.find((candidate) => candidate.key === key))
+    .filter(Boolean)
+    .filter((candidate) => {
+      if (seen.has(candidate.key)) return false;
+      seen.add(candidate.key);
+      return true;
+    });
+}
+
+function getAggregationKindFamily(kind) {
+  if (kind === "date") return "date";
+  if (kind === "text") return "text";
+  if (kind === "count") return "count";
+  return "numeric";
+}
+
+function filterCompatibleAggregationMeasures(selectedMeasures, aggregation) {
+  if (!selectedMeasures.length) return [];
+  if (aggregation === "count" || aggregation === "distinct") return selectedMeasures;
+  if (aggregation === "earliest" || aggregation === "latest") {
+    return selectedMeasures.filter((measure) => measure.kind === "date");
+  }
+  return selectedMeasures.filter((measure) => {
+    const family = getAggregationKindFamily(measure.kind);
+    return family === "numeric";
+  });
+}
+
+function getAllowedAggregationsForMeasures(selectedMeasures) {
+  if (!selectedMeasures.length) return ["count"];
+  if (selectedMeasures.some((measure) => measure.measureType === "count_rows")) return ["count"];
+  const families = new Set(selectedMeasures.map((measure) => getAggregationKindFamily(measure.kind)));
+  const allowed = ["count", "distinct"];
+  if (families.has("numeric")) allowed.push("avg", "median", "min", "max", "sum");
+  if (families.has("date")) allowed.push("earliest", "latest");
+  return allowed;
+}
+
+function getPrimaryAggregationValueKind(measures, aggregation) {
+  if (aggregation === "earliest" || aggregation === "latest") return "date";
+  if (aggregation === "distinct" || aggregation === "count") return "number";
+  if (measures.some((measure) => measure.kind === "duration")) return "duration";
+  return "number";
 }
 
 function getNormalizedAggregationWorkbenchContext() {
@@ -1302,12 +1378,18 @@ function getNormalizedAggregationWorkbenchContext() {
   const nextMeasure = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure)
     ? aggregationWorkbenchState.measure
     : chooseDefaultAggregationMeasure(measures);
+  const nextMeasure2 = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure2 && candidate.key !== nextMeasure)
+    ? aggregationWorkbenchState.measure2
+    : "";
+  const nextMeasure3 = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure3 && candidate.key !== nextMeasure && candidate.key !== nextMeasure2)
+    ? aggregationWorkbenchState.measure3
+    : "";
   const measure = measures.find((candidate) => candidate.key === nextMeasure) || measures[0] || null;
-  const allowedAggregations = measure?.measureType === "count_rows"
-    ? ["count"]
-    : measure?.kind === "text"
-      ? ["count", "distinct"]
-    : ["avg", "median", "min", "max", "sum", "count", "distinct"];
+  aggregationWorkbenchState.measure = nextMeasure;
+  aggregationWorkbenchState.measure2 = nextMeasure2;
+  aggregationWorkbenchState.measure3 = nextMeasure3;
+  const selectedMeasures = resolveSelectedAggregationMeasures(measures);
+  const allowedAggregations = getAllowedAggregationsForMeasures(selectedMeasures);
   const nextAggregation = allowedAggregations.includes(aggregationWorkbenchState.aggregation)
     ? aggregationWorkbenchState.aggregation
     : chooseDefaultAggregationMethod(measure);
@@ -1315,7 +1397,6 @@ function getNormalizedAggregationWorkbenchContext() {
   aggregationWorkbenchState.groupBy = nextGroupBy;
   aggregationWorkbenchState.groupBy2 = nextGroupBy2;
   aggregationWorkbenchState.groupBy3 = nextGroupBy3;
-  aggregationWorkbenchState.measure = nextMeasure;
   aggregationWorkbenchState.aggregation = nextAggregation;
   if (aggregationWorkbenchState.sourceMode === "long" && !longAvailable) {
     aggregationWorkbenchState.sourceMode = "auto";
@@ -1328,6 +1409,8 @@ function getNormalizedAggregationWorkbenchContext() {
     groupOptions,
     measures,
     measure,
+    selectedMeasures: filterCompatibleAggregationMeasures(selectedMeasures, nextAggregation),
+    selectedMeasuresRaw: selectedMeasures,
     longAvailable,
     allowedAggregations,
     headerCandidates,
@@ -1348,6 +1431,8 @@ function computeAggregateMetric(values, aggregation) {
   }
   const nums = values.filter((value) => Number.isFinite(value));
   if (!nums.length) return null;
+  if (aggregation === "earliest") return Math.min(...nums);
+  if (aggregation === "latest") return Math.max(...nums);
   if (aggregation === "sum") return nums.reduce((sum, value) => sum + value, 0);
   if (aggregation === "avg") return nums.reduce((sum, value) => sum + value, 0) / nums.length;
   if (aggregation === "median") return computeMedian(nums);
@@ -1377,14 +1462,17 @@ function buildAggregationWorkbenchResult() {
   }
 
   const isDistinct = aggregationWorkbenchState.aggregation === "distinct";
+  const activeMeasures = context.selectedMeasures?.length ? context.selectedMeasures : [measure].filter(Boolean);
   const measureFilterMode = aggregationWorkbenchState.measureFilterMode || "all";
   const measureFilterValue = aggregationWorkbenchState.measureFilterValue || "";
   const buckets = new Map();
   model.rows.forEach((row) => {
-    if (measureFilterMode !== "all" && measureFilterValue) {
-      const rowMeasureText = measure.getRawText
-        ? measure.getRawText(row)
-        : getDisplayValue(row, measure.colIdx) || "";
+    if (measureFilterMode !== "all" && measureFilterValue && activeMeasures.length) {
+      const rowMeasureText = activeMeasures
+        .map((activeMeasure) => activeMeasure.getRawText
+          ? activeMeasure.getRawText(row)
+          : getDisplayValue(row, activeMeasure.colIdx) || "")
+        .join(" ");
       const rowMeasureLower = rowMeasureText.toLowerCase();
       const filterLower = measureFilterValue.toLowerCase();
       if (measureFilterMode === "contains" && !rowMeasureLower.includes(filterLower)) return;
@@ -1403,20 +1491,26 @@ function buildAggregationWorkbenchResult() {
       rowIndexes: new Set(),
     };
     if (isDistinct) {
-      const rawValue = measure.getRawText
-        ? measure.getRawText(row)
-        : measure.colIdx != null
-          ? getDisplayValue(row, measure.colIdx) || ""
-          : "";
-      entry.values.push(rawValue);
+      activeMeasures.forEach((activeMeasure) => {
+        const rawValue = activeMeasure.getRawText
+          ? activeMeasure.getRawText(row)
+          : activeMeasure.colIdx != null
+            ? getDisplayValue(row, activeMeasure.colIdx) || ""
+            : "";
+        if (rawValue) entry.values.push(rawValue);
+      });
     } else {
-      const measureValue = measure.getValue(row);
-      if (measure.measureType === "count_rows") {
+      if (activeMeasures.some((activeMeasure) => activeMeasure.measureType === "count_rows")) {
         entry.values.push(1);
-      } else if (Number.isFinite(measureValue)) {
-        entry.values.push(measureValue);
-      } else if (typeof measureValue === "string" && measureValue.trim()) {
-        entry.values.push(measureValue.trim());
+      } else {
+        activeMeasures.forEach((activeMeasure) => {
+          const measureValue = activeMeasure.getValue(row);
+          if (Number.isFinite(measureValue)) {
+            entry.values.push(measureValue);
+          } else if (typeof measureValue === "string" && measureValue.trim()) {
+            entry.values.push(measureValue.trim());
+          }
+        });
       }
     }
     entry.rowIndexes.add(row.rowIndex0);
@@ -1436,6 +1530,7 @@ function buildAggregationWorkbenchResult() {
         min: computeAggregateMetric(entry.values, "min"),
         max: computeAggregateMetric(entry.values, "max"),
         sum: computeAggregateMetric(entry.values, "sum"),
+        distinct: computeAggregateMetric(entry.values, "distinct"),
         primary: computeAggregateMetric(entry.values, aggregationWorkbenchState.aggregation),
       };
     })
@@ -1458,7 +1553,8 @@ function buildAggregationWorkbenchResult() {
       return true;
     })
     .sort((a, b) => {
-      const diff = Number(b.primary || 0) - Number(a.primary || 0);
+      const sortMultiplier = aggregationWorkbenchState.aggregation === "earliest" ? 1 : -1;
+      const diff = (Number(a.primary || 0) - Number(b.primary || 0)) * sortMultiplier;
       if (Math.abs(diff) > 0.001) return diff;
       const countDiff = b.count - a.count;
       if (countDiff) return countDiff;
@@ -1502,7 +1598,7 @@ function renderAggregationWorkbench() {
 
   const measure = result.measure;
   const isDistinctMode = aggregationWorkbenchState.aggregation === "distinct";
-  const primaryKind = isDistinctMode ? "number" : (measure?.kind === "duration" ? "duration" : "number");
+  const primaryKind = isDistinctMode ? "number" : getPrimaryAggregationValueKind(result.selectedMeasures || [measure].filter(Boolean), aggregationWorkbenchState.aggregation);
   const aggregationLabels = {
     count: t("aggregationCount"),
     avg: t("aggregationAvg"),
@@ -1511,6 +1607,8 @@ function renderAggregationWorkbench() {
     max: t("aggregationMax"),
     sum: t("aggregationSum"),
     distinct: t("aggregationDistinct"),
+    earliest: t("aggregationEarliest"),
+    latest: t("aggregationLatest"),
   };
   const groupDepth = [
     aggregationWorkbenchState.groupBy,
@@ -1524,7 +1622,7 @@ function renderAggregationWorkbench() {
     { label: t("aggregationGroups"), value: String(result.summary.groups) },
     { label: t("aggregationSourceRows"), value: String(result.summary.sourceRows) },
     { label: t("aggregationMeasuredRows"), value: String(result.summary.measuredRows) },
-    { label: aggregationLabels[aggregationWorkbenchState.aggregation] || "Wynik", value: formatAggregationMetricValue(result.entries[0]?.primary, primaryKind), tone: "info" },
+    { label: aggregationLabels[aggregationWorkbenchState.aggregation] || t("aggregationResult"), value: formatAggregationMetricValue(result.entries[0]?.primary, primaryKind), tone: "info" },
   ].forEach((item) => {
     const chip = document.createElement("div");
     chip.className = `sheet-inspector-chip${item.tone ? ` ${item.tone}` : ""}`;
@@ -1668,6 +1766,36 @@ function renderAggregationWorkbench() {
   });
   measureSelect.value = aggregationWorkbenchState.measure;
 
+  const measureField2 = document.createElement("label");
+  measureField2.className = "field";
+  measureField2.append(t("aggregationMeasure2"));
+  const measureSelect2 = document.createElement("select");
+  measureSelect2.dataset.aggregationControl = "measure2";
+  measureField2.appendChild(measureSelect2);
+  [{ key: "", label: t("aggregationNone") }, ...result.measures.filter((candidate) => candidate.key !== "count_rows")].forEach((candidate) => {
+    const opt = document.createElement("option");
+    opt.value = candidate.key;
+    opt.textContent = candidate.label;
+    opt.disabled = Boolean(candidate.key && candidate.key === aggregationWorkbenchState.measure);
+    measureSelect2.appendChild(opt);
+  });
+  measureSelect2.value = aggregationWorkbenchState.measure2;
+
+  const measureField3 = document.createElement("label");
+  measureField3.className = "field";
+  measureField3.append(t("aggregationMeasure3"));
+  const measureSelect3 = document.createElement("select");
+  measureSelect3.dataset.aggregationControl = "measure3";
+  measureField3.appendChild(measureSelect3);
+  [{ key: "", label: t("aggregationNone") }, ...result.measures.filter((candidate) => candidate.key !== "count_rows")].forEach((candidate) => {
+    const opt = document.createElement("option");
+    opt.value = candidate.key;
+    opt.textContent = candidate.label;
+    opt.disabled = Boolean(candidate.key && (candidate.key === aggregationWorkbenchState.measure || candidate.key === aggregationWorkbenchState.measure2));
+    measureSelect3.appendChild(opt);
+  });
+  measureSelect3.value = aggregationWorkbenchState.measure3;
+
   const aggregationField = document.createElement("label");
   aggregationField.className = "field";
   aggregationField.append(t("aggregationMethod"));
@@ -1675,13 +1803,15 @@ function renderAggregationWorkbench() {
   aggregationSelect.dataset.aggregationControl = "aggregation";
   aggregationField.appendChild(aggregationSelect);
   const aggregationTooltips = {
-    count: "Ile wierszy jest w kazdej grupie (np. 15 wierszy w Krakowie)",
-    avg: "Srednia wartosc (np. sredni czas lub srednia kwota)",
-    median: "Srodkowa wartosc (polowa wartosci jest mniejsza, polowa wieksza)",
-    min: "Najmniejsza wartosc w grupie",
-    max: "Najwieksza wartosc w grupie",
-    sum: "Laczna suma wszystkich wartosci w grupie",
-    distinct: "Ile roznych, niepowtarzalnych wartosci (np. 5 roznych klientow)",
+    count: t("aggregationTooltipCount"),
+    avg: t("aggregationTooltipAvg"),
+    median: t("aggregationTooltipMedian"),
+    min: t("aggregationTooltipMin"),
+    max: t("aggregationTooltipMax"),
+    sum: t("aggregationTooltipSum"),
+    distinct: t("aggregationTooltipDistinct"),
+    earliest: t("aggregationTooltipEarliest"),
+    latest: t("aggregationTooltipLatest"),
   };
   result.allowedAggregations.forEach((key) => {
     const opt = document.createElement("option");
@@ -1733,8 +1863,8 @@ const measureFilterField = document.createElement("label");
   measureFilterInput.className = "aggregation-measurefilter-value";
   measureFilterInput.dataset.aggregationControl = "measurefilter-value";
   measureFilterInput.value = aggregationWorkbenchState.measureFilterValue || "";
-  measureFilterInput.placeholder = "szukaj...";
-  measureFilterInput.title = "Szukana wartosc w kolumnie mierzonej";
+  measureFilterInput.placeholder = t("aggregationMeasureSearchPlaceholder");
+  measureFilterInput.title = t("aggregationMeasureFilter");
   measureFilterInput.style.display = aggregationWorkbenchState.measureFilterMode === "all" ? "none" : "inline-block";
   measureFilterField.appendChild(measureFilterInput);
 
@@ -1759,9 +1889,9 @@ const measureFilterField = document.createElement("label");
   havingSelect.dataset.aggregationControl = "having";
   [
     { value: "all", label: t("aggregationAll"), title: "" },
-    { value: "above_value", label: " Wartosc >", title: "Pokaz tylko grupy z wartoscia wieksza niz podana liczba" },
-    { value: "above_percent", label: "% sumy >", title: "Pokaz grupy ktore stanowia wiecej niz X% lacznej sumy wszystkich grup" },
-    { value: "above_max_percent", label: "% max >", title: "Pokaz grupy wieksze niz polowa najsilniejszej grupy" },
+    { value: "above_value", label: t("aggregationHavingAboveValue"), title: "" },
+    { value: "above_percent", label: t("aggregationHavingAboveTotal"), title: "" },
+    { value: "above_max_percent", label: t("aggregationHavingAboveMax"), title: "" },
   ].forEach((item) => {
     const option = document.createElement("option");
     option.value = item.value;
@@ -1783,7 +1913,7 @@ const measureFilterField = document.createElement("label");
   havingValueInput.style.display = aggregationWorkbenchState.havingMode === "all" ? "none" : "inline-block";
   havingField.appendChild(havingValueInput);
 
-  [sourceField, scopeField, headerField, groupField, groupField2, groupField3, measureField, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
+  [sourceField, scopeField, headerField, groupField, groupField2, groupField3, measureField, measureField2, measureField3, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
   aggregationWorkbenchSummaryEl.appendChild(controls);
 
   const note = document.createElement("div");
@@ -1807,6 +1937,12 @@ const measureFilterField = document.createElement("label");
   });
   aggregationWorkbenchSummaryEl.appendChild(note);
 
+  const measureNote = document.createElement("div");
+  measureNote.className = "duration-analysis-note";
+  const measureLabels = (result.selectedMeasures || [measure].filter(Boolean)).map((item) => item.label).join(", ");
+  measureNote.textContent = t("aggregationMeasureNote", { measures: measureLabels || t("aggregationNone") });
+  aggregationWorkbenchSummaryEl.appendChild(measureNote);
+
   const currentSearch = aggregationWorkbenchState.resultSearch || "";
   const filteredEntries = currentSearch
     ? result.entries.filter((e) => e.label.toLowerCase().includes(currentSearch.toLowerCase()))
@@ -1824,7 +1960,7 @@ const measureFilterField = document.createElement("label");
   resultSearchInput.type = "text";
   resultSearchInput.className = "aggregation-result-search";
   resultSearchInput.placeholder = t("aggregationSearchPlaceholder");
-  resultSearchInput.title = "Wpisz tekst ktory ma sie zawierac w nazwie grupy (np. czesc imienia)";
+  resultSearchInput.title = t("aggregationSearch");
   resultSearchInput.style.flex = "1";
   resultSearchInput.style.minWidth = "100px";
   resultSearchInput.style.padding = "4px 8px";
@@ -1839,7 +1975,7 @@ const measureFilterField = document.createElement("label");
   searchCount.style.color = "var(--muted)";
   searchCount.style.marginLeft = "8px";
   searchCount.style.whiteSpace = "nowrap";
-  searchCount.textContent = currentSearch ? `${filteredEntries.length} z ${result.entries.length}` : "";
+  searchCount.textContent = currentSearch ? t("aggregationSearchCount", { visible: filteredEntries.length, total: result.entries.length }) : "";
   searchWrap.appendChild(searchCount);
 
   aggregationWorkbenchListEl.appendChild(searchWrap);
@@ -1874,13 +2010,26 @@ const measureFilterField = document.createElement("label");
 
     const meta = document.createElement("div");
     meta.className = "duration-person-meta";
-    meta.textContent = t("aggregationMeta", {
-      count: entry.count,
-      avg: formatAggregationMetricValue(entry.average, primaryKind),
-      median: formatAggregationMetricValue(entry.median, primaryKind),
-      min: formatAggregationMetricValue(entry.min, primaryKind),
-      max: formatAggregationMetricValue(entry.max, primaryKind),
-    });
+    if (primaryKind === "date") {
+      meta.textContent = t("aggregationDateMeta", {
+        count: entry.count,
+        min: formatAggregationMetricValue(entry.min, "date"),
+        max: formatAggregationMetricValue(entry.max, "date"),
+      });
+    } else if (measure?.kind === "text") {
+      meta.textContent = t("aggregationTextMeta", {
+        count: entry.count,
+        distinct: entry.distinct,
+      });
+    } else {
+      meta.textContent = t("aggregationMeta", {
+        count: entry.count,
+        avg: formatAggregationMetricValue(entry.average, primaryKind),
+        median: formatAggregationMetricValue(entry.median, primaryKind),
+        min: formatAggregationMetricValue(entry.min, primaryKind),
+        max: formatAggregationMetricValue(entry.max, primaryKind),
+      });
+    }
 
     const actions = document.createElement("div");
     actions.className = "section-nav-actions";

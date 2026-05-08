@@ -182,6 +182,8 @@ let aggregationWorkbenchState = {
   groupBy2: "",
   groupBy3: "",
   measure: "count_rows",
+  measure2: "",
+  measure3: "",
   aggregation: "count",
   matchMode: "contains",
   showCount: 20,
@@ -191,7 +193,7 @@ let aggregationWorkbenchState = {
   measureFilterValue: "",
   resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260503-05";
+const APP_BUILD_VERSION = "20260508-01";
 
 const THEME_KEY = "excel-workbench-theme";
 const MAX_ROWS_KEY = "excel-workbench-max-rows";

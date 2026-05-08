@@ -130,6 +130,8 @@ if (aggregationWorkbenchSummaryEl) {
     if (kind === "group2") aggregationWorkbenchState.groupBy2 = control.value || "";
     if (kind === "group3") aggregationWorkbenchState.groupBy3 = control.value || "";
     if (kind === "measure") aggregationWorkbenchState.measure = control.value || "count_rows";
+    if (kind === "measure2") aggregationWorkbenchState.measure2 = control.value || "";
+    if (kind === "measure3") aggregationWorkbenchState.measure3 = control.value || "";
     if (kind === "aggregation") aggregationWorkbenchState.aggregation = control.value || "count";
     if (kind === "match") aggregationWorkbenchState.matchMode = control.value || "contains";
     if (kind === "measurefilter") {
