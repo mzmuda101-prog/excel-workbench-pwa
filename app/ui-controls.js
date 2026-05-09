@@ -249,6 +249,37 @@ function closeColumnPicker() {
   }
 }
 
+function openMeasurePicker() {
+  if (!currentAggregationMeasureCandidates || !currentAggregationMeasureCandidates.length) {
+    toast(t("aggregationNoOptions"), "info");
+    return;
+  }
+  activePickerKey = "measures";
+  if (columnPickerTitleEl) {
+    columnPickerTitleEl.textContent = currentLang === "en" ? "Select measures" : "Wybierz miary";
+  }
+  columnListEl.replaceChildren();
+  columnSearchEl.value = "";
+  const currentSet = new Set(aggregationWorkbenchState.measures || []);
+  currentAggregationMeasureCandidates.forEach((candidate, idx) => {
+    const row = document.createElement("div");
+    row.className = "field checkbox";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.id = `measurepick-${idx}`;
+    input.value = candidate.key;
+    input.checked = currentSet.has(candidate.key);
+    const label = document.createElement("label");
+    label.htmlFor = input.id;
+    label.textContent = candidate.label;
+    row.appendChild(input);
+    row.appendChild(label);
+    columnListEl.appendChild(row);
+  });
+  columnPickerEl.classList.remove("hidden");
+  columnSearchEl.focus();
+}
+
 function getModalFocusables() {
   const modalContent = columnPickerEl.querySelector(".modal-content");
   if (!modalContent) return [];
@@ -903,11 +934,17 @@ clearAllBtn.addEventListener("click", () => {
   });
 });
 
-applyPickBtn.addEventListener("click", () => {
-  if (!activePickerKey) return;
+applyPickBtn.addEventListener("click", (e) => {
++  e.stopPropagation();  if (!activePickerKey) return;
   const checked = Array.from(columnListEl.querySelectorAll("input[type=checkbox]"))
     .filter((cb) => cb.checked)
     .map((cb) => cb.value);
+  if (activePickerKey === "measures") {
+    aggregationWorkbenchState.measures = checked.length ? checked : ["count_rows"];
+    renderAggregationWorkbench();
+    closeColumnPicker();
+    return;
+  }
   if (checked.length === currentHeaders.length) {
     columnSelections[activePickerKey].clear();
   } else {
@@ -1018,7 +1055,10 @@ columnPickerEl.addEventListener("click", (e) => {
 
 columnPickerEl.addEventListener("keydown", handlePickerKeydown);
 
-closePickerBtn.addEventListener("click", closeColumnPicker);
+closePickerBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeColumnPicker();
+});
 columnSearchEl.addEventListener("input", filterColumnList);
 
 exportCsvBtn.addEventListener("click", exportCsv);

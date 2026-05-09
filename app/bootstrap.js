@@ -129,9 +129,10 @@ if (aggregationWorkbenchSummaryEl) {
     if (kind === "group") aggregationWorkbenchState.groupBy = control.value || "";
     if (kind === "group2") aggregationWorkbenchState.groupBy2 = control.value || "";
     if (kind === "group3") aggregationWorkbenchState.groupBy3 = control.value || "";
-    if (kind === "measure") aggregationWorkbenchState.measure = control.value || "count_rows";
-    if (kind === "measure2") aggregationWorkbenchState.measure2 = control.value || "";
-    if (kind === "measure3") aggregationWorkbenchState.measure3 = control.value || "";
+    if (kind === "measure-pick") {
+      // Obsluzone przez event click na przycisku
+      return;
+    }
     if (kind === "aggregation") aggregationWorkbenchState.aggregation = control.value || "count";
     if (kind === "match") aggregationWorkbenchState.matchMode = control.value || "contains";
     if (kind === "measurefilter") {
@@ -161,6 +162,14 @@ if (aggregationWorkbenchSummaryEl) {
     }
     renderAggregationWorkbench();
     if (sidebarEl) sidebarEl.scrollTop = savedSidebarScroll;
+  });
+
+  // Click handler for measure picker button
+  aggregationWorkbenchSummaryEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-aggregation-control=\"measure-pick\"]");
+    if (!btn) return;
+    e.stopPropagation();
+    openMeasurePicker();
   });
 }
 if (aggregationWorkbenchListEl) {

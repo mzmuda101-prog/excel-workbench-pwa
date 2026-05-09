@@ -1273,11 +1273,7 @@ function chooseDefaultAggregationMethod(measure) {
 }
 
 function resolveSelectedAggregationMeasures(measures) {
-  const selectedKeys = [
-    aggregationWorkbenchState.measure,
-    aggregationWorkbenchState.measure2,
-    aggregationWorkbenchState.measure3,
-  ].filter(Boolean);
+  const selectedKeys = aggregationWorkbenchState.measures.filter(Boolean);
   const seen = new Set();
   return selectedKeys
     .map((key) => measures.find((candidate) => candidate.key === key))
@@ -1375,19 +1371,13 @@ function getNormalizedAggregationWorkbenchContext() {
   const nextGroupBy3 = groupOptions.some((option) => option.value === aggregationWorkbenchState.groupBy3 && option.value !== nextGroupBy && option.value !== nextGroupBy2)
     ? aggregationWorkbenchState.groupBy3
     : "";
-  const nextMeasure = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure)
-    ? aggregationWorkbenchState.measure
-    : chooseDefaultAggregationMeasure(measures);
-  const nextMeasure2 = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure2 && candidate.key !== nextMeasure)
-    ? aggregationWorkbenchState.measure2
-    : "";
-  const nextMeasure3 = measures.some((candidate) => candidate.key === aggregationWorkbenchState.measure3 && candidate.key !== nextMeasure && candidate.key !== nextMeasure2)
-    ? aggregationWorkbenchState.measure3
-    : "";
-  const measure = measures.find((candidate) => candidate.key === nextMeasure) || measures[0] || null;
-  aggregationWorkbenchState.measure = nextMeasure;
-  aggregationWorkbenchState.measure2 = nextMeasure2;
-  aggregationWorkbenchState.measure3 = nextMeasure3;
+  const validMeasures = aggregationWorkbenchState.measures
+    .filter((key) => measures.some((candidate) => candidate.key === key));
+  const nextMeasures = validMeasures.length
+    ? validMeasures
+    : [chooseDefaultAggregationMeasure(measures)];
+  aggregationWorkbenchState.measures = nextMeasures;
+  const measure = measures.find((candidate) => candidate.key === nextMeasures[0]) || measures[0] || null;
   const selectedMeasures = resolveSelectedAggregationMeasures(measures);
   const allowedAggregations = getAllowedAggregationsForMeasures(selectedMeasures);
   const nextAggregation = allowedAggregations.includes(aggregationWorkbenchState.aggregation)
@@ -1583,6 +1573,9 @@ function renderAggregationWorkbench() {
   aggregationWorkbenchListEl.replaceChildren();
 
   const result = buildAggregationWorkbenchResult();
+  if (typeof currentAggregationMeasureCandidates !== "undefined") {
+    currentAggregationMeasureCandidates = result.measures || [];
+  }
   if (result.status === "empty") {
     aggregationWorkbenchSummaryEl.appendChild(createEmptyInsight(t("aggregationNoData")));
     return;
@@ -1755,46 +1748,30 @@ function renderAggregationWorkbench() {
   const measureField = document.createElement("label");
   measureField.className = "field";
   measureField.append(t("aggregationMeasure"));
-  const measureSelect = document.createElement("select");
-  measureSelect.dataset.aggregationControl = "measure";
-  measureField.appendChild(measureSelect);
-  result.measures.forEach((candidate) => {
-    const opt = document.createElement("option");
-    opt.value = candidate.key;
-    opt.textContent = candidate.label;
-    measureSelect.appendChild(opt);
-  });
-  measureSelect.value = aggregationWorkbenchState.measure;
-
-  const measureField2 = document.createElement("label");
-  measureField2.className = "field";
-  measureField2.append(t("aggregationMeasure2"));
-  const measureSelect2 = document.createElement("select");
-  measureSelect2.dataset.aggregationControl = "measure2";
-  measureField2.appendChild(measureSelect2);
-  [{ key: "", label: t("aggregationNone") }, ...result.measures.filter((candidate) => candidate.key !== "count_rows")].forEach((candidate) => {
-    const opt = document.createElement("option");
-    opt.value = candidate.key;
-    opt.textContent = candidate.label;
-    opt.disabled = Boolean(candidate.key && candidate.key === aggregationWorkbenchState.measure);
-    measureSelect2.appendChild(opt);
-  });
-  measureSelect2.value = aggregationWorkbenchState.measure2;
-
-  const measureField3 = document.createElement("label");
-  measureField3.className = "field";
-  measureField3.append(t("aggregationMeasure3"));
-  const measureSelect3 = document.createElement("select");
-  measureSelect3.dataset.aggregationControl = "measure3";
-  measureField3.appendChild(measureSelect3);
-  [{ key: "", label: t("aggregationNone") }, ...result.measures.filter((candidate) => candidate.key !== "count_rows")].forEach((candidate) => {
-    const opt = document.createElement("option");
-    opt.value = candidate.key;
-    opt.textContent = candidate.label;
-    opt.disabled = Boolean(candidate.key && (candidate.key === aggregationWorkbenchState.measure || candidate.key === aggregationWorkbenchState.measure2));
-    measureSelect3.appendChild(opt);
-  });
-  measureSelect3.value = aggregationWorkbenchState.measure3;
+  const measureInput = document.createElement("input");
+  measureInput.type = "text";
+  measureInput.readOnly = true;
+  measureInput.className = "aggregation-measure-input";
+  const selectedMeasureLabels = aggregationWorkbenchState.measures
+    .map((key) => {
+      const candidate = result.measures.find((c) => c.key === key);
+      return candidate ? candidate.label : key;
+    })
+    .filter(Boolean);
+  measureInput.value = selectedMeasureLabels.length
+    ? selectedMeasureLabels.join(", ")
+    : t("aggregationMeasure") + "...";
+  measureInput.title = selectedMeasureLabels.join(", ");
+  const measurePickBtn = document.createElement("button");
+  measurePickBtn.type = "button";
+  measurePickBtn.className = "btn ghost btn-sm";
+  measurePickBtn.dataset.aggregationControl = "measure-pick";
+  measurePickBtn.textContent = t("choose");
+  const measureRow = document.createElement("div");
+  measureRow.className = "picker-row";
+  measureRow.appendChild(measureInput);
+  measureRow.appendChild(measurePickBtn);
+  measureField.appendChild(measureRow);
 
   const aggregationField = document.createElement("label");
   aggregationField.className = "field";
@@ -1913,7 +1890,7 @@ const measureFilterField = document.createElement("label");
   havingValueInput.style.display = aggregationWorkbenchState.havingMode === "all" ? "none" : "inline-block";
   havingField.appendChild(havingValueInput);
 
-  [sourceField, scopeField, headerField, groupField, groupField2, groupField3, measureField, measureField2, measureField3, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
+  [sourceField, scopeField, headerField, groupField, groupField2, groupField3, measureField, aggregationField, matchField, measureFilterField, showCountField, havingField].forEach((field) => controls.appendChild(field));
   aggregationWorkbenchSummaryEl.appendChild(controls);
 
   const note = document.createElement("div");

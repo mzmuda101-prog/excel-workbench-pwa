@@ -173,6 +173,7 @@ let durationAnalysisState = {
   sortMetric: "avg",
   showCount: 14,
 };
+let currentAggregationMeasureCandidates = [];
 let aggregationWorkbenchState = {
   sourceMode: "auto",
   scopeMode: "filtered",
@@ -181,9 +182,7 @@ let aggregationWorkbenchState = {
   groupBy: "",
   groupBy2: "",
   groupBy3: "",
-  measure: "count_rows",
-  measure2: "",
-  measure3: "",
+  measures: ["count_rows"],
   aggregation: "count",
   matchMode: "contains",
   showCount: 20,
