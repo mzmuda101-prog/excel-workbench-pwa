@@ -2757,6 +2757,19 @@ details.panel[open] > summary {
   font-size: 10.5px;
   opacity: 0.8;
 }
+/* Fokus klawiatury na pigułce „Operatory wyszukiwania". Bez tego jedynym sygnałem
+   była domyślna, obca kolorystycznie kreska 1px na checkboxie 12×12 — praktycznie
+   niewidoczna, przez co wyglądało to na kontrolkę, w którą nie da się wejść.
+   Ring rysujemy na CAŁEJ pigułce, więc widać ją tak samo dobrze jak przyciski. */
+.qs-operators-toggle:has(input:focus-visible) {
+  border-color: var(--accent-h);
+  color: var(--ink-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.qs-operators-toggle input[type="checkbox"]:focus-visible {
+  outline: none; /* zastąpione ringiem na pigułce powyżej */
+}
+
 .qs-operators-toggle:has(input:checked) {
   border-color: var(--accent-border);
   color: var(--accent);

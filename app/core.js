@@ -525,7 +525,7 @@ let aggregationWorkbenchState = {
   measureFilterValue: "",
   resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260902-05";
+const APP_BUILD_VERSION = "20260902-06";
 
 // Coalesced view refresh — jedna klatka zamiast kaskady render*() w handlerze.
 let _viewRefreshRaf = 0;

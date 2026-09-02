@@ -1812,9 +1812,65 @@ function applyQuickSearch() {
   if (quickSearchHighlightMode) animateMatchPulseNextRender = true;
   else if (!quickSearchCellsMode) flipNextRender = true;
   scheduleViewRefresh({ table: true, analyses: true, filterBadge: true });
-  if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
-    quickSearchPopupEl.classList.add("hidden");
-  }
+  closeQuickSearchPopup();
+}
+
+// ── Okno szybkiego szukania: otwieranie/zamykanie z obsługą fokusu ──────────
+// Jedno miejsce zamiast pięciu rozsypanych `classList.add/remove("hidden")` —
+// dzięki temu okno zawsze pamięta, skąd je otwarto, i tam oddaje fokus po zamknięciu.
+let lastQsPopupTriggerEl = null;
+
+function qsPopupFocusables() {
+  if (!quickSearchPopupEl) return [];
+  return Array.from(quickSearchPopupEl.querySelectorAll(
+    "button:not([disabled]), input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])"
+  // tabIndex < 0 odsiewa pozycje listy wyników — te obsługujemy strzałkami, nie Tabem.
+  )).filter((el) => el.tabIndex >= 0 && (el.offsetParent !== null || getComputedStyle(el).position === "fixed"));
+}
+
+function openQuickSearchPopup() {
+  if (!quickSearchPopupEl || !quickSearchPopupInput) return false;
+  const active = document.activeElement;
+  lastQsPopupTriggerEl = (active && active !== document.body && !quickSearchPopupEl.contains(active))
+    ? active
+    : null;
+  quickSearchPopupInput.value = searchQueryEl.value || "";
+  quickSearchPopupEl.classList.remove("hidden");
+  quickSearchPopupInput.focus();
+  quickSearchPopupInput.select();
+  return true;
+}
+
+function closeQuickSearchPopup() {
+  if (!quickSearchPopupEl || quickSearchPopupEl.classList.contains("hidden")) return false;
+  quickSearchPopupEl.classList.add("hidden");
+  const back = lastQsPopupTriggerEl;
+  lastQsPopupTriggerEl = null;
+  // Element mógł zniknąć przy przerenderowaniu tabeli albo trafić pod inert —
+  // wtedy nie ma dokąd wracać i fokus po prostu zostaje tam, gdzie jest.
+  if (back && document.contains(back) && !back.closest("[inert]")) back.focus();
+  return true;
+}
+
+// Pułapka fokusu: Tab krąży wewnątrz okna zamiast po 15 przystankach uciekać na <body>.
+if (quickSearchPopupEl) {
+  quickSearchPopupEl.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    const focusables = qsPopupFocusables();
+    if (!focusables.length) return;
+    const idx = focusables.indexOf(document.activeElement);
+    if (idx === -1) {
+      // Fokus siedzi na pozycji listy wyników (poza kolejnością Tab) — wróć do pola.
+      e.preventDefault();
+      focusables[0].focus();
+    } else if (e.shiftKey && idx === 0) {
+      e.preventDefault();
+      focusables[focusables.length - 1].focus();
+    } else if (!e.shiftKey && idx === focusables.length - 1) {
+      e.preventDefault();
+      focusables[0].focus();
+    }
+  });
 }
 
 // ── Szybkie szukanie: zakres „wszystkie arkusze" + live-podgląd wyników ──
@@ -2078,6 +2134,10 @@ function renderQsLive(ctx) {
       item.type = "button";
       item.className = "qs-live-item";
       item.setAttribute("role", "option");
+      // Poza kolejnością Tab: do wyników wchodzi się strzałką ↓ z pola szukania.
+      // Wcześniej 8 trafień = 8 przystanków Tab wciśniętych między kontrolki okna,
+      // więc przejście z „Operatorów" do „Szukaj" wymagało przeklikania całej listy.
+      item.tabIndex = -1;
       const addr = document.createElement("span");
       addr.className = "qs-live-addr";
       addr.textContent = h.addr;
@@ -2569,7 +2629,7 @@ if (quickSearchPopupColumnsBtn) {
 }
 if (quickSearchPopupEl) {
   quickSearchPopupEl.addEventListener("click", (e) => {
-    if (e.target === quickSearchPopupEl) quickSearchPopupEl.classList.add("hidden");
+    if (e.target === quickSearchPopupEl) closeQuickSearchPopup();
   });
 }
 

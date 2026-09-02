@@ -16,7 +16,7 @@
     <link rel="apple-touch-icon" href="assets/images/apple-touch-icon.png?v=20260429-01" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin-ext.woff2" crossorigin />
-    <link rel="stylesheet" href="styles/app.css?v=20260902-05" />
+    <link rel="stylesheet" href="styles/app.css?v=20260902-06" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -1033,6 +1033,9 @@
               <div class="shortcut-row"><kbd>/</kbd> <span data-shortcut-text="quickSearchSlash">Szybkie szukanie (bez aktywnej komórki / poza polem)</span></div>
               <div class="shortcut-row"><kbd>Enter</kbd> <span data-shortcut-text="quickSearchEnter">w oknie szukania = Szukaj (zawsze, gdy popup otwarty)</span></div>
               <div class="shortcut-row"><kbd>↓</kbd> <kbd>↑</kbd> <span data-shortcut-text="quickSearchArrows">w szukaniu = nawigacja po podglądzie wyników</span></div>
+              <div class="shortcut-row"><kbd data-shortcut-text="spaceKey">Spacja</kbd> <span data-shortcut-text="qsSpaceToggle">przełącza pola wyboru w oknie szukania (np. „Operatory wyszukiwania")</span></div>
+              <div class="shortcut-row"><kbd>Tab</kbd> <span data-shortcut-text="qsTabCycle">krąży po kontrolkach okna szukania — lista wyników jest poza nim (wchodzisz w nią ↓)</span></div>
+              <div class="shortcut-row"><kbd>Esc</kbd> <span data-shortcut-text="qsEscBack">zamyka okno szukania i oddaje fokus tam, skąd je otwarto</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Enter</kbd> <span data-shortcut-text="filter">Filtruj</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>E</kbd> <span data-shortcut-text="exportCsv">Eksport CSV</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>S</kbd> <span data-shortcut-text="saveInPlace">Zapisz (w miejscu lub jako)</span></div>
@@ -1333,22 +1336,22 @@
          Dogrywa je leniwie ensureXlsxLibs() (app/workbook.js) przy pierwszym wczytaniu/zapisie
          pliku — apka bootuje bez ~512K JS. SW i tak je precache'uje (offline OK). -->
     <!-- defer: skrypty pobierają się równolegle i wykonują po sparsowaniu HTML, z zachowaniem kolejności -->
-    <script defer src="app/core.js?v=20260902-05"></script>
-    <script defer src="app/language.js?v=20260902-05"></script>
-    <script defer src="app/analysis.js?v=20260902-05"></script>
-    <script defer src="app/workbook.js?v=20260902-05"></script>
-    <script defer src="app/xlsx-patch.js?v=20260902-05"></script>
-    <script defer src="app/table.js?v=20260902-05"></script>
-    <script defer src="app/conditional-formatting.js?v=20260902-05"></script>
-    <script defer src="app/data-validation.js?v=20260902-05"></script>
-    <script defer src="app/derived-columns.js?v=20260902-05"></script>
-    <script defer src="app/formulas.js?v=20260902-05"></script>
-    <script defer src="app/edit-tools.js?v=20260902-05"></script>
-    <script defer src="app/ui-controls.js?v=20260902-05"></script>
+    <script defer src="app/core.js?v=20260902-06"></script>
+    <script defer src="app/language.js?v=20260902-06"></script>
+    <script defer src="app/analysis.js?v=20260902-06"></script>
+    <script defer src="app/workbook.js?v=20260902-06"></script>
+    <script defer src="app/xlsx-patch.js?v=20260902-06"></script>
+    <script defer src="app/table.js?v=20260902-06"></script>
+    <script defer src="app/conditional-formatting.js?v=20260902-06"></script>
+    <script defer src="app/data-validation.js?v=20260902-06"></script>
+    <script defer src="app/derived-columns.js?v=20260902-06"></script>
+    <script defer src="app/formulas.js?v=20260902-06"></script>
+    <script defer src="app/edit-tools.js?v=20260902-06"></script>
+    <script defer src="app/ui-controls.js?v=20260902-06"></script>
     <!-- Diagnostyka przewijania: NIE ładowana na starcie (czysty narzut ~29KB dla kodu,
          który i tak nic nie robi bez `?scrolltest`). Dogrywamy ją leniwie TYLKO gdy
          flaga jest włączona — loader w osobnym pliku, żeby CSP mogło zostać script-src 'self'. -->
-    <script defer src="app/debug-loaders.js?v=20260902-05"></script>
-    <script defer src="app/bootstrap.js?v=20260902-05"></script>
+    <script defer src="app/debug-loaders.js?v=20260902-06"></script>
+    <script defer src="app/bootstrap.js?v=20260902-06"></script>
   </body>
 </html>

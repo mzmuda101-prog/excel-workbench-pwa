@@ -392,6 +392,80 @@ async function run() {
   await sleep(200);
   await page.evaluate(() => setSelectionKind("row"));
 
+  // ── 13. Okno szybkiego szukania: obsługa z samej klawiatury ─────────────────
+  await page.evaluate(() => { closeQuickSearchPopup(); setSidebarOpen(false); });
+  await sleep(300);
+  await page.evaluate(() => { openQuickSearchPopup(); });
+  await sleep(200);
+  await page.keyboard.type(term);
+  await sleep(700);
+  const hits = await page.evaluate(() =>
+    document.querySelectorAll("#qsLiveResultsPopup .qs-live-item").length);
+  check("okno szukania ma trafienia na liście (warunek testu)", hits > 0, `${hits}`);
+
+  // Lista wyników poza kolejnością Tab — inaczej 8 trafień = 8 przystanków
+  // wciśniętych między kontrolki okna.
+  const liveTabbable = await page.evaluate(() =>
+    [...document.querySelectorAll("#qsLiveResultsPopup .qs-live-item")].filter((el) => el.tabIndex >= 0).length);
+  check("pozycje listy wyników są poza kolejnością Tab", liveTabbable === 0, `tabbowalnych: ${liveTabbable}`);
+
+  // Pełny obieg Tab po oknie musi wrócić do pola, nie uciec na <body>
+  await page.evaluate(() => document.getElementById("quickSearchPopupInput").focus());
+  let escapes = 0;
+  const visited = [];
+  for (let i = 0; i < 20; i++) {
+    await page.keyboard.press("Tab");
+    const info = await page.evaluate(() => ({
+      out: !document.getElementById("quickSearchPopup").contains(document.activeElement),
+      id: document.activeElement?.id || document.activeElement?.className,
+    }));
+    if (info.out) escapes++;
+    if (i < 7) visited.push(info.id);
+  }
+  check("Tab nie ucieka z okna szukania (pułapka fokusu)", escapes === 0, `ucieczek: ${escapes}`);
+  check("obieg Tab wraca do pola szukania", visited.includes("quickSearchPopupInput"), visited.join(" → "));
+
+  // „Operatory wyszukiwania": Spacja przełącza I widać, że się na tym stoi
+  const ops = await page.evaluate(() => {
+    const cb = document.getElementById("quickSearchPopupOperators");
+    cb.checked = false;
+    cb.focus();
+    const pill = cb.closest(".qs-operators-toggle");
+    return { przed: cb.checked, ring: getComputedStyle(pill).boxShadow !== "none" };
+  });
+  await page.keyboard.press("Space");
+  await sleep(200);
+  const opsAfter = await page.evaluate(() => document.getElementById("quickSearchPopupOperators").checked);
+  check("Spacja przełącza „Operatory wyszukiwania”", ops.przed === false && opsAfter === true,
+    `${ops.przed} → ${opsAfter}`);
+  check("pigułka „Operatory” pokazuje fokus klawiatury", ops.ring === true, `ring: ${ops.ring}`);
+
+  // Esc zamyka okno i oddaje fokus TAM, skąd je otwarto — nawet gdy w tabeli
+  // jest zaznaczona komórka (kiedyś Esc odznaczał ją i okno zostawało otwarte)
+  await page.evaluate(() => { closeQuickSearchPopup(); });
+  await sleep(200);
+  await page.evaluate(() => {
+    const cell = document.querySelector('#dataTable tbody tr[data-row-key] td[data-col-index="0"]');
+    syncGridRovingTabindex(cell); cell.focus();
+  });
+  const fromCell = await page.evaluate(() => ({
+    tag: document.activeElement?.tagName, col: document.activeElement?.dataset?.colIndex,
+  }));
+  await page.keyboard.press("Control+Shift+KeyF");
+  await sleep(400);
+  const inPopup = await page.evaluate(() => document.activeElement?.id);
+  await page.keyboard.press("Escape");
+  await sleep(300);
+  const backTo = await page.evaluate(() => ({
+    tag: document.activeElement?.tagName, col: document.activeElement?.dataset?.colIndex,
+    popupClosed: document.getElementById("quickSearchPopup").classList.contains("hidden"),
+  }));
+  check("Esc zamyka okno szukania nawet przy zaznaczonej komórce", backTo.popupClosed === true,
+    JSON.stringify(backTo));
+  check("…i oddaje fokus tam, skąd otwarto okno",
+    backTo.tag === fromCell.tag && backTo.col === fromCell.col,
+    `${JSON.stringify(fromCell)} → ${inPopup} → ${JSON.stringify(backTo)}`);
+
   console.log("\n─── WYNIKI ───");
   let failed = 0;
   for (const r of results) {

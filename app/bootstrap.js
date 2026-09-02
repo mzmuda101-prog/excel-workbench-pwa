@@ -625,10 +625,7 @@ document.addEventListener("keydown", (e) => {
   if (!popupOpen && !meta && !e.altKey && e.key === "/" && !shouldIgnoreTableArrowNavigation() && !focusedCellState) {
     if (currentHeaders.length && quickSearchPopupEl && quickSearchPopupInput) {
       e.preventDefault();
-      quickSearchPopupInput.value = searchQueryEl.value || "";
-      quickSearchPopupEl.classList.remove("hidden");
-      quickSearchPopupInput.focus();
-      quickSearchPopupInput.select();
+      openQuickSearchPopup();
       return;
     }
   }
@@ -755,16 +752,33 @@ document.addEventListener("keydown", (e) => {
   if (meta && e.shiftKey && e.key.toLowerCase() === "f") {
     e.preventDefault();
     if (quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
-      quickSearchPopupEl.classList.add("hidden");
+      closeQuickSearchPopup();
     } else if (currentHeaders.length && quickSearchPopupEl && quickSearchPopupInput) {
-      quickSearchPopupInput.value = searchQueryEl.value || "";
-      quickSearchPopupEl.classList.remove("hidden");
-      quickSearchPopupInput.focus();
-      quickSearchPopupInput.select();
+      openQuickSearchPopup();
     } else if (!currentHeaders.length) {
       toast(t("loadSheetToSearch"), "info");
     }
   }
+  // Escape najpierw zamyka NAKŁADKI (modal / okno szukania), a dopiero potem rusza
+  // zaznaczenie w tabeli. Odwrotna kolejność powodowała, że przy zaznaczonej komórce
+  // Esc odznaczał ją i robił `return` — okno szukania zostawało otwarte i nie dało się
+  // go zamknąć z klawiatury bez wcześniejszego odznaczenia komórki.
+  if (e.key === "Escape" && !columnPickerEl.classList.contains("hidden")) {
+    e.preventDefault();
+    closeColumnPicker();
+    return;
+  }
+  if (e.key === "Escape" && exportModalEl && !exportModalEl.classList.contains("hidden")) {
+    e.preventDefault();
+    closeExportModal();
+    return;
+  }
+  if (e.key === "Escape" && quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
+    e.preventDefault();
+    closeQuickSearchPopup(); // oddaje fokus tam, skąd otwarto okno
+    return;
+  }
+
   // Odznaczanie jak w arkuszach (tylko Escape — żadnych liter, by nie kolidowały
   // z wpisywaniem do komórki). Shift+Esc = pełne odznaczenie; Esc = progresywnie:
   // najpierw zwiń zakres do aktywnej komórki, dopiero potem zdejmij fokus wiersza.
@@ -787,21 +801,6 @@ document.addEventListener("keydown", (e) => {
     }
   }
 
-  if (e.key === "Escape" && !columnPickerEl.classList.contains("hidden")) {
-    e.preventDefault();
-    closeColumnPicker();
-    return;
-  }
-  if (e.key === "Escape" && exportModalEl && !exportModalEl.classList.contains("hidden")) {
-    e.preventDefault();
-    closeExportModal();
-    return;
-  }
-  if (e.key === "Escape" && quickSearchPopupEl && !quickSearchPopupEl.classList.contains("hidden")) {
-    e.preventDefault();
-    quickSearchPopupEl.classList.add("hidden");
-    return;
-  }
   if (e.key === "Escape" && isSidebarOpen()) {
     setSidebarOpen(false);
   }
