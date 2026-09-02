@@ -2722,6 +2722,47 @@ details.panel[open] > summary {
 }
 
 /* Operators toggle — kompaktowy pill z checkboxem */
+/* ── Segmenty zamiast list wyboru — TYLKO na urządzeniach dotykowych ─────────
+   Na iPadzie fokus klawiatury na <select> natychmiast otwiera systemowy picker;
+   nie ma API, żeby to powstrzymać, więc na tych urządzeniach podmieniamy samą
+   POWIERZCHNIĘ wejścia. Stan nadal trzyma <select> (ukryty), więc reszta kodu
+   czyta wartość dokładnie jak dotąd. Na laptopie segmenty nie istnieją. */
+.seg-group { display: none; }
+@media (pointer: coarse) {
+  .quick-search-popup .seg-group {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: var(--r-full);
+    overflow: hidden;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .quick-search-popup select.has-seg-replacement { display: none; }
+  .seg-group [role="radio"] {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--t), color var(--t);
+  }
+  .seg-group [role="radio"][aria-checked="true"] {
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  /* Obwódka na CAŁEJ grupie: :focus-within działa w WebKicie, w przeciwieństwie
+     do :focus-visible — patrz trackInputModality() w core.js. */
+  .seg-group:focus-within {
+    border-color: var(--accent-h);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .seg-group [role="radio"]:focus { outline: none; }
+}
+
 .qs-operators-toggle {
   display: inline-flex;
   align-items: center;

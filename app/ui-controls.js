@@ -1821,6 +1821,88 @@ function applyQuickSearch() {
   closeQuickSearchPopup();
 }
 
+// ── Segmenty zamiast <select> na dotyku (iPad) ──────────────────────────────
+// Problem: na iPadzie sam fokus klawiatury na <select> otwiera systemowy picker
+// i nie da się tego przechwycić — to zachowanie iPadOS, nie zdarzenie DOM.
+// Rozwiązanie: na urządzeniach dotykowych pokazujemy grupę segmentów (role=radiogroup),
+// a <select> zostaje w DOM jako JEDYNE źródło stanu — dzięki temu commitQuickSearch,
+// getNormalizedSelectValue, tłumaczenia opcji i cała reszta działają bez zmian.
+// Zachowanie klawiatury: cała grupa to JEDEN przystanek Tab (roving tabindex),
+// wybór strzałkami — czyli tyle samo Tabów co <select>, tylko bez pickera.
+function buildSegmentedFor(select) {
+  if (!select || !select.parentElement) return null;
+  let group = select.nextElementSibling;
+  if (!group || !group.classList.contains("seg-group")) {
+    group = document.createElement("div");
+    group.className = "seg-group";
+    group.setAttribute("role", "radiogroup");
+    select.insertAdjacentElement("afterend", group);
+    group.addEventListener("keydown", (e) => {
+      const opts = Array.from(group.querySelectorAll('[role="radio"]'));
+      const i = opts.indexOf(document.activeElement);
+      if (i < 0) return;
+      let next = null;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % opts.length;
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i - 1 + opts.length) % opts.length;
+      if (next === null) return;
+      e.preventDefault();
+      e.stopPropagation(); // nie oddawaj strzałek liście wyników ani tabeli
+      selectSegment(select, group, next, { focus: true });
+    });
+    group.addEventListener("click", (e) => {
+      const btn = e.target.closest('[role="radio"]');
+      if (!btn) return;
+      const opts = Array.from(group.querySelectorAll('[role="radio"]'));
+      selectSegment(select, group, opts.indexOf(btn), { focus: true });
+    });
+    // Zmiana wartości z zewnątrz (np. synchronizacja obu pasków) → odśwież segmenty.
+    select.addEventListener("change", () => syncSegmentedFrom(select));
+  }
+  group.setAttribute("aria-label", select.getAttribute("aria-label") || "");
+  const frag = document.createDocumentFragment();
+  Array.from(select.options).forEach((opt) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.setAttribute("role", "radio");
+    btn.dataset.value = opt.value;
+    btn.textContent = opt.textContent;
+    btn.tabIndex = -1; // roving: jedynka trafi na zaznaczony w syncSegmentedFrom
+    frag.appendChild(btn);
+  });
+  group.replaceChildren(frag);
+  select.classList.add("has-seg-replacement");
+  syncSegmentedFrom(select);
+  return group;
+}
+
+function selectSegment(select, group, index, options = {}) {
+  const opts = Array.from(group.querySelectorAll('[role="radio"]'));
+  if (index < 0 || index >= opts.length) return;
+  select.value = opts[index].dataset.value;
+  syncSegmentedFrom(select);
+  if (options.focus) opts[index].focus();
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function syncSegmentedFrom(select) {
+  const group = select?.nextElementSibling;
+  if (!group || !group.classList.contains("seg-group")) return;
+  const opts = Array.from(group.querySelectorAll('[role="radio"]'));
+  let activeIdx = opts.findIndex((o) => o.dataset.value === select.value);
+  if (activeIdx < 0) activeIdx = 0;
+  opts.forEach((o, i) => {
+    o.setAttribute("aria-checked", i === activeIdx ? "true" : "false");
+    o.tabIndex = i === activeIdx ? 0 : -1;
+  });
+}
+
+// Odbudowa po zmianie języka: etykiety segmentów pochodzą z <option>.
+function refreshQuickSearchSegments() {
+  [quickSearchPopupModeEl, quickSearchPopupActionEl].forEach((sel) => {
+    if (sel) buildSegmentedFor(sel);
+  });
+}
+
 // ── Okno szybkiego szukania: otwieranie/zamykanie z obsługą fokusu ──────────
 // Jedno miejsce zamiast pięciu rozsypanych `classList.add/remove("hidden")` —
 // dzięki temu okno zawsze pamięta, skąd je otwarto, i tam oddaje fokus po zamknięciu.
@@ -3256,6 +3338,7 @@ applyLanguage(currentLang);
 initIntroSplash();
 initTheme();
 ensureKeyboardReachable(document); // Safari: przyciski/checkboxy poza Tabem bez jawnego tabindex
+refreshQuickSearchSegments();   // iPad: segmenty zamiast <select> (CSS decyduje, czy widoczne)
 observeKeyboardReachability();   // …plus kontrolki dosypywane później przez panele analiz
 loadMaxRowsPreference();
 loadExcelLayoutPreference();

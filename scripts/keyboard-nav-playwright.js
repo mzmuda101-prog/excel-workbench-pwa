@@ -15,6 +15,8 @@
 // tam :focus-visible i obsluga fokusu zachowuja sie inaczej niz w Chromium.
 const playwright = require("playwright");
 const ENGINE = process.env.ENGINE || "chromium";
+// TOUCH=1 emuluje iPada (pointer: coarse) — tam <select> ustepuje miejsca segmentom.
+const TOUCH = process.env.TOUCH === "1";
 const chromium = playwright[ENGINE];
 const path = require("path");
 
@@ -29,7 +31,9 @@ function check(name, pass, detail) {
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ serviceWorkers: "block", viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext(TOUCH
+    ? { serviceWorkers: "block", ...playwright.devices["iPad Pro 11"] }
+    : { serviceWorkers: "block", viewport: { width: 1280, height: 900 } });
   await context.addInitScript(() => localStorage.setItem("introPlayed", "true"));
   const page = await context.newPage();
   const errors = [];
@@ -149,18 +153,24 @@ async function run() {
   check("live-lista ma realne trafienia (warunek testu)",
     liveInfo.visible && liveInfo.hits > 0, JSON.stringify(liveInfo) + ` term="${term}"`);
 
-  await page.evaluate(() => {
-    window.__prevented = null;
-    document.getElementById("quickSearchPopupMode").focus();
-  });
-  await page.keyboard.press("ArrowDown");
-  await sleep(200);
-  const selectEvt = await page.evaluate(() => ({
-    prevented: window.__prevented,
-    stillFocused: document.activeElement?.id === "quickSearchPopupMode",
-  }));
-  check("↓ na <select> Tryb NIE jest przechwytywane (select dostaje swoje zdarzenie)",
-    selectEvt.prevented === false && selectEvt.stillFocused, JSON.stringify(selectEvt));
+  // Na dotyku <select> jest ukryty (zastąpiony segmentami), więc ta asercja
+  // dotyczy wyłącznie profilu desktopowego.
+  const selectWidoczny = await page.evaluate(() =>
+    getComputedStyle(document.getElementById("quickSearchPopupMode")).display !== "none");
+  if (selectWidoczny) {
+    await page.evaluate(() => {
+      window.__prevented = null;
+      document.getElementById("quickSearchPopupMode").focus();
+    });
+    await page.keyboard.press("ArrowDown");
+    await sleep(200);
+    const selectEvt = await page.evaluate(() => ({
+      prevented: window.__prevented,
+      stillFocused: document.activeElement?.id === "quickSearchPopupMode",
+    }));
+    check("↓ na <select> Tryb NIE jest przechwytywane (select dostaje swoje zdarzenie)",
+      selectEvt.prevented === false && selectEvt.stillFocused, JSON.stringify(selectEvt));
+  }
 
   // ── 6. REGRESJA: ↓ z POLA szukania nadal wchodzi na listę wyników ─────────────
   await page.evaluate(() => document.getElementById("quickSearchPopupInput").focus());
@@ -487,12 +497,69 @@ async function run() {
   const obieg = [];
   for (let i = 0; i < 7; i++) {
     await page.keyboard.press("Tab");
-    obieg.push(await page.evaluate(() => document.activeElement?.id || "‹POZA›"));
+    obieg.push(await page.evaluate(() => {
+      const a = document.activeElement;
+      // Na dotyku dwa pierwsze przystanki to grupy segmentów zamiast <select>
+      if (a?.getAttribute && a.getAttribute("role") === "radio") {
+        return a.closest(".seg-group")?.previousElementSibling?.id || "seg";
+      }
+      return a?.id || "‹POZA›";
+    }));
   }
   const oczekiwany = ["quickSearchPopupMode", "quickSearchPopupAction", "quickSearchPopupOperators",
     "qsAllSheetsPopup", "quickSearchPopupColumnsBtn", "quickSearchPopupBtn", "quickSearchPopupInput"];
-  check("obieg Tab w oknie szukania jest taki sam w każdym silniku",
+  check("obieg Tab w oknie szukania jest taki sam w każdym silniku i na dotyku",
     obieg.join(",") === oczekiwany.join(","), obieg.join(" → "));
+  await page.evaluate(() => closeQuickSearchPopup());
+
+  // ── 15. Segmenty zamiast <select> na dotyku (iPad) ──────────────────────────
+  // Na iPadzie fokus na <select> otwiera systemowy picker i nie da sie tego
+  // przechwycic — wiec na dotyku podmieniamy sama powierzchnie wejscia.
+  await page.evaluate(() => { closeQuickSearchPopup(); openQuickSearchPopup(); });
+  await sleep(300);
+  const seg = await page.evaluate(() => {
+    const sel = document.getElementById("quickSearchPopupAction");
+    const grp = sel.nextElementSibling;
+    return {
+      coarse: matchMedia("(pointer: coarse)").matches,
+      selectWidoczny: getComputedStyle(sel).display !== "none",
+      segmentyWidoczne: !!grp && grp.classList.contains("seg-group") && getComputedStyle(grp).display !== "none",
+      opcje: grp ? grp.querySelectorAll('[role="radio"]').length : 0,
+      etykiety: [...document.querySelectorAll("#quickSearchPopup .seg-group")].map((g) => g.getAttribute("aria-label")),
+    };
+  });
+  if (seg.coarse) {
+    check("na dotyku <select> ustępuje miejsca segmentom",
+      seg.segmentyWidoczne === true && seg.selectWidoczny === false, JSON.stringify(seg));
+    check("grupy segmentów mają własne, różne etykiety",
+      seg.etykiety.length === 2 && seg.etykiety[0] !== seg.etykiety[1], JSON.stringify(seg.etykiety));
+    // Strzałka zmienia wartość ukrytego <select> — reszta kodu czyta ją bez zmian
+    const przed = await page.evaluate(() => {
+      const grp = document.getElementById("quickSearchPopupAction").nextElementSibling;
+      grp.querySelector('[role="radio"][tabindex="0"]').focus();
+      return document.getElementById("quickSearchPopupAction").value;
+    });
+    await page.keyboard.press("ArrowRight");
+    await sleep(200);
+    const po = await page.evaluate(() => document.getElementById("quickSearchPopupAction").value);
+    check("strzałka na segmentach zmienia wartość źródłowego <select>", przed !== po, `${przed} → ${po}`);
+    // Cała grupa to JEDEN przystanek Tab — inaczej lek byłby gorszy od choroby
+    await page.evaluate(() => document.getElementById("quickSearchPopupInput").focus());
+    const stops = [];
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press("Tab");
+      stops.push(await page.evaluate(() => {
+        const a = document.activeElement;
+        return a.getAttribute && a.getAttribute("role") === "radio"
+          ? "seg:" + a.closest(".seg-group").getAttribute("aria-label") : (a.id || a.tagName);
+      }));
+    }
+    check("każda grupa segmentów to jeden przystanek Tab",
+      new Set(stops).size === stops.length, stops.join(" → "));
+  } else {
+    check("na laptopie zostają listy wyboru (segmenty ukryte)",
+      seg.selectWidoczny === true && seg.segmentyWidoczne === false, JSON.stringify(seg));
+  }
   await page.evaluate(() => closeQuickSearchPopup());
 
   console.log(`\n─── WYNIKI (${ENGINE}) ───`);

@@ -1318,6 +1318,8 @@ const STATIC_TRANSLATIONS = {
     searchInTable: "Szukaj w tabeli",
     quickSearchPopupPlaceholder: "np. faktura...",
     quickSearchPopupModeAria: "Tryb szybkiego szukania w oknie",
+    quickSearchActionAria: "Akcja szybkiego szukania",
+    quickSearchPopupActionAria: "Akcja szybkiego szukania w oknie",
     quickSearchHint: "Enter – zastosuj · ↓↑ – wyniki · Esc – zamknij · / – otwórz",
     dateBetween: "Między",
     dateBefore: "DO",
@@ -1538,6 +1540,8 @@ const STATIC_TRANSLATIONS = {
     searchInTable: "Search in table",
     quickSearchPopupPlaceholder: "e.g. invoice...",
     quickSearchPopupModeAria: "Quick search mode in dialog",
+    quickSearchActionAria: "Quick search action",
+    quickSearchPopupActionAria: "Quick search action in dialog",
     quickSearchHint: "Enter – apply · ↓↑ – results · Esc – close · / – open",
     dateBetween: "Between",
     dateBefore: "Before",
@@ -2005,8 +2009,9 @@ function applyStaticTranslations() {
   setAttr("#quickSearchPopup", "aria-label", copy.quickSearchDialogAria);
   setAttr("#quickSearchMode", "aria-label", copy.quickSearchAria);
   setAttr("#quickSearchPopupMode", "aria-label", copy.quickSearchPopupModeAria);
-  setAttr("#quickSearchAction", "aria-label", copy.quickSearchAria);
-  setAttr("#quickSearchPopupAction", "aria-label", copy.quickSearchPopupModeAria);
+  // Obie listy „Akcja" dostawały etykietę „Tryb" — czytnik ekranu ogłaszał je błędnie.
+  setAttr("#quickSearchAction", "aria-label", copy.quickSearchActionAria);
+  setAttr("#quickSearchPopupAction", "aria-label", copy.quickSearchPopupActionAria);
   setAttr("#quickSearchColumnsBtn", "data-hint", copy.quickSearchColumnsTitle);
   setAttr("#closePicker", "aria-label", copy.close);
 
@@ -2210,6 +2215,9 @@ function applySelectTranslations() {
       if (i18nKey) option.textContent = t(i18nKey);
     });
   });
+
+  // Segmenty na dotyku biorą etykiety z <option> — po przetłumaczeniu trzeba je odbudować.
+  if (typeof refreshQuickSearchSegments === "function") refreshQuickSearchSegments();
 
   const formulaFunctionPlaceholder = document.querySelector("#formulaFunctionFilter option[value=\"\"]");
   if (formulaFunctionPlaceholder) formulaFunctionPlaceholder.textContent = t("allFunctions");
