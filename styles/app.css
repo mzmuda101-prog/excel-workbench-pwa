@@ -1200,6 +1200,37 @@ body.splashing {
   pointer-events: auto;
 }
 
+/* Skip-link — standardowy wzorzec: schowany nad krawędzią ekranu, zjeżdża dopiero
+   gdy dostanie fokus z klawiatury. Dla myszy i dotyku nie istnieje wizualnie,
+   a dla klawiatury zamienia ~59 Tabów w jeden. */
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 200;
+  padding: 9px 14px;
+  border: 1px solid var(--accent-h);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  transform: translateY(calc(-100% - 20px));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform var(--t), opacity var(--t);
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+  outline: 2px solid var(--accent-h);
+  outline-offset: 2px;
+}
+
 .sidebar-scrim {
   position: fixed;
   inset: 0;
@@ -3303,6 +3334,44 @@ tbody td.cell-selected.cell-selected {
 }
 [data-theme="dark"] tbody td.cell-selected.cell-selected { /* Te powtórzenie to podbicie specyficzności, by komórka była nad wierszem - taki trick ;) */
   background: color-mix(in srgb, var(--accent) 42%, var(--panel)) !important;
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+/* Tryb „Sama komórka" (Widok → Zaznaczanie strzałkami): aktywna komórka niesie całe
+   podświetlenie, wiersz zostaje nietknięty. Świadomie ta sama ramka co .cell-selected
+   — to wciąż „aktywny koniec zaznaczenia", więc nie mnożymy znaczeń kolorów. */
+tbody td.cell-active.cell-active {
+  background: color-mix(in srgb, var(--accent-light) 78%, white) !important;
+  box-shadow:
+    inset 0 0 0 2px var(--accent-h),
+    0 0 0 1px color-mix(in srgb, var(--accent-h) 40%, transparent);
+  border-radius: 5px;
+}
+[data-theme="dark"] tbody td.cell-active.cell-active {
+  background: color-mix(in srgb, var(--accent) 42%, var(--panel)) !important;
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+tbody td.cell-active.cell-light-text { color: var(--ink) !important; }
+[data-theme="dark"] tbody td.cell-active.cell-dark-text { color: var(--ink) !important; }
+
+/* Aktywna komórka pod fokusem KLAWIATURY. Dotąd ruch strzałkami podświetlał tylko
+   cały wiersz (.row-focused) — nie było widać, w której kolumnie się stoi.
+   :focus-visible = przeglądarka rysuje to po Tabie/strzałkach, ale NIE po kliknięciu
+   myszą ani tapnięciu, więc dotychczasowy wygląd przy myszy/dotyku zostaje bez zmian.
+   Sam :focus gasimy, żeby natywna obwódka nie dublowała się z naszą. */
+#dataTable tbody td:focus { outline: none; }
+#dataTable tbody td:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 2px var(--accent-h),
+    0 0 0 1px color-mix(in srgb, var(--accent-h) 40%, transparent);
+  border-radius: 5px;
+}
+[data-theme="dark"] #dataTable tbody td:focus-visible {
   box-shadow:
     inset 0 0 0 2px var(--accent),
     0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);

@@ -1235,7 +1235,10 @@ const STATIC_TRANSLATIONS = {
     arrows: "Strzałki",
     clickKey: "Klik",
     clickCell: "zaznacz jedną komórkę (aktywną); kolejny klik resetuje zaznaczenie",
-    arrowFocus: "przesuwasz aktywną komórkę (resetuje zaznaczenie)",
+    arrowFocus: "ruszasz tym, co masz zaznaczone — wierszem albo pojedynczą komórką",
+    arrowRowScroll: "przy zaznaczonym wierszu przewijają tabelę w bok (wiersz zostaje zaznaczony)",
+    spaceKey: "Spacja",
+    toggleSelectionKind: "przełącza zaznaczenie: cały wiersz ↔ sama komórka (bez myszy)",
     or: "LUB",
     clearRowFocus: "Zwiń zaznaczenie do komórki, a potem odznacz fokus",
     afterCellClick: "(po wczesniejszym kliknieciu na komorke) =",
@@ -1254,6 +1257,10 @@ const STATIC_TRANSLATIONS = {
     quickSearchEnter: "w oknie szukania = Szukaj (zawsze, gdy popup otwarty)",
     quickSearchArrows: "w szukaniu = nawigacja po podglądzie wyników",
     columns: "Kolumny",
+    skipToTable: "Przejd\u017a do tabeli",
+    regionJump: "Skok do panelu / paska szukania / tabeli",
+    regionCycle: "To samo cyklicznie (Shift+F6 wstecz) \u2014 alias dla du\u017cych klawiatur",
+    gridTabEnter: "wchodzi do tabeli na aktywn\u0105 kom\u00f3rk\u0119 \u2014 dalej ruszasz strza\u0142kami, bez klikania",
     theme: "Motyw",
     closeModalPanel: "Zamknij modal / panel",
     orStrong: "LUB",
@@ -1445,7 +1452,10 @@ const STATIC_TRANSLATIONS = {
     arrows: "Arrow keys",
     clickKey: "Click",
     clickCell: "select one cell (active); another click resets the selection",
-    arrowFocus: "move the active cell (resets the selection)",
+    arrowFocus: "move whatever is selected — the row or a single cell",
+    arrowRowScroll: "with a row selected they scroll the table sideways (the row stays selected)",
+    spaceKey: "Space",
+    toggleSelectionKind: "toggles the selection: whole row \u2194 single cell (no mouse needed)",
     or: "OR",
     clearRowFocus: "Collapse selection to the cell, then clear focus",
     afterCellClick: "(after clicking a cell) =",
@@ -1464,6 +1474,10 @@ const STATIC_TRANSLATIONS = {
     quickSearchEnter: "in search dialog = Search (whenever the popup is open)",
     quickSearchArrows: "in search = navigate live result preview",
     columns: "Columns",
+    skipToTable: "Skip to table",
+    regionJump: "Jump to the panel / search bar / table",
+    regionCycle: "Same, cycling (Shift+F6 goes back) \u2014 alias for full-size keyboards",
+    gridTabEnter: "enters the table at the active cell \u2014 then move with arrows, no clicking",
     theme: "Theme",
     closeModalPanel: "Close modal / panel",
     orStrong: "OR",
@@ -1828,6 +1842,7 @@ function applyStaticTranslations() {
   setAttr("#themeToggle", "aria-label", t("themeToggleAria"));
   setAttr("#heroGrip", "aria-label", t("heroGripAria"));
 
+  setText("#skipToTable", copy.skipToTable);
   setText("#group-data-title", copy.groupData);
   setText("#group-work-title", copy.groupWork);
   setText("#group-inspect-title", copy.groupInspect);

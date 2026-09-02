@@ -153,18 +153,103 @@ function isSingleCellSelection() {
     focusedCellState.colIndex0 === selectedCellState.colIndex0);
 }
 
+// --- Fokus klawiatury w siatce (roving tabindex) -----------------------------
+// Model zaznaczania zostaje w JS (focusedCellState/selectedCellState) — tu tylko
+// dokładamy PRAWDZIWY fokus przeglądarki na aktywnej komórce. Po co:
+//  1. Tab wchodzi do tabeli (dotąd kursor komórki dało się postawić WYŁĄCZNIE klikiem),
+//  2. shouldIgnoreTableArrowNavigation() przepuszcza <td> (to nie input/button),
+//     więc strzałki działają też po nawigacji Tabem — dotąd milkły na każdym przycisku,
+//  3. :focus-visible rysuje obwódkę tylko przy obsłudze z klawiatury → mysz i dotyk
+//     wyglądają dokładnie jak wcześniej.
+// Dokładnie jedna komórka ma tabindex="0" (reszta jest poza kolejnością Tab), więc
+// Tab/Shift+Tab wchodzi i wychodzi z siatki jednym skokiem, a nie przez tysiące komórek.
+let gridFocusSyncing = false; // strażnik pętli: nasz .focus() → focusin → setFocusedCell → .focus()
+
+function firstNavigableCell() {
+  return tbodyEl.querySelector("tr[data-row-key] td[data-col-index]");
+}
+
+// Jedyny punkt wejścia Tabem: aktywna komórka, a gdy jej nie ma — pierwsza w widoku.
+function syncGridRovingTabindex(cell) {
+  const target = cell || findCellElement(focusedCellState) || firstNavigableCell();
+  tbodyEl.querySelectorAll('td[tabindex="0"]').forEach((td) => {
+    if (td !== target) td.removeAttribute("tabindex");
+  });
+  if (target && target.getAttribute("tabindex") !== "0") target.setAttribute("tabindex", "0");
+  return target;
+}
+
+// preventScroll: przewijaniem steruje scrollIntoView({block:"nearest"}) niżej —
+// natywny scroll przy focus() potrafiłby wyrwać wiersz na środek ekranu.
+function focusGridCell(cell) {
+  if (!cell || document.activeElement === cell) return;
+  gridFocusSyncing = true;
+  try {
+    cell.focus({ preventScroll: true });
+  } catch {
+    cell.focus();
+  } finally {
+    gridFocusSyncing = false;
+  }
+}
+
+function gridHasDomFocus() {
+  const active = document.activeElement;
+  return !!(active && tbodyEl.contains(active));
+}
+
+// Bieżący poziom zaznaczenia. Ustawiany przez gest (klik / Shift+klik / Shift+strzałka
+// / Shift+Spacja), nie przez ustawienie — patrz komentarz przy selectionKind w core.js.
+function isCellSelectionMode() {
+  return selectionKind === "cell";
+}
+
+function setSelectionKind(kind, options = {}) {
+  const next = kind === "cell" ? "cell" : "row";
+  if (selectionKind === next && !options.force) return;
+  selectionKind = next;
+  if (options.repaint !== false) syncFocusedCellInDom({ clearMissing: false });
+}
+
+// Przewijanie tabeli w bok — ←/→ przy zaznaczonym wierszu. Zwraca true tylko gdy
+// realnie było dokąd przewinąć, żeby handler nie zjadał klawisza bez powodu.
+function scrollTableHorizontally(dir) {
+  if (!tableWrapEl) return false;
+  const max = tableWrapEl.scrollWidth - tableWrapEl.clientWidth;
+  if (max <= 1) return false;
+  const before = tableWrapEl.scrollLeft;
+  const step = Math.max(80, Math.round(tableWrapEl.clientWidth * 0.2));
+  tableWrapEl.scrollLeft = Math.max(0, Math.min(max, before + dir * step));
+  return tableWrapEl.scrollLeft !== before;
+}
+
 function syncFocusedCellInDom(options = {}) {
   tbodyEl.querySelectorAll("tr.row-focused").forEach((row) => row.classList.remove("row-focused"));
+  tbodyEl.querySelectorAll("td.cell-active").forEach((td) => td.classList.remove("cell-active"));
   const rowEl = findFocusedRowElement();
   if (!rowEl) {
     if (options.clearMissing !== false) focusedCellState = null;
+    syncGridRovingTabindex();
     return null;
   }
-  if (!isSingleCellSelection()) rowEl.classList.add("row-focused");
+  if (!isSingleCellSelection() && !isCellSelectionMode()) rowEl.classList.add("row-focused");
   const cell = findCellElement(focusedCellState);
+  // UWAGA: czytamy fokus PRZED syncGridRovingTabindex. Zdjęcie tabindex z komórki,
+  // która ma właśnie fokus, natychmiast go gubi (activeElement → <body>) — sprawdzane
+  // po tej linii dawałoby zawsze false i strzałki zostawiałyby fokus na body.
+  const keepDomFocus = options.focusDom || gridHasDomFocus();
   if (options.scroll) {
     (cell || rowEl).scrollIntoView({ block: "nearest", inline: "nearest" });
   }
+  syncGridRovingTabindex(cell);
+  // W trybie „Sama komórka" aktywna komórka niesie całe podświetlenie — niezależnie
+  // od tego, czy wszedłeś do niej myszą, dotykiem czy strzałką (obwódka :focus-visible
+  // pokazuje się tylko po klawiaturze, więc sama nie wystarczy).
+  if (cell && isCellSelectionMode()) cell.classList.add("cell-active");
+  // Fokus DOM przenosimy tylko wtedy, gdy user faktycznie jest w siatce (albo jawnie
+  // o to prosimy). Bez tego renderTable po każdym wpisanym znaku w szybkim szukaniu
+  // kradłby fokus z pola do tabeli.
+  if (cell && keepDomFocus) focusGridCell(cell);
   return rowEl;
 }
 
@@ -1368,6 +1453,10 @@ function renderTable(modelOrHeaders, maybeRows) {
   }
 
   showTable();
+  // Czy user siedzi w siatce PRZED przebudową? replaceChildren usuwa ofokusowaną
+  // komórkę → activeElement leci na <body>, więc po renderze nie dałoby się już tego
+  // odczytać. Zapamiętujemy, żeby po sortowaniu/filtrze oddać fokus tam, gdzie był.
+  const hadGridFocus = gridHasDomFocus();
   theadEl.replaceChildren();
   tbodyEl.replaceChildren();
 
@@ -1468,7 +1557,8 @@ function renderTable(modelOrHeaders, maybeRows) {
   rowsShown.forEach((row, rowPos) => {
     const tr = document.createElement("tr");
     tr.dataset.rowKey = getRowSelectionKey(row);
-    if (focusedCellState && focusedCellState.rowKey === tr.dataset.rowKey && !isSingleCellSelection()) tr.classList.add("row-focused");
+    if (focusedCellState && focusedCellState.rowKey === tr.dataset.rowKey
+      && !isSingleCellSelection() && !isCellSelectionMode()) tr.classList.add("row-focused");
     if (cellStyleShowSubheaders && row.isSubheader) tr.classList.add("row-subheader");
     if (quickSearchHighlightMode && matchedRowIndexes.size > 0) {
       if (matchedRowIndexes.has(row.rowIndex0)) {
@@ -1537,7 +1627,7 @@ function renderTable(modelOrHeaders, maybeRows) {
   tbodyEl.appendChild(tbodyFragment);
 
   updateTableStatus(model);
-  syncFocusedCellInDom({ clearMissing: true });
+  syncFocusedCellInDom({ clearMissing: true, focusDom: hadGridFocus });
   syncSelectedCellInDom({ clearMissing: true });
   syncRangeHighlightInDom();
   updateCellStats();
@@ -1752,5 +1842,23 @@ if (theadEl && !theadEl.dataset.sortClickBound) {
     if (tableViewMode !== "long") sortRows();
     updateSortControls();
     renderActiveTable();
+  });
+}
+
+// Wejście do siatki z klawiatury: Tab ląduje na komórce z tabindex="0" (roving),
+// a ten listener przekłada fokus DOM na model zaznaczania. Jeden listener na tbody
+// — przeżywa replaceChildren w renderTable, tak jak sort na thead.
+// gridFocusSyncing odcina pętlę: nasz focusGridCell() → focusin → setFocusedCell() → …
+if (tbodyEl && !tbodyEl.dataset.gridFocusBound) {
+  tbodyEl.dataset.gridFocusBound = "1";
+  tbodyEl.addEventListener("focusin", (e) => {
+    if (gridFocusSyncing) return;
+    const td = e.target?.closest?.("td[data-col-index]");
+    if (!td) return; // m.in. fokus inputa edytora komórki — tam stan jest już ustawiony
+    const rowKey = td.parentElement?.dataset.rowKey || "";
+    const colIndex0 = parseInt(td.dataset.colIndex || "", 10);
+    if (!rowKey || !Number.isFinite(colIndex0)) return;
+    if (focusedCellState && focusedCellState.rowKey === rowKey && focusedCellState.colIndex0 === colIndex0) return;
+    setFocusedCell(rowKey, colIndex0, { scroll: false });
   });
 }

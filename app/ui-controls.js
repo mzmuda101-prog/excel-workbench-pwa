@@ -246,6 +246,25 @@ function setSidebarOpen(open) {
   const stateChanged = prevSidebarOpenState !== null && prevSidebarOpenState !== shouldOpen;
   prevSidebarOpenState = shouldOpen;
   rootEl.classList.toggle("sidebar-open", shouldOpen);
+  // Zwinięty sidebar jest tylko odsunięty (transform + opacity:0) — a to NIE usuwa go
+  // z kolejności Tab. Bez inert klawiatura przechodziła przez ~35 niewidocznych
+  // kontrolek (17 <summary> + zawartość paneli otwartych domyślnie) zanim w ogóle
+  // dotarła do tabeli. inert zdejmuje je z Taba i z czytników ekranu, nie ruszając
+  // animacji ani niczego, co widać.
+  if (sidebarEl) {
+    if (shouldOpen) {
+      sidebarEl.removeAttribute("inert");
+    } else {
+      // Fokus w środku chowanego panelu trzeba wyprowadzić samemu — inaczej inert
+      // zostawia go „osierocony" na <body> i kolejny Tab startuje od początku strony.
+      if (sidebarEl.contains(document.activeElement)) {
+        const fallback = panelToggle || panelHandle;
+        if (fallback) fallback.focus();
+        else document.activeElement.blur();
+      }
+      sidebarEl.setAttribute("inert", "");
+    }
+  }
   if (sidebarScrim) sidebarScrim.classList.toggle("hidden", !shouldOpen);
   if (panelToggle) {
     panelToggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
@@ -2812,6 +2831,9 @@ tbodyEl.addEventListener("click", (e) => {
   //  - brak kotwicy → od razu zaznacz pojedynczą komórkę (zakres 1×1), bez kroku
   //    „najpierw cały wiersz, dopiero potem komórka".
   if (e.shiftKey) {
+    // Shift+klik = poziom komórki: bez kotwicy zaznacza jedną komórkę, z kotwicą
+    // rozciąga prostokąt. Od teraz ustala też, czym ruszają zwykłe strzałki.
+    setSelectionKind("cell", { repaint: false });
     if (!focusedCellState) {
       setFocusedCell(rowKey, colIndex0, { scroll: false });
     }
@@ -2819,6 +2841,8 @@ tbodyEl.addEventListener("click", (e) => {
     clearTextSelection(); // sprzątnij ewentualną resztkę zaznaczenia tekstu
     return;
   }
+  // Zwykły klik zawsze wraca na poziom wiersza — patrz model gestów w core.js.
+  setSelectionKind("row", { repaint: false });
   setFocusedCell(rowKey, colIndex0, { scroll: false });
 });
 

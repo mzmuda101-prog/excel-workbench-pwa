@@ -487,6 +487,100 @@ if (autoHeaderRowEl) {
   });
 }
 
+// ── Skoki między regionami (obsługa bez myszy) ───────────────────────────────
+// Przy 17 panelach w sidebarze jedyną drogą do tabeli był Tab przez wszystko.
+// Główne skróty siedzą na CYFRACH, nie na F1-F12: na klawiaturach do tabletów rząd
+// funkcyjny bywa dostępny dopiero przez Fn (albo go nie ma). F6 zostaje jako alias
+// dla desktopu. Rozpoznajemy po e.code (fizyczny klawisz) — e.key przy Alt potrafi
+// zwrócić złożony znak (macOS: Option+s → "ß"), a na polskim układzie AltGr+litera
+// to ą/ó/ś, więc litery pod Altem odpadają z definicji.
+const APP_REGIONS = ["panel", "toolbar", "grid"];
+const REGION_DIGIT_CODES = { Digit1: "panel", Digit2: "toolbar", Digit3: "grid" };
+
+function firstFocusableIn(container) {
+  if (!container) return null;
+  const candidates = container.querySelectorAll(
+    "summary, button:not([disabled]), input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex^='-'])"
+  );
+  for (const el of candidates) {
+    if (el.closest(".hidden")) continue;
+    if (el.offsetParent === null && getComputedStyle(el).position !== "fixed") continue;
+    return el;
+  }
+  return null;
+}
+
+function currentAppRegion() {
+  const active = document.activeElement;
+  if (!active || active === document.body) return null;
+  if (sidebarEl && sidebarEl.contains(active)) return "panel";
+  if (tbodyEl && tbodyEl.contains(active)) return "grid";
+  const toolbar = document.querySelector(".table-toolbar");
+  if (toolbar && toolbar.contains(active)) return "toolbar";
+  return null;
+}
+
+// Zwraca PRAWDĘ dopiero gdy fokus faktycznie usiadł na celu. To nie jest ozdobnik:
+// element bywa niewidoczny (display:none), a wtedy .focus() jest cichym no-op.
+// Ślepe zwracanie true zatrzymywało cykl F6 na pustym regionie — na desktopie pasek
+// nad tabelą jest ukryty (szybkie szukanie żyje w trybie czytania, a #toolbarToggle
+// to kontrolka mobilna), więc F6 grzązł i nigdy nie dochodził do tabeli.
+function focusIfPossible(el) {
+  if (!el) return false;
+  el.focus();
+  return document.activeElement === el;
+}
+
+function focusAppRegion(region) {
+  if (region === "panel") {
+    if (typeof isSidebarOpen === "function" && !isSidebarOpen()) setSidebarOpen(true);
+    // setSidebarOpen zdejmuje inert synchronicznie, więc focus łapie od razu —
+    // nie trzeba czekać na koniec animacji wsuwania.
+    return focusIfPossible(firstFocusableIn(sidebarEl));
+  }
+  if (region === "toolbar") {
+    // Najpierw szybkie szukanie, jeśli pasek jest odsłonięty; inaczej pierwsza
+    // widoczna kontrolka paska nad tabelą (Wide-to-Long, układ z Excela itd.).
+    const preferred = quickSearchWrap && !quickSearchWrap.classList.contains("hidden")
+      ? firstFocusableIn(quickSearchWrap)
+      : null;
+    return focusIfPossible(preferred || firstFocusableIn(document.querySelector(".table-toolbar")));
+  }
+  if (region === "grid") {
+    if (!tbodyEl) return false;
+    const cell = (typeof findCellElement === "function" ? findCellElement(focusedCellState) : null)
+      || tbodyEl.querySelector("tr[data-row-key] td[data-col-index]");
+    if (!cell) return false;
+    // Bez tabindex focus() na <td> jest no-op — upewnij się, że to właśnie ta komórka
+    // trzyma teraz punkt wejścia siatki.
+    if (typeof syncGridRovingTabindex === "function") syncGridRovingTabindex(cell);
+    return focusIfPossible(cell);
+  }
+  return false;
+}
+
+// F6 / Shift+F6: kolejny (poprzedni) region względem tego, w którym stoi fokus.
+// Regiony bez treści (np. pasek szukania przed wczytaniem pliku) przeskakujemy.
+function cycleAppRegion(dir) {
+  const len = APP_REGIONS.length;
+  const from = currentAppRegion();
+  const start = from ? APP_REGIONS.indexOf(from) : (dir > 0 ? -1 : 0);
+  for (let step = 1; step <= len; step++) {
+    const idx = ((start + dir * step) % len + len) % len;
+    if (focusAppRegion(APP_REGIONS[idx])) return true;
+  }
+  return false;
+}
+
+// Skip-link: pierwszy przystanek Tab na stronie skacze wprost na aktywną komórkę.
+// Gdy arkusza jeszcze nie ma, oddaj fokus panelowi (tam jest wczytywanie pliku).
+const skipToTableBtn = document.getElementById("skipToTable");
+if (skipToTableBtn) {
+  skipToTableBtn.addEventListener("click", () => {
+    if (!focusAppRegion("grid")) focusAppRegion("panel");
+  });
+}
+
 document.addEventListener("keydown", (e) => {
   const meta = e.ctrlKey || e.metaKey;
   const popupOpen = typeof isQuickSearchPopupOpen === "function"
@@ -498,7 +592,16 @@ document.addEventListener("keydown", (e) => {
   // fokusie otwierał edytor komórki zamiast szukać.
   if (popupOpen && !meta && !e.altKey) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      if (typeof navigateQsLiveResults === "function" && navigateQsLiveResults(e.key === "ArrowDown" ? 1 : -1)) {
+      // Tylko z pola szukania albo z samej listy trafień. Wcześniej ten warunek łapał
+      // KAŻDY cel przy otwartej liście — więc ↓/↑ na <select> „Tryb"/„Akcja" nie
+      // zmieniało opcji, tylko uciekało do wyników. Na klawiaturze bez myszy te dwa
+      // selecty były przez to praktycznie nie do przestawienia.
+      const target = e.target;
+      const fromQsInput = target === quickSearchPopupInput || target === quickSearchEl;
+      const fromLiveItem = !!(target && typeof target.closest === "function" && target.closest(".qs-live-item"));
+      if ((fromQsInput || fromLiveItem)
+        && typeof navigateQsLiveResults === "function"
+        && navigateQsLiveResults(e.key === "ArrowDown" ? 1 : -1)) {
         e.preventDefault();
         return;
       }
@@ -532,14 +635,27 @@ document.addEventListener("keydown", (e) => {
 
   if (!meta && !e.altKey && !shouldIgnoreTableArrowNavigation()) {
     let handled = false;
-    if (e.shiftKey) {
+    // UWAGA: `e.shiftKey` jest prawdziwe także dla samego klawisza Shift, więc bez tej
+    // bramki gołe przytrzymanie Shifta zakładało zaznaczenie 1×1 i przełączało tryb
+    // na komórkowy, zanim padła jakakolwiek strzałka.
+    const isArrowKey = e.key === "ArrowUp" || e.key === "ArrowDown"
+      || e.key === "ArrowLeft" || e.key === "ArrowRight";
+    if (e.shiftKey && isArrowKey) {
+      // Zakres jest z natury operacją na komórkach — Shift zawsze schodzi na ten poziom.
       if (!selectedCellState && focusedCellState) {
         setSelectedCell(focusedCellState.rowKey, focusedCellState.colIndex0, { scroll: false });
       }
+      setSelectionKind("cell", { repaint: false });
       if (e.key === "ArrowUp") handled = moveSelectedCell(-1, 0);
       if (e.key === "ArrowDown") handled = moveSelectedCell(1, 0);
       if (e.key === "ArrowLeft") handled = moveSelectedCell(0, -1);
       if (e.key === "ArrowRight") handled = moveSelectedCell(0, 1);
+    } else if (e.shiftKey) {
+      // Shift bez strzałki — nic tu po nas (Shift+Spacja obsłużona niżej).
+    } else if (!isCellSelectionMode() && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      // Zaznaczony jest cały wiersz — w bok nie ma czym ruszać, więc ←/→ przewijają
+      // widok. Zaznaczenie zostaje nietknięte (patrz selectionKind w core.js).
+      handled = scrollTableHorizontally(e.key === "ArrowRight" ? 1 : -1);
     } else {
       if (e.key === "ArrowUp") handled = moveFocusedCell(-1, 0);
       if (e.key === "ArrowDown") handled = moveFocusedCell(1, 0);
@@ -551,6 +667,23 @@ document.addEventListener("keydown", (e) => {
       if (e.shiftKey) clearTextSelection(); // Shift+strzałki nie zostawia zaznaczonego tekstu
       return;
     }
+  }
+  // Shift+Spacja — przełącznik poziomu zaznaczenia: cały wiersz ↔ sama komórka.
+  // Jedyne wejście w tryb komórki bez myszy (Shift+klik wymaga wskaźnika), a przy
+  // okazji zgodne z arkuszami, gdzie Shift+Space zaznacza wiersz. MUSI stać przed
+  // gałęzią „znak drukowalny otwiera edytor" — spacja to też znak o długości 1.
+  if (!meta && !e.altKey && e.shiftKey && e.key === " "
+    && focusedCellState && !shouldIgnoreTableArrowNavigation()) {
+    e.preventDefault();
+    // Kierunek ustalamy PRZED przestawieniem — isCellSelectionMode() czyta już nową
+    // wartość, więc pytanie o nią po zmianie dawało odwrotny wynik.
+    const goingToCell = !isCellSelectionMode();
+    setSelectionKind(goingToCell ? "cell" : "row", { repaint: false });
+    // Powrót do wiersza zwija zakres. setSelectedCell(null) nie odświeża podświetlenia
+    // wiersza, więc przemalowanie robimy raz, po ustaleniu OBU stanów.
+    if (!goingToCell) setSelectedCell("", -1);
+    syncFocusedCellInDom({ clearMissing: false });
+    return;
   }
   // Enter lub znak drukowalny na zaznaczonej komórce otwiera edytor (jak w Excelu).
   if (!meta && !e.altKey && focusedCellState && !shouldIgnoreTableArrowNavigation()) {
@@ -600,6 +733,20 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     lastPickerTriggerEl = filter1PickBtn;
     openColumnPicker("filter1");
+  }
+  // Ctrl/⌘+Alt+1/2/3 — skok wprost do panelu / paska szukania / tabeli.
+  // F6 i Shift+F6 robią to samo cyklicznie (alias dla pełnowymiarowych klawiatur).
+  if (meta && e.altKey && !e.shiftKey && REGION_DIGIT_CODES[e.code]) {
+    if (focusAppRegion(REGION_DIGIT_CODES[e.code])) {
+      e.preventDefault();
+      return;
+    }
+  }
+  if (e.key === "F6" && !meta && !e.altKey) {
+    if (cycleAppRegion(e.shiftKey ? -1 : 1)) {
+      e.preventDefault();
+      return;
+    }
   }
   if (meta && e.key === "/") {
     e.preventDefault();

@@ -16,7 +16,7 @@
     <link rel="apple-touch-icon" href="assets/images/apple-touch-icon.png?v=20260429-01" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin-ext.woff2" crossorigin />
-    <link rel="stylesheet" href="styles/app.css?v=20260721-03" />
+    <link rel="stylesheet" href="styles/app.css?v=20260902-04" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -24,6 +24,10 @@
       <video src="assets/media/mateusz-intro.mp4" autoplay muted playsinline tabindex="-1" preload="metadata" aria-label="Intro Mateusza" id="introVideo"></video>
     </div>
     <div class="app">
+      <!-- Skip-link: pierwszy przystanek Tab na stronie. Bez niego dojscie do tabeli
+           z klawiatury to ~59 Tabów (otwarty sidebar wrzuca przed nią ~50 kontrolek).
+           Widoczny dopiero po ofokusowaniu — dla myszy i dotyku niewidoczny. -->
+      <button class="skip-link" id="skipToTable" type="button">Przejdź do tabeli</button>
       <!-- ============ HERO ============ -->
       <header class="hero">
         <div class="hero-left">
@@ -1018,7 +1022,9 @@
             <div class="panel-body">
               <div class="shortcut-hint">
               <div class="shortcut-row"><kbd data-shortcut-text="clickKey">Klik</kbd> <span data-shortcut-text="clickCell">zaznacz jedną komórkę (aktywną); kolejny klik resetuje zaznaczenie</span></div>
-              <div class="shortcut-row"><kbd data-shortcut-text="arrows">Strzałki</kbd> <span data-shortcut-text="arrowFocus">przesuwasz aktywną komórkę (resetuje zaznaczenie)</span></div>
+              <div class="shortcut-row"><kbd data-shortcut-text="arrows">Strzałki</kbd> <span data-shortcut-text="arrowFocus">ruszasz tym, co masz zaznaczone — wierszem albo pojedynczą komórką</span></div>
+              <div class="shortcut-row"><kbd>←</kbd> <kbd>→</kbd> <span data-shortcut-text="arrowRowScroll">przy zaznaczonym wierszu przewijają tabelę w bok (wiersz zostaje zaznaczony)</span></div>
+              <div class="shortcut-row"><kbd>Shift</kbd> <span>+</span> <kbd data-shortcut-text="spaceKey">Spacja</kbd> <span data-shortcut-text="toggleSelectionKind">przełącza zaznaczenie: cały wiersz ↔ sama komórka (bez myszy)</span></div>
               <div class="shortcut-row"><kbd>Esc</kbd> <span data-shortcut-text="clearRowFocus">Zwiń zaznaczenie do komórki, a potem odznacz fokus</span></div>
               <div class="shortcut-row"><kbd>Shift</kbd> <span>+</span> <kbd data-shortcut-text="clickKey">Klik</kbd> <span data-shortcut-text="showCellSelection">= zaznacz prostokąt od aktywnej komórki do klikniętej</span></div>
               <div class="shortcut-row"><kbd>Shift</kbd> <span>+</span> <kbd data-shortcut-text="arrows">Strzałki</kbd> <span>=</span> <span data-shortcut-text="moveCellSelection">rozszerz zaznaczenie od aktywnej komórki</span></div>
@@ -1034,6 +1040,9 @@
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Shift</kbd> <span>+</span> <kbd>X</kbd> <span data-shortcut-text="resetFilters">Reset filtrów</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Alt</kbd> <span>+</span> <kbd>W</kbd> <span data-shortcut-text="resetWidths">Reset szerokości</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Alt</kbd> <span>+</span> <kbd>K</kbd> <span data-shortcut-text="columns">Kolumny</span></div>
+              <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>Alt</kbd> <span>+</span> <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <span data-shortcut-text="regionJump">Skok do panelu / paska szukania / tabeli</span></div>
+              <div class="shortcut-row"><kbd>F6</kbd> <span data-shortcut-text="regionCycle">To samo cyklicznie (Shift+F6 wstecz) — alias dla dużych klawiatur</span></div>
+              <div class="shortcut-row"><kbd>Tab</kbd> <span data-shortcut-text="gridTabEnter">wchodzi do tabeli na aktywną komórkę — dalej ruszasz strzałkami, bez klikania</span></div>
               <div class="shortcut-row"><kbd>Ctrl/⌘</kbd> <span>+</span> <kbd>/</kbd> <span data-shortcut-text="theme">Motyw</span></div>
               <div class="shortcut-row"><kbd>Esc</kbd> <span data-shortcut-text="closeModalPanel">Zamknij modal / panel</span></div>
             </div>
@@ -1324,22 +1333,22 @@
          Dogrywa je leniwie ensureXlsxLibs() (app/workbook.js) przy pierwszym wczytaniu/zapisie
          pliku — apka bootuje bez ~512K JS. SW i tak je precache'uje (offline OK). -->
     <!-- defer: skrypty pobierają się równolegle i wykonują po sparsowaniu HTML, z zachowaniem kolejności -->
-    <script defer src="app/core.js?v=20260721-03"></script>
-    <script defer src="app/language.js?v=20260721-03"></script>
-    <script defer src="app/analysis.js?v=20260721-03"></script>
-    <script defer src="app/workbook.js?v=20260721-03"></script>
-    <script defer src="app/xlsx-patch.js?v=20260721-03"></script>
-    <script defer src="app/table.js?v=20260721-03"></script>
-    <script defer src="app/conditional-formatting.js?v=20260721-03"></script>
-    <script defer src="app/data-validation.js?v=20260721-03"></script>
-    <script defer src="app/derived-columns.js?v=20260721-03"></script>
-    <script defer src="app/formulas.js?v=20260721-03"></script>
-    <script defer src="app/edit-tools.js?v=20260721-03"></script>
-    <script defer src="app/ui-controls.js?v=20260721-03"></script>
+    <script defer src="app/core.js?v=20260902-04"></script>
+    <script defer src="app/language.js?v=20260902-04"></script>
+    <script defer src="app/analysis.js?v=20260902-04"></script>
+    <script defer src="app/workbook.js?v=20260902-04"></script>
+    <script defer src="app/xlsx-patch.js?v=20260902-04"></script>
+    <script defer src="app/table.js?v=20260902-04"></script>
+    <script defer src="app/conditional-formatting.js?v=20260902-04"></script>
+    <script defer src="app/data-validation.js?v=20260902-04"></script>
+    <script defer src="app/derived-columns.js?v=20260902-04"></script>
+    <script defer src="app/formulas.js?v=20260902-04"></script>
+    <script defer src="app/edit-tools.js?v=20260902-04"></script>
+    <script defer src="app/ui-controls.js?v=20260902-04"></script>
     <!-- Diagnostyka przewijania: NIE ładowana na starcie (czysty narzut ~29KB dla kodu,
          który i tak nic nie robi bez `?scrolltest`). Dogrywamy ją leniwie TYLKO gdy
          flaga jest włączona — loader w osobnym pliku, żeby CSP mogło zostać script-src 'self'. -->
-    <script defer src="app/debug-loaders.js?v=20260721-03"></script>
-    <script defer src="app/bootstrap.js?v=20260721-03"></script>
+    <script defer src="app/debug-loaders.js?v=20260902-04"></script>
+    <script defer src="app/bootstrap.js?v=20260902-04"></script>
   </body>
 </html>

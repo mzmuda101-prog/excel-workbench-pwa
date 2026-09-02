@@ -525,7 +525,7 @@ let aggregationWorkbenchState = {
   measureFilterValue: "",
   resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260721-03";
+const APP_BUILD_VERSION = "20260902-04";
 
 // Coalesced view refresh — jedna klatka zamiast kaskady render*() w handlerze.
 let _viewRefreshRaf = 0;
@@ -610,6 +610,13 @@ const ROW_HEIGHT_KEY = "excel-workbench-row-height-all";
 const COL_WIDTH_KEY = "excel-workbench-col-width-all";
 const SORT_PRESETS_KEY = "excel-workbench-sort-presets";
 const TOOLBAR_COLLAPSED_KEY = "excel-workbench-toolbar-collapsed";
+// Tryb zaznaczania wynika z GESTU, nie z ustawienia:
+//   zwykly klik / wejscie Tabem  -> caly wiersz (selectionKind = "row")
+//   Shift+klik, Shift+strzalka   -> poziom komorki (selectionKind = "cell")
+//   Shift+Spacja                 -> przelacza tam i z powrotem (jedyne wejscie bez myszy)
+// Strzalki ruszaja tym, co jest aktualnie zaznaczone: w trybie wiersza gora/dol
+// przesuwaja wiersz, a lewo/prawo przewijaja tabele w bok (wiersz nie ma "boku").
+let selectionKind = "row";
 const INTRO_PLAYED_KEY = "introPlayed";
 
 function log(msg, type = "info") {
