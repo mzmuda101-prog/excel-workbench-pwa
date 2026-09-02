@@ -11,7 +11,11 @@
 //
 // Uruchom z serwerem na APP_URL (domyślnie http://127.0.0.1:4175/).
 
-const { chromium } = require("playwright");
+// ENGINE=webkit pozwala przepuscic te same asercje przez silnik Safari/iPada —
+// tam :focus-visible i obsluga fokusu zachowuja sie inaczej niz w Chromium.
+const playwright = require("playwright");
+const ENGINE = process.env.ENGINE || "chromium";
+const chromium = playwright[ENGINE];
 const path = require("path");
 
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4175/";
@@ -466,7 +470,32 @@ async function run() {
     backTo.tag === fromCell.tag && backTo.col === fromCell.col,
     `${JSON.stringify(fromCell)} → ${inPopup} → ${JSON.stringify(backTo)}`);
 
-  console.log("\n─── WYNIKI ───");
+  // ── 14. Zasięg klawiatury w Safari/WebKit ───────────────────────────────────
+  // Safari prowadzi Tab tylko po polach tekstowych i listach wyboru — przyciski
+  // i pola wyboru wypadają z nawigacji, jeśli nie mają JAWNEGO tabindex.
+  const reach = await page.evaluate(() => {
+    const brak = [...document.querySelectorAll('button, input[type="checkbox"], input[type="radio"]')]
+      .filter((el) => !el.hasAttribute("tabindex") && !el.closest(".hidden") && el.offsetParent !== null);
+    return { bezTabindex: brak.length, przyklady: brak.slice(0, 3).map((el) => el.id || el.className) };
+  });
+  check("przyciski i pola wyboru mają jawny tabindex (inaczej Safari je pomija)",
+    reach.bezTabindex === 0, JSON.stringify(reach));
+
+  // Pełny obieg Tab w oknie szukania musi być IDENTYCZNY w każdym silniku
+  await page.evaluate(() => { openQuickSearchPopup(); });
+  await sleep(300);
+  const obieg = [];
+  for (let i = 0; i < 7; i++) {
+    await page.keyboard.press("Tab");
+    obieg.push(await page.evaluate(() => document.activeElement?.id || "‹POZA›"));
+  }
+  const oczekiwany = ["quickSearchPopupMode", "quickSearchPopupAction", "quickSearchPopupOperators",
+    "qsAllSheetsPopup", "quickSearchPopupColumnsBtn", "quickSearchPopupBtn", "quickSearchPopupInput"];
+  check("obieg Tab w oknie szukania jest taki sam w każdym silniku",
+    obieg.join(",") === oczekiwany.join(","), obieg.join(" → "));
+  await page.evaluate(() => closeQuickSearchPopup());
+
+  console.log(`\n─── WYNIKI (${ENGINE}) ───`);
   let failed = 0;
   for (const r of results) {
     if (!r.pass) failed++;

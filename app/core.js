@@ -525,7 +525,7 @@ let aggregationWorkbenchState = {
   measureFilterValue: "",
   resultSearch: "",
 };
-const APP_BUILD_VERSION = "20260902-06";
+const APP_BUILD_VERSION = "20260902-08";
 
 // Coalesced view refresh — jedna klatka zamiast kaskady render*() w handlerze.
 let _viewRefreshRaf = 0;
@@ -805,3 +805,80 @@ function applyFreezeFirstColumn() {
   tableWrapEl.classList.toggle("freeze-first-col", !!(freezeFirstColEl && freezeFirstColEl.checked));
 }
 
+
+// ── Wskaźnik trybu wprowadzania (klawiatura vs wskaźnik) ─────────────────────
+// WebKit (Safari, w tym iPad z klawiaturą sprzętową) DEKLARUJE wsparcie dla
+// :focus-visible, ale nie dopasowuje go przy nawigacji klawiaturą — zmierzone:
+// td.matches(":focus-visible") === false po Tabie i strzałkach, mimo CSS.supports() === true.
+// Cała widoczność fokusu stała na tej pseudoklasie, więc na iPadzie po prostu nie było
+// widać, gdzie się stoi. Klasa na <html> pozwala CSS-owi dorysować obwódkę awaryjnie
+// (patrz reguły `.kbd-focus :focus:not(:focus-visible)` w app.css) — w Chromium ta
+// warstwa nigdy się nie odpala, bo tam :focus-visible działa i wyklucza ją sam selektor.
+(function trackInputModality() {
+  const root = document.documentElement;
+  document.addEventListener("keydown", () => root.classList.add("kbd-focus"), true);
+  const pointerUsed = () => root.classList.remove("kbd-focus");
+  document.addEventListener("pointerdown", pointerUsed, true);
+  document.addEventListener("mousedown", pointerUsed, true);
+  document.addEventListener("touchstart", pointerUsed, { capture: true, passive: true });
+})();
+
+// ── Zasięg klawiatury w Safari/WebKit (iPad z klawiaturą) ────────────────────
+// Safari domyślnie prowadzi Tab TYLKO po polach tekstowych i listach wyboru —
+// przyciski i pola wyboru są pomijane (ustawienie „Press Tab to highlight each item"
+// jest wyłączone). Zmierzone w WebKicie: obieg Tab po oknie szukania to
+// „Tryb → Akcja → ‹BODY› → td", czyli fokus wypadał z okna, a „Operatory
+// wyszukiwania" i „Szukaj" były NIEOSIĄGALNE. W sidebarze Tab widział wyłącznie
+// nagłówki paneli i trzy pola liczbowe.
+// Jawny tabindex="0" wciąga te elementy z powrotem do nawigacji sekwencyjnej.
+// Stosujemy to we WSZYSTKICH przeglądarkach świadomie: w Chromium jest to no-op
+// (przyciski i tak są w kolejności Tab, a tabindex="0" zachowuje kolejność DOM),
+// więc nie ma tu czego bramkować — inaczej niż przy warstwie CSS, która realnie
+// mogłaby dublować obwódki i dlatego wyłącza się sama przez :not(:focus-visible).
+// Elementy z WŁASNYM tabindex (np. pozycje listy wyników = -1) zostają nietknięte.
+function ensureKeyboardReachable(root) {
+  const scope = root || document;
+  const sel = 'button:not([tabindex]), input[type="checkbox"]:not([tabindex]), input[type="radio"]:not([tabindex])';
+  const apply = (el) => { el.setAttribute("tabindex", "0"); };
+  if (scope.matches && scope.matches(sel)) apply(scope);
+  scope.querySelectorAll(sel).forEach(apply);
+}
+
+// Panele analiz, agregacje i podobne dosypują przyciski długo po starcie, więc
+// samo wywołanie przy inicjalizacji nie wystarcza (zostawało ~31 nieosiągalnych).
+// Wyliczanie miejsc po jednym było kruche — obserwator łapie wszystko, także kod
+// dopisany w przyszłości.
+// KOSZT: świadomie omijamy #dataTable jednym `closest()` na dodany węzeł, więc
+// przebudowa ~1500 komórek nie płaci tu nic poza tym testem. Właściwe skanowanie
+// (querySelectorAll) idzie do bezczynności, nigdy w trakcie renderu.
+let pendingKbdRoots = null;
+let kbdScanScheduled = false;
+
+function flushKeyboardReachability() {
+  kbdScanScheduled = false;
+  const roots = pendingKbdRoots;
+  pendingKbdRoots = null;
+  if (!roots) return;
+  roots.forEach((node) => { if (node.isConnected) ensureKeyboardReachable(node); });
+}
+
+let kbdReachObserver = null;
+
+function observeKeyboardReachability() {
+  if (typeof MutationObserver !== "function" || !document.body || kbdReachObserver) return;
+  kbdReachObserver = new MutationObserver((records) => {
+    for (const rec of records) {
+      for (const node of rec.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.closest && node.closest("#dataTable")) continue; // siatka nie ma przycisków
+        (pendingKbdRoots || (pendingKbdRoots = [])).push(node);
+      }
+    }
+    if (pendingKbdRoots && !kbdScanScheduled) {
+      kbdScanScheduled = true;
+      if (typeof requestIdleCallback === "function") requestIdleCallback(flushKeyboardReachability, { timeout: 500 });
+      else setTimeout(flushKeyboardReachability, 100);
+    }
+  });
+  kbdReachObserver.observe(document.body, { childList: true, subtree: true });
+}

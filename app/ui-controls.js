@@ -307,6 +307,7 @@ function openColumnPicker(key) {
     row.appendChild(label);
     columnListEl.appendChild(row);
   });
+  ensureKeyboardReachable(columnListEl); // checkboxy kolumn budowane w locie
   columnPickerEl.classList.remove("hidden");
   columnSearchEl.focus();
 }
@@ -363,6 +364,7 @@ function openGroupByPicker() {
     row.appendChild(label);
     columnListEl.appendChild(row);
   });
+  ensureKeyboardReachable(columnListEl); // checkboxy kolumn budowane w locie
   columnPickerEl.classList.remove("hidden");
   columnSearchEl.focus();
 }
@@ -408,6 +410,7 @@ function openMeasurePicker() {
     row.appendChild(label);
     columnListEl.appendChild(row);
   });
+  ensureKeyboardReachable(columnListEl); // checkboxy kolumn budowane w locie
   columnPickerEl.classList.remove("hidden");
   columnSearchEl.focus();
 }
@@ -1015,6 +1018,7 @@ function openExportModal() {
     row.appendChild(label);
     exportColumnListEl.appendChild(row);
   });
+  ensureKeyboardReachable(exportColumnListEl);
   exportModalEl.classList.remove("hidden");
 }
 
@@ -1091,6 +1095,7 @@ function buildSheetTabs() {
         sheetTabsEl.appendChild(tab);
       });
     }
+    ensureKeyboardReachable(sheetTabsEl);
     sheetTabsEl.classList.toggle("hidden", !multi);
   }
 
@@ -1126,6 +1131,7 @@ function buildSheetPickerList(names) {
     });
     sheetPickerListEl.appendChild(btn);
   });
+  ensureKeyboardReachable(sheetPickerListEl);
 }
 
 function openSheetPicker() {
@@ -3249,6 +3255,8 @@ window.addEventListener("resize", () => {
 applyLanguage(currentLang);
 initIntroSplash();
 initTheme();
+ensureKeyboardReachable(document); // Safari: przyciski/checkboxy poza Tabem bez jawnego tabindex
+observeKeyboardReachability();   // …plus kontrolki dosypywane później przez panele analiz
 loadMaxRowsPreference();
 loadExcelLayoutPreference();
 loadCellStylePreferences();
