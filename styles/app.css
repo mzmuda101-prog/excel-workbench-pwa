@@ -3279,11 +3279,13 @@ tbody tr.row-focused td {
    żeby zaznaczony wiersz pozostał widoczny ORAZ tekst nie znikał. */
 tbody tr.row-focused td.cell-light-text,
 tbody td.cell-in-range.cell-light-text,
-tbody td.cell-selected.cell-light-text { color: var(--ink) !important; }
+tbody td.cell-selected.cell-light-text,
+tbody td.cell-active.cell-light-text { color: var(--ink) !important; }
 /* DARK theme: tło zaznaczenia jest ciemne → czarny/czarniawy tekst zamieniamy na jasny var(--ink). */
 [data-theme="dark"] tbody tr.row-focused td.cell-dark-text,
 [data-theme="dark"] tbody td.cell-in-range.cell-dark-text,
-[data-theme="dark"] tbody td.cell-selected.cell-dark-text { color: var(--ink) !important; }
+[data-theme="dark"] tbody td.cell-selected.cell-dark-text,
+[data-theme="dark"] tbody td.cell-active.cell-dark-text { color: var(--ink) !important; }
 
 tbody tr.row-focused td:first-child {
   box-shadow:
@@ -3339,25 +3341,6 @@ tbody td.cell-selected.cell-selected {
     0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
-/* Tryb „Sama komórka" (Widok → Zaznaczanie strzałkami): aktywna komórka niesie całe
-   podświetlenie, wiersz zostaje nietknięty. Świadomie ta sama ramka co .cell-selected
-   — to wciąż „aktywny koniec zaznaczenia", więc nie mnożymy znaczeń kolorów. */
-tbody td.cell-active.cell-active {
-  background: color-mix(in srgb, var(--accent-light) 78%, white) !important;
-  box-shadow:
-    inset 0 0 0 2px var(--accent-h),
-    0 0 0 1px color-mix(in srgb, var(--accent-h) 40%, transparent);
-  border-radius: 5px;
-}
-[data-theme="dark"] tbody td.cell-active.cell-active {
-  background: color-mix(in srgb, var(--accent) 42%, var(--panel)) !important;
-  box-shadow:
-    inset 0 0 0 2px var(--accent),
-    0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
-}
-tbody td.cell-active.cell-light-text { color: var(--ink) !important; }
-[data-theme="dark"] tbody td.cell-active.cell-dark-text { color: var(--ink) !important; }
-
 /* Aktywna komórka pod fokusem KLAWIATURY. Dotąd ruch strzałkami podświetlał tylko
    cały wiersz (.row-focused) — nie było widać, w której kolumnie się stoi.
    :focus-visible = przeglądarka rysuje to po Tabie/strzałkach, ale NIE po kliknięciu
@@ -3366,15 +3349,19 @@ tbody td.cell-active.cell-light-text { color: var(--ink) !important; }
 #dataTable tbody td:focus { outline: none; }
 #dataTable tbody td:focus-visible {
   outline: none;
+  /* Ta sama, złagodzona forma co zaznaczona komórka (patrz .cell-selected niżej):
+     1.7px przy 62% krycia + delikatna poświata. Wcześniej była tu twarda ramka 2px
+     pełnego akcentu — w trybie komórki nakładała się na zaznaczenie i robiła
+     „za dużo zielonego" przy ruchu strzałkami. */
   box-shadow:
-    inset 0 0 0 2px var(--accent-h),
-    0 0 0 1px color-mix(in srgb, var(--accent-h) 40%, transparent);
-  border-radius: 5px;
+    inset 0 0 0 1.7px color-mix(in srgb, var(--accent) 62%, transparent),
+    inset 0 0 5.5px color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 6px;
 }
 [data-theme="dark"] #dataTable tbody td:focus-visible {
   box-shadow:
-    inset 0 0 0 2px var(--accent),
-    0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+    inset 0 0 0 1.7px color-mix(in srgb, var(--accent) 62%, transparent),
+    inset 0 0 5.5px color-mix(in srgb, var(--accent) 13%, transparent);
 }
 
 /* Prostokąt zaznaczenia (kotwica → koniec): wyraźne wypełnienie + obwódka całego
@@ -3570,7 +3557,8 @@ tbody tr.row-focused td{
   transition: box-shadow 0.1s ease, border-radius 0.1s ease;
   /* ... reszta twoich styli dla wiersza ... */
 }
-tbody td.cell-selected {
+tbody td.cell-selected,
+tbody td.cell-active {
   transition: box-shadow 0.1s ease, border-radius 0.1s ease;
   /* ... reszta twoich styli dla wiersza ... */
 }
@@ -3659,8 +3647,11 @@ tbody td.cell-filter-match {
     inset 0 0 6px color-mix(in srgb, var(--warning) 20%, transparent);
 }
 
-/* Wyróżnienie JEDNEJ komórki zaznaczonej - ma pierwszeństwo nad cell-filter-match i row-focused */
-tbody td.cell-selected:not(.cell-filter-match) {
+/* Wyróżnienie JEDNEJ komórki zaznaczonej - ma pierwszeństwo nad cell-filter-match i row-focused.
+   .cell-active (aktywna komórka w trybie komórkowym) celowo WSPÓŁDZIELI tę regułę zamiast
+   powtarzać wartości — inaczej rozjeżdża się przy każdym liftingu zaznaczenia. */
+tbody td.cell-selected:not(.cell-filter-match),
+tbody td.cell-active:not(.cell-filter-match) {
   background: var(--accent-light) !important;
   box-shadow:
     inset 0 0 0 1.7px color-mix(in srgb, var(--accent) 62%, transparent),
@@ -3668,7 +3659,8 @@ tbody td.cell-selected:not(.cell-filter-match) {
   border-radius: 6px;
   transition: box-shadow 0.12s ease, background 0.12s ease;
 }
-[data-theme="dark"] tbody td.cell-selected:not(.cell-filter-match) {
+[data-theme="dark"] tbody td.cell-selected:not(.cell-filter-match),
+[data-theme="dark"] tbody td.cell-active:not(.cell-filter-match) {
   background: color-mix(in srgb, var(--accent) 23%, transparent) !important;
   box-shadow:
     inset 0 0 0 1.7px color-mix(in srgb, var(--accent) 62%, transparent),
