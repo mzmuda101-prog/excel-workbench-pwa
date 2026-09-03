@@ -2987,11 +2987,13 @@ tbodyEl.addEventListener("click", (e) => {
     }
     setSelectedCell(rowKey, colIndex0, { scroll: false });
     clearTextSelection(); // sprzątnij ewentualną resztkę zaznaczenia tekstu
+    giveGridDomFocus();
     return;
   }
   // Zwykły klik zawsze wraca na poziom wiersza — patrz model gestów w core.js.
   setSelectionKind("row", { repaint: false });
   setFocusedCell(rowKey, colIndex0, { scroll: false });
+  giveGridDomFocus();
 });
 
 // --- Edycja komórki (inline input) ---------------------------------------

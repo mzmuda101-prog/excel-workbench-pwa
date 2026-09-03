@@ -193,6 +193,18 @@ function focusGridCell(cell) {
   }
 }
 
+// Klik/tapniecie w komorke musi TEZ oddac siatce fokus DOM. Bez tego, po dotknieciu
+// jakiegokolwiek przycisku, `document.activeElement` zostawal na tym przycisku —
+// komorka wygladala na zaznaczona, ale shouldIgnoreTableArrowNavigation() blokowal
+// pisanie i strzalki. Na dotyku bylo to szczegolnie dotkliwe: Safari fokusuje przycisk
+// przy tapnieciu, a tapniecie komorki fokusu nie zabieralo (komorki poza roving
+// tabindex go nie maja). Objaw: „zaznaczam Shift+tapem i nie moge zaczac pisac,
+// dopiero za ktoryms razem lapie" — lapalo, gdy trafil w komorke z roving tabindex.
+function giveGridDomFocus() {
+  const cell = findCellElement(focusedCellState);
+  if (cell) focusGridCell(cell);
+}
+
 function gridHasDomFocus() {
   const active = document.activeElement;
   return !!(active && tbodyEl.contains(active));
@@ -224,6 +236,11 @@ function scrollTableHorizontally(dir) {
 }
 
 function syncFocusedCellInDom(options = {}) {
+  // Hak dla CSS: obwódka fokusu na POJEDYNCZEJ komórce ma się rysować wyłącznie
+  // wtedy, gdy pracujemy na poziomie komórki. Przy zaznaczonym wierszu wyglądała
+  // jak druga, konkurencyjna selekcja („wiersz podświetlony, a w nim jeszcze jedna
+  // komórka w ramce") — wiersz ma być wierszem, komórka komórką.
+  tbodyEl.classList.toggle("sel-cell", isCellSelectionMode());
   tbodyEl.querySelectorAll("tr.row-focused").forEach((row) => row.classList.remove("row-focused"));
   tbodyEl.querySelectorAll("td.cell-active").forEach((td) => td.classList.remove("cell-active"));
   const rowEl = findFocusedRowElement();

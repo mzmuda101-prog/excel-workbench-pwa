@@ -562,6 +562,87 @@ async function run() {
   }
   await page.evaluate(() => closeQuickSearchPopup());
 
+  // ── 16. Dotknięcie komórki oddaje siatce fokus DOM ──────────────────────────
+  // Bez tego po tapnięciu JAKIEGOKOLWIEK przycisku fokus zostawał na nim, a komórka
+  // wyglądała na zaznaczoną, choć pisanie i strzałki nad tabelą były martwe.
+  // Objaw zgłoszony przez użytkownika: „zaznaczam Shift+tapem i nie mogę zacząć pisać".
+  await page.evaluate(() => { closeQuickSearchPopup(); setSidebarOpen(false); });
+  await sleep(300);
+  const przyciskId = "excelLayoutToggle";
+  if (TOUCH) await page.tap("#" + przyciskId); else await page.click("#" + przyciskId);
+  await sleep(250);
+  const naPrzycisku = await page.evaluate((id) => document.activeElement?.id === id, przyciskId);
+
+  await page.keyboard.down("Shift");
+  if (TOUCH) await page.tap('#dataTable tbody tr[data-row-key] td[data-col-index="2"]');
+  else await page.click('#dataTable tbody tr[data-row-key] td[data-col-index="2"]', { modifiers: ["Shift"] });
+  await page.keyboard.up("Shift");
+  await sleep(300);
+  const poKliku = await page.evaluate(() => ({
+    tag: document.activeElement?.tagName,
+    blokuje: shouldIgnoreTableArrowNavigation(),
+    zaznaczona: !!focusedCellState,
+  }));
+  check("klik/tap w komórkę oddaje siatce fokus DOM",
+    poKliku.tag === "TD" && poKliku.blokuje === false && poKliku.zaznaczona,
+    `fokus przedtem na przycisku: ${naPrzycisku} → ${JSON.stringify(poKliku)}`);
+
+  await page.keyboard.press("x");
+  await sleep(350);
+  const odRazuPisanie = await page.evaluate(() => ({
+    edytor: !!document.querySelector(".cell-editor"),
+    wartosc: document.querySelector(".cell-editor")?.value ?? null,
+  }));
+  check("po zaznaczeniu komórki można pisać OD RAZU (bez kilku prób)",
+    odRazuPisanie.edytor === true && odRazuPisanie.wartosc === "x", JSON.stringify(odRazuPisanie));
+  await page.keyboard.press("Escape");
+  await sleep(200);
+
+  const przedRuchem = await page.evaluate(() => focusedCellState && { ...focusedCellState });
+  await page.keyboard.press("ArrowDown");
+  await sleep(250);
+  const poRuchu = await page.evaluate(() => focusedCellState && { ...focusedCellState });
+  check("…i strzałki działają od razu po kliknięciu w komórkę",
+    JSON.stringify(przedRuchem) !== JSON.stringify(poRuchu),
+    `${JSON.stringify(przedRuchem)} → ${JSON.stringify(poRuchu)}`);
+
+  // ── 17. Wiersz to wiersz, komórka to komórka ────────────────────────────────
+  // Przy zaznaczonym WIERSZU żadna pojedyncza komórka nie może być dodatkowo
+  // wyróżniona — wcześniej po ruchu strzałką kotwica dostawała obwódkę fokusu
+  // i wyglądało to jak dwie konkurencyjne selekcje naraz.
+  const wyglad = async () => page.evaluate(() => {
+    const kotwica = document.querySelector(
+      `tr[data-row-key="${CSS.escape(focusedCellState.rowKey)}"] td[data-col-index="${focusedCellState.colIndex0}"]`);
+    const sasiad = [...kotwica.parentElement.querySelectorAll("td[data-col-index]")]
+      .find((td) => td !== kotwica);
+    return {
+      kotwica: getComputedStyle(kotwica).boxShadow,
+      sasiad: sasiad ? getComputedStyle(sasiad).boxShadow : null,
+      tloKotwicy: getComputedStyle(kotwica).backgroundColor,
+      tloSasiada: sasiad ? getComputedStyle(sasiad).backgroundColor : null,
+    };
+  });
+
+  await page.evaluate(() => { setSidebarOpen(false); setSelectionKind("row"); });
+  await sleep(200);
+  if (TOUCH) await page.tap('#dataTable tbody tr[data-row-key] td[data-col-index="2"]');
+  else await page.click('#dataTable tbody tr[data-row-key] td[data-col-index="2"]');
+  await sleep(250);
+  await page.keyboard.press("ArrowDown");
+  await sleep(300);
+  const wWierszu = await wyglad();
+  check("w trybie wiersza kotwica wygląda jak sąsiednie komórki (brak drugiej selekcji)",
+    wWierszu.kotwica === wWierszu.sasiad && wWierszu.tloKotwicy === wWierszu.tloSasiada,
+    JSON.stringify(wWierszu).slice(0, 150));
+
+  // …a w trybie komórki MUSI się wyróżniać, inaczej nie wiadomo, gdzie się stoi
+  await page.keyboard.press("Shift+Space");
+  await sleep(300);
+  const wKomorce = await wyglad();
+  check("w trybie komórki kotwica wyróżnia się od sąsiadów",
+    wKomorce.kotwica !== wKomorce.sasiad, JSON.stringify(wKomorce).slice(0, 150));
+  await page.evaluate(() => setSelectionKind("row"));
+
   console.log(`\n─── WYNIKI (${ENGINE}) ───`);
   let failed = 0;
   for (const r of results) {
