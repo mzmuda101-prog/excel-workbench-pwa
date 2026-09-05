@@ -43,6 +43,8 @@ const trFieldsDoneBtn = document.getElementById("trFieldsDoneBtn");
 const trResetBtn = document.getElementById("trResetBtn");
 const trAutoFieldsEl = document.getElementById("trAutoFields");
 const trAutoNoteEl = document.getElementById("trAutoNote");
+const trInheritEl = document.getElementById("trInherit");
+const trInheritNoteEl = document.getElementById("trInheritNote");
 const trTouchShieldEl = document.getElementById("trTouchShield");
 const trLiveEl = document.getElementById("trLive");
 
@@ -57,6 +59,12 @@ let trOrder = [];            // indeksy do trRows widoczne w bieżącym trybie (
 let trPos = 0;
 let trHideDone = false;
 let trAutoFields = false;
+let trInheritOn = false;          // „dziedzicz z góry" — master switch
+let trInheritCols = new Set();    // kolumny, które przenoszą wartość w dół
+let trMergeCols = new Set();      // kolumny objęte PIONOWYM scaleniem (auto-podpowiedź + znacznik)
+let trMergeRanges = new Map();    // kolumna -> zakresy scaleń = GRANICE przenoszenia
+let trInheritMap = new Map();     // `col:rowIndex0` -> { text, from }
+let trLongMode = false;           // Wide-to-Long: dziedziczenie nie ma tam sensu
 let trFont = 2;
 let trLocked = false;
 let trScope = "";
@@ -105,6 +113,8 @@ function trPersist() {
     order: trFieldOrder.slice(),
     sel: Array.from(trSelected),
     auto: trAutoFields,
+    inherit: trInheritOn,
+    inheritCols: Array.from(trInheritCols),
     done: Array.from(trDone).slice(0, TR_MAX_DONE),
     cursor: trCurrentKey(),
     ts: Date.now(),
@@ -146,8 +156,118 @@ function trFieldLabel(idx) {
 // Auto jest odpowiedzią na arkusze z powtarzanymi blokami (Kw1_*, Kw2_*, Kw3_*)
 // i na „przesunięte” wiersze: raz dane siedzą jedną kolumnę w prawo, raz dwie.
 // Zaznaczenia w trybie auto nie mają wpływu, ale KOLEJNOŚĆ owszem.
+// ── Dziedziczenie z góry (scalone komórki / „wartość tylko w pierwszym wierszu") ──
+//
+// Bardzo częsty układ: nazwisko scalone przez 5 wierszy, pod spodem pozycje. W danych
+// wiersze-kontynuacje są PUSTE (build-rows-core czyta `!merges` tylko po to, żeby
+// wyznaczyć zakres arkusza — wartości nie rozlewa), więc bez tego mechanizmu tryb
+// „dobieraj pola z wiersza" ukrywałby pole tożsamości akurat tam, gdzie jest najbardziej
+// potrzebne.
+//
+// DWIE DECYZJE PROJEKTOWE, które trzymają to w ryzach:
+//  1. Liczymy po `baseRows` — pełnym, NIEPRZEFILTROWANYM zestawie w kolejności arkusza.
+//     Liczenie po widoku dawałoby inny wynik po filtrze albo sortowaniu, a „wiersz wyżej"
+//     to własność PLIKU, nie bieżącego widoku.
+//  2. Kolumny wskazuje użytkownik (scalenia tylko je podpowiadają). Zgadywanie „ta kolumna
+//     chyba się przenosi" mogłoby wpisać cudzą wartość do rubryki na papierze, a tego się
+//     nie cofa gumką.
+// Pionowe scalenia arkusza, pogrupowane po kolumnie MODELU. Trzymamy pełne zakresy,
+// nie same numery kolumn, bo zakres jest jednocześnie GRANICĄ przenoszenia.
+function trDetectMergeRanges() {
+  const byCol = new Map();
+  if (trLongMode) return byCol;
+  try {
+    const sheet = workbook?.Sheets?.[currentSheetName];
+    const merges = Array.isArray(sheet?.["!merges"]) ? sheet["!merges"] : [];
+    const startCol = Number.isFinite(currentStartCol) ? currentStartCol : 0;
+    merges.forEach((m) => {
+      if (!m?.s || !m?.e || m.e.r <= m.s.r) return; // interesują nas tylko scalenia PIONOWE
+      for (let c = m.s.c; c <= m.e.c; c++) {
+        const col = c - startCol;
+        if (col < 0 || col >= trHeaders.length) continue;
+        if (!byCol.has(col)) byCol.set(col, []);
+        byCol.get(col).push({ start: m.s.r, end: m.e.r });
+      }
+    });
+  } catch {
+    /* brak dostępu do arkusza — zostaje ręczny wybór kolumn */
+  }
+  return byCol;
+}
+
+// DWIE REGUŁY, świadomie różne — bo różna jest pewność, skąd bierze się pustka:
+//
+//  • kolumna ZE SCALENIAMI → przenosimy DOKŁADNIE w granicach scalenia. Plik sam mówi,
+//    dokąd sięga rekord, więc nie ma miejsca na wyciek wartości do następnego rekordu.
+//  • kolumna wskazana RĘCZNIE (bez scaleń) → najbliższa wartość powyżej. Tu granicy
+//    rekordu nikt nie zapisał, więc to świadomy wybór użytkownika; wartość zawsze
+//    dostaje na karcie numer wiersza źródłowego, żeby dało się ją sprawdzić.
+function trBuildInheritance() {
+  trInheritMap.clear();
+  if (!trInheritOn || trLongMode || !trInheritCols.size) return;
+  const source = Array.isArray(baseRows) ? baseRows : [];
+  if (!source.length) return;
+
+  const byRowIndex = new Map();
+  source.forEach((row) => { byRowIndex.set(row.rowIndex0, row); });
+
+  const mergeCols = [];
+  const carryCols = [];
+  trInheritCols.forEach((col) => {
+    if (trMergeRanges.has(col)) mergeCols.push(col);
+    else carryCols.push(col);
+  });
+
+  // 1) Kolumny ze scaleniami — zakres po zakresie, kotwicą jest pierwszy wiersz scalenia.
+  mergeCols.forEach((col) => {
+    (trMergeRanges.get(col) || []).forEach((range) => {
+      const anchorRow = byRowIndex.get(range.start);
+      if (!anchorRow) return; // kotwica nad wierszem nagłówka albo poza zakresem danych
+      const text = String(getDisplayValue(anchorRow, col) ?? "").trim();
+      if (!text) return;
+      const from = (range.start ?? 0) + 1;
+      for (let r = range.start + 1; r <= range.end; r++) {
+        const row = byRowIndex.get(r);
+        if (!row) continue;
+        if (String(getDisplayValue(row, col) ?? "").trim()) continue; // własna wartość wygrywa
+        trInheritMap.set(`${col}:${r}`, { text, from });
+      }
+    });
+  });
+
+  // 2) Kolumny wskazane ręcznie — jeden przebieg po wierszach dla wszystkich naraz.
+  if (!carryCols.length) return;
+  const carry = new Array(carryCols.length).fill(null);
+  for (const row of source) {
+    // Podnagłówek = granica sekcji, więc zrywa przenoszenie. UWAGA: markSubheaderRows
+    // sprawdza tylko pierwsze wiersze arkusza, więc to zabezpieczenie łapie nagłówki
+    // sekcji u góry pliku, a nie jest pełnym wykrywaniem rekordów.
+    if (row.isSubheader) {
+      carry.fill(null);
+      continue;
+    }
+    const rowIdx = row.rowIndex0;
+    for (let k = 0; k < carryCols.length; k++) {
+      const col = carryCols[k];
+      const txt = String(getDisplayValue(row, col) ?? "").trim();
+      if (txt) carry[k] = { text: txt, from: (rowIdx ?? 0) + 1 };
+      else if (carry[k]) trInheritMap.set(`${col}:${rowIdx}`, carry[k]);
+    }
+  }
+}
+
+// Jedno miejsce, które odpowiada „co ma stanąć w tej rubryce”: wartość własna wiersza,
+// a jak jej nie ma — odziedziczona (z numerem wiersza źródłowego, żeby dało się sprawdzić).
+function trResolveField(row, idx) {
+  const raw = String(getDisplayValue(row, idx) ?? "").trim();
+  if (raw) return { text: raw, from: 0 };
+  if (!trInheritOn || trLongMode || !trInheritCols.has(idx)) return { text: "", from: 0 };
+  const hit = trInheritMap.get(`${idx}:${row?.rowIndex0}`);
+  return hit ? { text: hit.text, from: hit.from } : { text: "", from: 0 };
+}
+
 function trHasValue(row, idx) {
-  return String(getDisplayValue(row, idx) ?? "").trim() !== "";
+  return trResolveField(row, idx).text !== "";
 }
 
 function trVisibleCols(row) {
@@ -252,12 +372,23 @@ function trRenderCard() {
       field.className = "tr-field";
       const label = document.createElement("div");
       label.className = "tr-field-label";
-      label.textContent = trFieldLabel(ci);
+      const labelText = document.createElement("span");
+      labelText.textContent = trFieldLabel(ci);
+      label.appendChild(labelText);
+      const resolved = trResolveField(row, ci);
+      if (resolved.from) {
+        // Wartość odziedziczona MUSI być rozpoznawalna — inaczej przepisze się ją
+        // jak własną i nie da się już wychwycić pomyłki.
+        field.classList.add("is-inherited");
+        const badge = document.createElement("span");
+        badge.className = "tr-inherited-from";
+        badge.textContent = t("trInheritedFrom", { n: resolved.from });
+        label.appendChild(badge);
+      }
       const value = document.createElement("div");
       value.className = "tr-field-value";
-      const raw = String(getDisplayValue(row, ci) ?? "").trim();
-      if (raw) {
-        value.textContent = raw;
+      if (resolved.text) {
+        value.textContent = resolved.text;
       } else {
         value.textContent = "—";
         value.classList.add("is-empty");
@@ -374,6 +505,41 @@ function trArmReset() {
   }, 3500);
 }
 
+function trUpdateInheritNote() {
+  if (trInheritNoteEl) {
+    let note;
+    if (trLongMode) note = t("trInheritLong");
+    else if (trMergeCols.size) note = t("trInheritMergeInfo", { cols: trMergeCols.size });
+    else note = t("trInheritNoMerges");
+    trInheritNoteEl.textContent = note;
+  }
+  if (trInheritEl) trInheritEl.disabled = trLongMode;
+}
+
+function trSetInherit(on, options = {}) {
+  trInheritOn = !!on && !trLongMode;
+  // Pierwsze włączenie na arkuszu ze scaleniami samo proponuje kolumny — użytkownik
+  // i tak może je dowolnie zmienić, ale nie musi zaczynać od pustej listy.
+  if (trInheritOn && !trInheritCols.size && trMergeCols.size && !options.keepCols) {
+    trInheritCols = new Set(trMergeCols);
+  }
+  if (trInheritEl) trInheritEl.checked = trInheritOn;
+  trUpdateInheritNote();
+  trBuildInheritance();
+  if (trFieldsListEl && !trFieldsPanelEl?.classList.contains("hidden")) trRenderFields();
+  if (options.silent) return;
+  trRenderCard();
+}
+
+function trToggleInheritCol(colIdx) {
+  if (!trInheritOn || trLongMode) return;
+  if (trInheritCols.has(colIdx)) trInheritCols.delete(colIdx);
+  else trInheritCols.add(colIdx);
+  trBuildInheritance();
+  trRenderFields();
+  trRenderCard();
+}
+
 function trSetAutoFields(on) {
   trAutoFields = !!on;
   if (trAutoFieldsEl) trAutoFieldsEl.checked = trAutoFields;
@@ -457,16 +623,29 @@ function trRenderFields() {
 
     const actions = document.createElement("div");
     actions.className = "tr-field-actions";
+
+    const inh = document.createElement("button");
+    inh.type = "button";
+    inh.className = "btn btn-xs ghost tr-inherit-btn";
+    inh.textContent = "⤓";
+    inh.disabled = !trInheritOn || trLongMode;
+    inh.classList.toggle("is-on", trInheritCols.has(colIdx));
+    inh.classList.toggle("is-merge", trMergeCols.has(colIdx));
+    inh.setAttribute("aria-pressed", trInheritCols.has(colIdx) ? "true" : "false");
+    inh.setAttribute("aria-label", `${t("trInheritColAria")}: ${trFieldLabel(colIdx)}`);
+    inh.addEventListener("click", () => trToggleInheritCol(colIdx));
+    actions.appendChild(inh);
+
     const up = document.createElement("button");
     up.type = "button";
-    up.className = "btn btn-xs ghost";
+    up.className = "btn btn-xs ghost tr-move-up";
     up.textContent = "▲";
     up.setAttribute("aria-label", `${t("moveUp")}: ${trFieldLabel(colIdx)}`);
     up.disabled = pos === 0;
     up.addEventListener("click", () => trMoveField(pos, -1));
     const down = document.createElement("button");
     down.type = "button";
-    down.className = "btn btn-xs ghost";
+    down.className = "btn btn-xs ghost tr-move-down";
     down.textContent = "▼";
     down.setAttribute("aria-label", `${t("moveDown")}: ${trFieldLabel(colIdx)}`);
     down.disabled = pos === trFieldOrder.length - 1;
@@ -487,7 +666,7 @@ function trMoveField(pos, delta) {
   trRenderFields();
   trRenderCard();
   const list = trFieldsListEl.querySelectorAll(".tr-field-row");
-  const btn = list[next]?.querySelector(`.tr-field-actions button:nth-child(${delta < 0 ? 1 : 2})`);
+  const btn = list[next]?.querySelector(`.tr-field-actions .tr-move-${delta < 0 ? "up" : "down"}`);
   if (btn && !btn.disabled) btn.focus();
 }
 
@@ -550,6 +729,12 @@ function openTranscribe() {
   }
   trDone = new Set(Array.isArray(saved?.done) ? saved.done : []);
   trAutoFields = !!saved?.auto;
+  trLongMode = model.mode === "long";
+  trMergeRanges = trDetectMergeRanges();
+  trMergeCols = new Set(trMergeRanges.keys());
+  const validCol2 = (i) => Number.isInteger(i) && i >= 0 && i < trHeaders.length;
+  trInheritCols = new Set(Array.isArray(saved?.inheritCols) ? saved.inheritCols.filter(validCol2) : []);
+  trInheritOn = !!saved?.inherit && !trLongMode;
 
   trRebuildOrder(null);
   // Wznowienie: wracamy na zapamiętany wiersz, a jak go nie ma — na pierwszy nieodhaczony.
@@ -564,6 +749,7 @@ function openTranscribe() {
   }
   if (trHideDoneEl) trHideDoneEl.checked = trHideDone;
   trSetAutoFields(trAutoFields);
+  trSetInherit(trInheritOn, { keepCols: true, silent: true });
   trApplyFont();
   trSetLocked(false);
   if (trFieldsPanelEl) trFieldsPanelEl.classList.add("hidden");
@@ -685,6 +871,7 @@ if (trFontBtn) trFontBtn.addEventListener("click", trCycleFont);
 if (trLockBtn) trLockBtn.addEventListener("click", () => trSetLocked(!trLocked));
 if (trResetBtn) trResetBtn.addEventListener("click", trArmReset);
 if (trAutoFieldsEl) trAutoFieldsEl.addEventListener("change", () => trSetAutoFields(trAutoFieldsEl.checked));
+if (trInheritEl) trInheritEl.addEventListener("change", () => trSetInherit(trInheritEl.checked));
 if (trFieldsBtn) {
   trFieldsBtn.addEventListener("click", () => {
     if (trFieldsPanelEl && trFieldsPanelEl.classList.contains("hidden")) trOpenFields();
@@ -728,6 +915,18 @@ window.__transcribe = {
     cols: trVisibleCols(trCurrentRow()),
     auto: trAutoFields,
     skipped: trSkippedCount(trCurrentRow()),
+    inherit: trInheritOn,
+    inheritCols: Array.from(trInheritCols),
+    mergeCols: Array.from(trMergeCols),
+    longMode: trLongMode,
+    fields: (() => {
+      const row = trCurrentRow();
+      if (!row) return [];
+      return trVisibleCols(row).map((ci) => {
+        const r = trResolveField(row, ci);
+        return { col: ci, label: trFieldLabel(ci), text: r.text, from: r.from };
+      });
+    })(),
     locked: trLocked,
     font: trFont,
     hideDone: trHideDone,
@@ -740,6 +939,8 @@ window.__transcribe = {
   go: trGo,
   setHideDone: trSetHideDone,
   setAutoFields: trSetAutoFields,
+  setInherit: (on) => trSetInherit(on),
+  toggleInheritCol: trToggleInheritCol,
   reset: trResetProgress,
   setFields: (cols) => {
     trSelected = new Set(cols);

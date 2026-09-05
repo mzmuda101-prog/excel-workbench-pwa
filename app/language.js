@@ -125,6 +125,12 @@ const I18N = {
     trFieldsAuto: "Pola: auto",
     trAutoFieldsText: "Dobieraj pola z wiersza (pomijaj puste)",
     trAutoNote: "Zaznaczenia poniżej są wtedy nieaktywne — liczy się tylko kolejność.",
+    trInheritText: "Dziedzicz wartości z góry (scalone, kontynuacje)",
+    trInheritMergeInfo: "Ten arkusz ma scalenia pionowe w {cols} kolumnach — zaznaczam je same i przenoszę dokładnie w granicach scalenia. Znacznikiem ⤓ dodasz dowolną inną kolumnę (tam wartość idzie w dół aż do następnej własnej).",
+    trInheritNoMerges: "Ten arkusz nie ma scaleń pionowych. Znacznikiem ⤓ wskaż kolumny, w których wartość wpisuje się raz na rekord.",
+    trInheritLong: "Niedostępne w widoku Wide-to-Long — tam jeden wiersz to już osobny blok.",
+    trInheritColAria: "Dziedzicz z góry w tej kolumnie",
+    trInheritedFrom: "↑ z wiersza {n}",
     trSkipped: "pominięto puste: {n}",
     trRowEmpty: "Ten wiersz nie ma wypełnionych pól",
     trRowEmptySub: "Przejdź dalej ▶ albo wyłącz „Dobieraj pola z wiersza”.",
@@ -691,6 +697,12 @@ const I18N = {
     trFieldsAuto: "Fields: auto",
     trAutoFieldsText: "Pick fields from the row (skip empty)",
     trAutoNote: "The ticks below are then inactive — only the order counts.",
+    trInheritText: "Inherit values from above (merged, continuations)",
+    trInheritMergeInfo: "This sheet has vertical merges in {cols} columns — ticked automatically and carried strictly within each merge. Use the ⤓ marker to add any other column (there the value carries down until the next own value).",
+    trInheritNoMerges: "This sheet has no vertical merges. Use the ⤓ marker to point at columns whose value is typed once per record.",
+    trInheritLong: "Not available in the Wide-to-Long view — there each row is already a separate block.",
+    trInheritColAria: "Inherit from above in this column",
+    trInheritedFrom: "↑ from row {n}",
     trSkipped: "empty skipped: {n}",
     trRowEmpty: "This row has no filled fields",
     trRowEmptySub: "Move on ▶ or turn off “Pick fields from the row”.",
@@ -2117,6 +2129,7 @@ function applyStaticTranslations() {
   setText("#trFieldsSub", t("trFieldsSub"));
   setText("#trAutoFieldsText", t("trAutoFieldsText"));
   setText("#trAutoNote", t("trAutoNote"));
+  setText("#trInheritText", t("trInheritText"));
   setText("#trFieldsDoneBtn", t("trFieldsDone"));
   setText("#trFieldsAllBtn", t("trFieldsAll"));
   setText("#trFieldsNoneBtn", t("trFieldsNone"));

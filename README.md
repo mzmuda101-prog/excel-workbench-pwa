@@ -62,6 +62,7 @@ The goal is to build a workbench *around* Excel files: local-first, safe for sou
 - Full-screen, one-row-at-a-time view for copying data onto a **physical** paper form by hand
 - Pick which fields appear and reorder them to match the boxes on your sheet — saved per file and sheet
 - Or let it pick the fields per row: an auto mode that shows only what actually has a value in that row — for sheets with repeated column blocks, or rows whose data sits one or two columns further right
+- Inherit values from above for layouts where a value is written once per record — merged cells carry strictly within the merge, manually marked columns carry down to the next own value; every inherited value is marked with its source row
 - Tick each row off as you write it; progress is stored locally, so an interrupted session resumes where you stopped
 - "Hide done" to shrink the remaining list, three text sizes, and a screen wake lock so the tablet stays awake
 - Touch lock so a resting hand cannot scroll or change the current row
