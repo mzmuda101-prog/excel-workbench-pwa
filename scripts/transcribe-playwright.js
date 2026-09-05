@@ -156,6 +156,62 @@ async function run() {
   report.reorder = { labelMoved, firstLabel };
   if (labelMoved !== firstLabel) failures.push(`po przesunięciu pierwszym polem ma być "${labelMoved}", jest "${firstLabel}"`);
 
+  // ── 5b. Automatyczny dobór pól z wiersza ─────────────────────────────────
+  // Sedno: w arkuszach z powtarzanymi blokami (Kw1_*, Kw2_*, Kw3_*) dane raz siedzą
+  // w jednym bloku, raz w kolejnym. Tryb auto ma pokazać to, co w TYM wierszu
+  // naprawdę ma wartość — także kolumny spoza ręcznego zaznaczenia.
+  await page.click("#trFieldsBtn");
+  await sleep(150);
+  await page.click("#trAutoFields");
+  await sleep(200);
+  await page.click("#trFieldsDoneBtn");
+  await sleep(200);
+  const auto = await state(page);
+  const autoCard = await page.evaluate(() => ({
+    values: [...document.querySelectorAll("#trCard .tr-field-value")].map((v) => v.textContent),
+    labels: [...document.querySelectorAll("#trCard .tr-field-label")].map((v) => v.textContent),
+    skipped: document.querySelector(".tr-card-skipped")?.textContent || "",
+    btn: document.getElementById("trFieldsBtn").textContent,
+  }));
+  report.auto = { cols: auto.cols.length, skipped: auto.skipped, card: autoCard };
+  if (!auto.auto) failures.push("stan powinien raportować auto=true");
+  if (autoCard.values.some((v) => v === "—")) failures.push(`tryb auto nie powinien pokazywać pustych pól: ${JSON.stringify(autoCard.values)}`);
+  if (autoCard.values.length !== auto.cols.length) failures.push(`kart pól ${autoCard.values.length} ≠ pól auto ${auto.cols.length}`);
+  if (auto.skipped !== 0 && !autoCard.skipped) failures.push("brak informacji o pominiętych pustych polach");
+  if (!/auto/i.test(autoCard.btn)) failures.push(`przycisk „Pola" powinien sygnalizować tryb auto, jest "${autoCard.btn}"`);
+
+  // Auto musi sięgać POZA ręczne zaznaczenie — inaczej nie ratuje przesuniętych bloków.
+  const reach = await page.evaluate(() => {
+    const total = currentHeaders.length;
+    const st = window.__transcribe.state();
+    return { cols: st.cols, total, max: Math.max(...st.cols) };
+  });
+  report.autoReach = reach;
+  if (reach.cols.length + (auto.skipped || 0) !== reach.total) {
+    failures.push(`auto: pokazane (${reach.cols.length}) + pominięte (${auto.skipped}) powinno dać ${reach.total} kolumn`);
+  }
+
+  // Wiersz po wierszu zestaw pól MA się zmieniać — to cały sens trybu.
+  const beforeCols = (await state(page)).cols.join(",");
+  let changed = false;
+  for (let i = 0; i < 12 && !changed; i++) {
+    await page.evaluate(() => window.__transcribe.go(1));
+    const now = (await state(page)).cols.join(",");
+    if (now !== beforeCols) changed = true;
+  }
+  report.autoVaries = changed;
+  if (!changed) failures.push("w trybie auto zestaw pól powinien różnić się między wierszami");
+
+  // Powrót do trybu ręcznego oddaje stałą listę.
+  await page.evaluate(() => window.__transcribe.setAutoFields(false));
+  await sleep(150);
+  const backManual = await state(page);
+  report.backManual = { auto: backManual.auto, cols: backManual.cols.length };
+  if (backManual.auto) failures.push("wyłączenie trybu auto nie zadziałało");
+  if (backManual.cols.length !== 10) failures.push(`po powrocie do ręcznego powinno być 10 pól, jest ${backManual.cols.length}`);
+  await page.evaluate(() => window.__transcribe.setAutoFields(true));
+  await sleep(120);
+
   // ── 6. Blokada dotyku ─────────────────────────────────────────────────────
   await page.click("#trLockBtn");
   await sleep(120);
@@ -198,9 +254,10 @@ async function run() {
   await sleep(300);
   const restored = await state(page);
   const restoredFirstLabel = await page.evaluate(() => document.querySelector("#trCard .tr-field-label")?.textContent);
-  report.restored = { done: restored.done, hideDone: restored.hideDone, cols: restored.cols.length, restoredFirstLabel };
+  report.restored = { done: restored.done, hideDone: restored.hideDone, auto: restored.auto, cols: restored.cols.length, restoredFirstLabel };
   if (restored.done !== beforeClose.done) failures.push(`po przeładowaniu odhaczonych=${restored.done}, oczekiwano ${beforeClose.done}`);
   if (!restored.hideDone) failures.push("po przeładowaniu „ukryj spisane” powinno zostać włączone");
+  if (!restored.auto) failures.push("po przeładowaniu tryb auto powinien zostać włączony");
   if (restoredFirstLabel !== labelMoved) failures.push(`po przeładowaniu kolejność pól przepadła: "${restoredFirstLabel}" ≠ "${labelMoved}"`);
 
   // ── 8. Wyczyszczenie ✓ (dwustopniowe) ────────────────────────────────────

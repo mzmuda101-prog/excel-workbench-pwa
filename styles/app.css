@@ -4860,7 +4860,9 @@ body.tr-active { overflow: hidden; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin: 10px 0;
+  /* auto po bokach, żeby lista trzymała tę samą kolumnę co reszta panelu
+     (`.tr-fields-panel > *` centruje do 720px) */
+  margin: 10px auto;
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-sm);
 }
@@ -4917,4 +4919,35 @@ body.tr-active .toast-container {
   bottom: auto;
   top: max(64px, calc(env(safe-area-inset-top) + 64px));
   z-index: 210;
+}
+
+/* Tryb spisywania — automatyczny dobór pól z wiersza */
+.tr-auto-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tr-auto-toggle input { width: 17px; height: 17px; accent-color: var(--accent); flex-shrink: 0; }
+.tr-auto-note {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--muted-strong);
+}
+.tr-auto-note.hidden { display: none; }
+/* W trybie auto zaznaczenia nic nie zmieniają — przygaszamy je, ale ▲▼ zostają
+   w pełni czytelne, bo kolejność pól nadal obowiązuje. */
+.tr-fields-list.is-auto input[type="checkbox"] { opacity: .35; pointer-events: none; }
+.tr-fields-list.is-auto .tr-field-name { opacity: .7; }
+
+/* Licznik pominiętych idzie w lewo, numer wiersza zostaje po prawej —
+   bez tego pojedynczy element uciekałby na lewą stronę. */
+.tr-card-skipped {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }

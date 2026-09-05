@@ -122,6 +122,12 @@ const I18N = {
     trFields: "Pola",
     trFieldsTitle: "Pola do spisania",
     trFieldsSub: "Zaznacz i ułóż w kolejności rubryk na kartce",
+    trFieldsAuto: "Pola: auto",
+    trAutoFieldsText: "Dobieraj pola z wiersza (pomijaj puste)",
+    trAutoNote: "Zaznaczenia poniżej są wtedy nieaktywne — liczy się tylko kolejność.",
+    trSkipped: "pominięto puste: {n}",
+    trRowEmpty: "Ten wiersz nie ma wypełnionych pól",
+    trRowEmptySub: "Przejdź dalej ▶ albo wyłącz „Dobieraj pola z wiersza”.",
     trFieldsDone: "Gotowe",
     trFieldsAll: "Wszystkie",
     trFieldsNone: "Wyczyść",
@@ -682,6 +688,12 @@ const I18N = {
     trFields: "Fields",
     trFieldsTitle: "Fields to transcribe",
     trFieldsSub: "Tick them and order them like the boxes on your paper form",
+    trFieldsAuto: "Fields: auto",
+    trAutoFieldsText: "Pick fields from the row (skip empty)",
+    trAutoNote: "The ticks below are then inactive — only the order counts.",
+    trSkipped: "empty skipped: {n}",
+    trRowEmpty: "This row has no filled fields",
+    trRowEmptySub: "Move on ▶ or turn off “Pick fields from the row”.",
     trFieldsDone: "Done",
     trFieldsAll: "All",
     trFieldsNone: "Clear",
@@ -2103,6 +2115,8 @@ function applyStaticTranslations() {
   setText("#trFieldsBtn", t("trFields"));
   setText("#trFieldsTitle", t("trFieldsTitle"));
   setText("#trFieldsSub", t("trFieldsSub"));
+  setText("#trAutoFieldsText", t("trAutoFieldsText"));
+  setText("#trAutoNote", t("trAutoNote"));
   setText("#trFieldsDoneBtn", t("trFieldsDone"));
   setText("#trFieldsAllBtn", t("trFieldsAll"));
   setText("#trFieldsNoneBtn", t("trFieldsNone"));

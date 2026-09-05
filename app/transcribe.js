@@ -41,6 +41,8 @@ const trFieldsAllBtn = document.getElementById("trFieldsAllBtn");
 const trFieldsNoneBtn = document.getElementById("trFieldsNoneBtn");
 const trFieldsDoneBtn = document.getElementById("trFieldsDoneBtn");
 const trResetBtn = document.getElementById("trResetBtn");
+const trAutoFieldsEl = document.getElementById("trAutoFields");
+const trAutoNoteEl = document.getElementById("trAutoNote");
 const trTouchShieldEl = document.getElementById("trTouchShield");
 const trLiveEl = document.getElementById("trLive");
 
@@ -54,6 +56,7 @@ let trDone = new Set();      // klucze wierszy już spisanych
 let trOrder = [];            // indeksy do trRows widoczne w bieżącym trybie (hideDone)
 let trPos = 0;
 let trHideDone = false;
+let trAutoFields = false;
 let trFont = 2;
 let trLocked = false;
 let trScope = "";
@@ -101,6 +104,7 @@ function trPersist() {
   store.scopes[trScope] = {
     order: trFieldOrder.slice(),
     sel: Array.from(trSelected),
+    auto: trAutoFields,
     done: Array.from(trDone).slice(0, TR_MAX_DONE),
     cursor: trCurrentKey(),
     ts: Date.now(),
@@ -136,8 +140,29 @@ function trFieldLabel(idx) {
     : String(trHeaders[idx] ?? idx + 1);
 }
 
-function trVisibleCols() {
+// Dwa tryby doboru pól:
+//   ręczny  — dokładnie to, co zaznaczone (stałe rubryki formularza),
+//   auto    — pola z wartością W TYM wierszu, brane ze WSZYSTKICH kolumn.
+// Auto jest odpowiedzią na arkusze z powtarzanymi blokami (Kw1_*, Kw2_*, Kw3_*)
+// i na „przesunięte” wiersze: raz dane siedzą jedną kolumnę w prawo, raz dwie.
+// Zaznaczenia w trybie auto nie mają wpływu, ale KOLEJNOŚĆ owszem.
+function trHasValue(row, idx) {
+  return String(getDisplayValue(row, idx) ?? "").trim() !== "";
+}
+
+function trVisibleCols(row) {
+  if (trAutoFields) {
+    if (!row) return [];
+    return trFieldOrder.filter((idx) => trHasValue(row, idx));
+  }
   return trFieldOrder.filter((idx) => trSelected.has(idx));
+}
+
+// Ile pól tryb auto przemilczał — bez tego licznika znikające rubryki wyglądają
+// jak zgubione dane, a nie jak świadome pominięcie pustych.
+function trSkippedCount(row) {
+  if (!trAutoFields || !row) return 0;
+  return trFieldOrder.length - trVisibleCols(row).length;
 }
 
 // Domyślny zestaw pól przy pierwszym otwarciu arkusza: kolumny, które faktycznie
@@ -171,7 +196,7 @@ function trRebuildOrder(preserveKey) {
 function trRenderCard() {
   if (!trCardEl) return;
   const row = trCurrentRow();
-  const cols = trVisibleCols();
+  const cols = trVisibleCols(row);
   const total = trOrder.length;
 
   trCardEl.replaceChildren();
@@ -186,7 +211,12 @@ function trRenderCard() {
       title.className = "tr-empty-title";
       const sub = document.createElement("div");
       sub.className = "tr-empty-sub";
-      if (noFields) {
+      if (noFields && trAutoFields) {
+        // W trybie auto „brak pól” znaczy: cały wiersz jest pusty. To inny komunikat
+        // niż „nic nie zaznaczyłeś” — inaczej wygląda na awarię.
+        title.textContent = t("trRowEmpty");
+        sub.textContent = t("trRowEmptySub");
+      } else if (noFields) {
         title.textContent = t("trNoFields");
         sub.textContent = t("trNoFieldsSub");
       } else if (trDone.size >= trRows.length && trRows.length) {
@@ -207,6 +237,13 @@ function trRenderCard() {
     srcRow.className = "tr-card-rownum";
     const rowLabel = trRowHeadFormatter ? trRowHeadFormatter(row) : String((row.rowIndex0 ?? 0) + 1);
     srcRow.textContent = t("trSheetRow", { n: rowLabel });
+    const skipped = trSkippedCount(row);
+    if (skipped > 0) {
+      const skippedEl = document.createElement("span");
+      skippedEl.className = "tr-card-skipped";
+      skippedEl.textContent = t("trSkipped", { n: skipped });
+      head.appendChild(skippedEl);
+    }
     head.appendChild(srcRow);
     trCardEl.appendChild(head);
 
@@ -335,6 +372,15 @@ function trArmReset() {
     trResetBtn.classList.remove("is-armed");
     trResetBtn.textContent = t("trReset");
   }, 3500);
+}
+
+function trSetAutoFields(on) {
+  trAutoFields = !!on;
+  if (trAutoFieldsEl) trAutoFieldsEl.checked = trAutoFields;
+  if (trAutoNoteEl) trAutoNoteEl.classList.toggle("hidden", !trAutoFields);
+  if (trFieldsBtn) trFieldsBtn.textContent = trAutoFields ? t("trFieldsAuto") : t("trFields");
+  if (trFieldsListEl) trFieldsListEl.classList.toggle("is-auto", trAutoFields);
+  trRenderCard();
 }
 
 // ── Rozmiar tekstu / blokada dotyku / Wake Lock ─────────────────────────────
@@ -503,6 +549,7 @@ function openTranscribe() {
     trSelected = trDefaultSelection();
   }
   trDone = new Set(Array.isArray(saved?.done) ? saved.done : []);
+  trAutoFields = !!saved?.auto;
 
   trRebuildOrder(null);
   // Wznowienie: wracamy na zapamiętany wiersz, a jak go nie ma — na pierwszy nieodhaczony.
@@ -516,6 +563,7 @@ function openTranscribe() {
     trSourceEl.textContent = [currentFileName || "", sheet].filter(Boolean).join(" · ");
   }
   if (trHideDoneEl) trHideDoneEl.checked = trHideDone;
+  trSetAutoFields(trAutoFields);
   trApplyFont();
   trSetLocked(false);
   if (trFieldsPanelEl) trFieldsPanelEl.classList.add("hidden");
@@ -636,6 +684,7 @@ if (trHideDoneEl) trHideDoneEl.addEventListener("change", () => trSetHideDone(tr
 if (trFontBtn) trFontBtn.addEventListener("click", trCycleFont);
 if (trLockBtn) trLockBtn.addEventListener("click", () => trSetLocked(!trLocked));
 if (trResetBtn) trResetBtn.addEventListener("click", trArmReset);
+if (trAutoFieldsEl) trAutoFieldsEl.addEventListener("change", () => trSetAutoFields(trAutoFieldsEl.checked));
 if (trFieldsBtn) {
   trFieldsBtn.addEventListener("click", () => {
     if (trFieldsPanelEl && trFieldsPanelEl.classList.contains("hidden")) trOpenFields();
@@ -676,18 +725,21 @@ window.__transcribe = {
     total: trOrder.length,
     rows: trRows.length,
     done: trDone.size,
-    cols: trVisibleCols(),
+    cols: trVisibleCols(trCurrentRow()),
+    auto: trAutoFields,
+    skipped: trSkippedCount(trCurrentRow()),
     locked: trLocked,
     font: trFont,
     hideDone: trHideDone,
     values: (() => {
       const row = trCurrentRow();
-      return row ? trVisibleCols().map((ci) => String(getDisplayValue(row, ci) ?? "")) : [];
+      return row ? trVisibleCols(row).map((ci) => String(getDisplayValue(row, ci) ?? "")) : [];
     })(),
   }),
   mark: trMarkAndNext,
   go: trGo,
   setHideDone: trSetHideDone,
+  setAutoFields: trSetAutoFields,
   reset: trResetProgress,
   setFields: (cols) => {
     trSelected = new Set(cols);
