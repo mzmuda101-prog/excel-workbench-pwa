@@ -58,6 +58,14 @@ The goal is to build a workbench *around* Excel files: local-first, safe for sou
 - Repeated block detector — identifies cycling column patterns (`od`, `do`, `od 2`, `do 2`, etc.)
 - KPI extractor for dashboard-style or summary-heavy sheets
 
+### Transcribe mode
+- Full-screen, one-row-at-a-time view for copying data onto a **physical** paper form by hand
+- Pick which fields appear and reorder them to match the boxes on your sheet — saved per file and sheet
+- Tick each row off as you write it; progress is stored locally, so an interrupted session resumes where you stopped
+- "Hide done" to shrink the remaining list, three text sizes, and a screen wake lock so the tablet stays awake
+- Touch lock so a resting hand cannot scroll or change the current row
+- Works on the current filtered, sorted view — including derived columns and Wide-to-Long
+
 ### Aggregation workbench
 - Pivot-table-inspired grouping by up to three levels
 - Multiple simultaneous measures: count, sum, average, median, min, max, distinct count, earliest, latest

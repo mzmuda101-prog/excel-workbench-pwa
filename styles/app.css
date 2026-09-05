@@ -4643,3 +4643,278 @@ html.low-power .loading-overlay.is-file {
   .print-table tr { break-inside: avoid; }
   @page { margin: 14mm; }
 }
+
+/* ######################################################################################################################### */
+/* Tryb spisywania — pełnoekranowy ekran do przepisywania danych ręcznie na papier                                            */
+/* ######################################################################################################################### */
+/* Zasada: maksymalnie mało na ekranie i maksymalnie duża wartość do przeczytania.
+   Kolory z tokenów, więc tryb ciemny wchodzi automatycznie. */
+
+body.tr-active { overflow: hidden; }
+
+.tr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200; /* nad modalami (150) — to tryb pracy, nie okienko */
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  overscroll-behavior: contain;
+  animation: fadeIn var(--t) ease;
+
+  /* Trzy stopnie czytelności — przycisk „A / A+ / A++”. */
+  --tr-value: 24px;
+  --tr-label: 11px;
+}
+.tr-overlay.hidden { display: none; }
+.tr-overlay[data-font="1"] { --tr-value: 19px; --tr-label: 10px; }
+.tr-overlay[data-font="2"] { --tr-value: 26px; --tr-label: 11px; }
+.tr-overlay[data-font="3"] { --tr-value: 34px; --tr-label: 12px; }
+
+.tr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tr-head-main { min-width: 0; }
+.tr-title { font-weight: 700; font-size: 15px; letter-spacing: .01em; }
+.tr-source {
+  font-size: 11.5px;
+  color: var(--muted-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-head-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* Wskaźnik działającego Wake Locka — kropka przy tytule, bez dodatkowego napisu. */
+.tr-overlay.has-wakelock .tr-title::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  vertical-align: middle;
+}
+
+.tr-progress { height: 3px; background: var(--border-subtle); }
+.tr-progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 220ms cubic-bezier(.22,1,.36,1);
+}
+
+.tr-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--muted-strong);
+}
+.tr-counter { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 13px; }
+.tr-done-count { font-variant-numeric: tabular-nums; }
+.tr-hide-done { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-left: auto; }
+.tr-hide-done input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.tr-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-strong);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.tr-chip.is-done {
+  background: var(--success-bg);
+  border-color: var(--success);
+  color: var(--success);
+}
+[data-theme="dark"] .tr-chip.is-done { background: color-mix(in srgb, var(--success) 22%, transparent); }
+.tr-chip:disabled { opacity: .45; cursor: default; }
+
+.tr-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 14px 18px;
+}
+
+.tr-card {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.tr-card.hidden, .tr-empty.hidden, .tr-touchshield.hidden, .tr-fields-panel.hidden { display: none; }
+
+.tr-card-head { display: flex; justify-content: flex-end; }
+.tr-card-rownum {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tr-field {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  padding: 7px 14px 9px;
+}
+.tr-field-label {
+  font-size: var(--tr-label);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 700;
+  color: var(--muted-strong);
+  margin-bottom: 3px;
+}
+.tr-field-value {
+  font-size: var(--tr-value);
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--ink);
+  /* Cyfry o stałej szerokości — przy przepisywaniu numerów to realnie mniej pomyłek. */
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  /* Zaznaczanie zostaje włączone: czasem chce się jednak skopiować wartość. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+.tr-field-value.is-empty { color: var(--placeholder); font-weight: 500; }
+
+.tr-empty {
+  width: min(520px, 100%);
+  margin: 40px auto 0;
+  text-align: center;
+}
+.tr-empty-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.tr-empty-sub { font-size: 13px; color: var(--muted-strong); }
+
+.tr-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface);
+  z-index: 6; /* nad tarczą blokady dotyku */
+}
+.tr-bar .btn { min-height: 54px; border-radius: var(--r-lg); }
+.tr-nav { flex: 0 0 76px; font-size: 16px; }
+.tr-main { flex: 1; font-size: 16px; font-weight: 700; }
+.tr-bar .btn:disabled { opacity: .4; cursor: default; }
+
+/* Blokada dotyku: tarcza łyka gesty nad kartą, dolny pasek i przycisk blokady
+   zostają nad nią. Podwójny tap w tarczę odblokowuje (wyjście awaryjne). */
+.tr-touchshield {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  touch-action: none;
+  background: transparent;
+}
+.tr-overlay.is-locked #trLockBtn { position: relative; z-index: 6; }
+.tr-overlay.is-locked .tr-head-tools > :not(#trLockBtn) { opacity: .35; pointer-events: none; }
+.tr-overlay.is-locked .tr-meta { opacity: .5; pointer-events: none; }
+
+/* Panel wyboru i kolejności pól — arkusz od dołu, w obrębie nakładki. */
+.tr-fields-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  max-height: 76%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--shadow-xl);
+  padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+  animation: trSheetUp 200ms cubic-bezier(.22,1,.36,1);
+}
+.tr-fields-panel > * { width: min(720px, 100%); margin-inline: auto; }
+@keyframes trSheetUp { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.tr-fields-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tr-fields-title { font-weight: 700; font-size: 14px; }
+.tr-fields-sub { font-size: 11.5px; color: var(--muted-strong); margin-top: 2px; }
+.tr-fields-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 10px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+}
+.tr-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tr-field-row:last-child { border-bottom: none; }
+.tr-field-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); flex-shrink: 0; }
+.tr-field-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-field-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.tr-fields-actions { display: flex; gap: 8px; }
+.tr-reset { margin-left: auto; }
+.tr-reset.is-armed { border-color: var(--danger); color: var(--danger); }
+
+.tr-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Telefon: paski robią się ciaśniejsze, ale przyciski akcji zostają duże —
+   to jedyne, co ma być klikane w tym trybie. */
+@media (max-width: 560px) {
+  .tr-head-tools .btn { padding: 7px 9px; font-size: 12px; }
+  .tr-nav { flex: 0 0 60px; }
+  .tr-stage { padding: 8px 10px 14px; }
+  .tr-bar { padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tr-overlay, .tr-fields-panel { animation: none; }
+  .tr-progress-bar { transition: none; }
+}
+
+/* Toasty w trybie spisywania lądują u góry — na dole zasłaniałyby przycisk
+   „Spisane i dalej”, czyli jedyny element, w który się w tym trybie celuje. */
+body.tr-active .toast-container {
+  bottom: auto;
+  top: max(64px, calc(env(safe-area-inset-top) + 64px));
+  z-index: 210;
+}

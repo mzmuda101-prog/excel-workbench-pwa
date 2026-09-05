@@ -104,6 +104,37 @@ const I18N = {
     exportClearAll: "Wyczyść",
     exportActionCsv: "CSV",
     exportActionPrint: "Drukuj / PDF",
+    trBtn: "Spisywanie",
+    trTitle: "Spisywanie",
+    trBtnHint: "Tryb spisywania — jeden wiersz naraz, dużą czcionką, z odhaczaniem. Do przepisywania danych ręcznie na papier.",
+    trCounter: "{pos} / {total}",
+    trDoneCount: "spisane: {done} z {all}",
+    trSheetRow: "wiersz arkusza {n}",
+    trChipDone: "✓ spisane",
+    trChipPending: "do spisania",
+    trHideDoneText: "Ukryj spisane",
+    trMark: "✓ Spisane i dalej",
+    trPrevAria: "Poprzedni wiersz",
+    trNextAria: "Następny wiersz",
+    trFontAria: "Rozmiar tekstu",
+    trLock: "Blokada dotyku",
+    trUnlock: "Odblokuj dotyk",
+    trFields: "Pola",
+    trFieldsTitle: "Pola do spisania",
+    trFieldsSub: "Zaznacz i ułóż w kolejności rubryk na kartce",
+    trFieldsDone: "Gotowe",
+    trFieldsAll: "Wszystkie",
+    trFieldsNone: "Wyczyść",
+    trReset: "Wyczyść ✓",
+    trResetConfirm: "Na pewno?",
+    trResetDone: "Odhaczenia wyczyszczone",
+    trResumed: "Wznowiono — {done} już spisanych",
+    trAllDone: "Wszystko spisane",
+    trAllDoneSub: "Odznacz „Ukryj spisane”, żeby wrócić do pełnej listy.",
+    trNothingToShow: "Brak wierszy do pokazania",
+    trNoFields: "Nie wybrano żadnego pola",
+    trNoFieldsSub: "Otwórz „Pola” i zaznacz, co chcesz spisywać.",
+    trLiveRow: "Wiersz {pos} z {total}",
     validationNeedValues: "Podaj listę dozwolonych wartości (lub wybierz kolumnę-słownik)",
     validationAllValid: "Wszystko zgodne — 0 wartości spoza listy ({total} wierszy)",
     validationSummaryText: "{bad} z {total} wierszy poza listą · {values} różnych wartości spoza listy",
@@ -633,6 +664,37 @@ const I18N = {
     exportClearAll: "Clear",
     exportActionCsv: "CSV",
     exportActionPrint: "Print / PDF",
+    trBtn: "Transcribe",
+    trTitle: "Transcribe",
+    trBtnHint: "Transcribe mode — one row at a time, large type, with tick-off. For copying data onto paper by hand.",
+    trCounter: "{pos} / {total}",
+    trDoneCount: "done: {done} of {all}",
+    trSheetRow: "sheet row {n}",
+    trChipDone: "✓ done",
+    trChipPending: "to write",
+    trHideDoneText: "Hide done",
+    trMark: "✓ Done, next",
+    trPrevAria: "Previous row",
+    trNextAria: "Next row",
+    trFontAria: "Text size",
+    trLock: "Touch lock",
+    trUnlock: "Unlock touch",
+    trFields: "Fields",
+    trFieldsTitle: "Fields to transcribe",
+    trFieldsSub: "Tick them and order them like the boxes on your paper form",
+    trFieldsDone: "Done",
+    trFieldsAll: "All",
+    trFieldsNone: "Clear",
+    trReset: "Clear ✓",
+    trResetConfirm: "Sure?",
+    trResetDone: "Tick-offs cleared",
+    trResumed: "Resumed — {done} already done",
+    trAllDone: "All transcribed",
+    trAllDoneSub: "Untick “Hide done” to get the full list back.",
+    trNothingToShow: "No rows to show",
+    trNoFields: "No field selected",
+    trNoFieldsSub: "Open “Fields” and tick what you want to transcribe.",
+    trLiveRow: "Row {pos} of {total}",
     validationNeedValues: "Provide a list of allowed values (or pick a dictionary column)",
     validationAllValid: "All valid — 0 values outside the list ({total} rows)",
     validationSummaryText: "{bad} of {total} rows outside the list · {values} distinct off-list values",
@@ -2032,6 +2094,23 @@ function applyStaticTranslations() {
   setText("#exportClearAll", t("exportClearAll"));
   setText("#exportCsvAction", t("exportActionCsv"));
   setText("#exportPrintAction", t("exportActionPrint"));
+  setText("#transcribeBtn", t("trBtn"));
+  setAttr("#transcribeBtn", "data-hint-pl", I18N.pl.trBtnHint);
+  setAttr("#transcribeBtn", "data-hint-en", I18N.en.trBtnHint);
+  setText("#trTitle", t("trTitle"));
+  setText("#trMarkBtn", t("trMark"));
+  setText("#trHideDoneText", t("trHideDoneText"));
+  setText("#trFieldsBtn", t("trFields"));
+  setText("#trFieldsTitle", t("trFieldsTitle"));
+  setText("#trFieldsSub", t("trFieldsSub"));
+  setText("#trFieldsDoneBtn", t("trFieldsDone"));
+  setText("#trFieldsAllBtn", t("trFieldsAll"));
+  setText("#trFieldsNoneBtn", t("trFieldsNone"));
+  setText("#trResetBtn", t("trReset"));
+  setText("#trLockBtn", t("trLock"));
+  setAttr("#trFontBtn", "aria-label", t("trFontAria"));
+  setAttr("#trPrevBtn", "aria-label", t("trPrevAria"));
+  setAttr("#trNextBtn", "aria-label", t("trNextAria"));
   setText("#validationPanelTitle", t("validationPanelTitle"));
   setText("#validationHint", t("validationHintText"));
   setText("#validationColumnLabel", t("validationColumnLabel"));
