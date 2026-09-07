@@ -16,7 +16,7 @@
     <link rel="apple-touch-icon" href="assets/images/apple-touch-icon.png?v=20260429-01" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin-ext.woff2" crossorigin />
-    <link rel="stylesheet" href="styles/app.css?v=20260907-02" />
+    <link rel="stylesheet" href="styles/app.css?v=20260907-03" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -1335,6 +1335,7 @@
         <div class="tr-head-tools">
           <button class="btn btn-sm ghost" id="trFontBtn" type="button" aria-label="Rozmiar tekstu">A</button>
           <button class="btn btn-sm ghost toggle-pill" id="trLockBtn" type="button" aria-pressed="false">Blokada dotyku</button>
+          <button class="btn btn-sm ghost" id="trProgressBtn" type="button" aria-expanded="false" aria-controls="trProgressPanel">Postęp</button>
           <button class="btn btn-sm ghost" id="trFieldsBtn" type="button" aria-expanded="false" aria-controls="trFieldsPanel">Pola</button>
           <button class="modal-close" id="trCloseBtn" type="button" aria-label="Zamknij">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1346,6 +1347,16 @@
       </div>
 
       <div class="tr-progress" aria-hidden="true"><div class="tr-progress-bar" id="trProgressBar"></div></div>
+
+      <!-- Ostrzeżenie po wykryciu, że arkusz nie jest tym samym, na którym odhaczano.
+           Świadomie NIE kasuje nic samo — decyzję zostawia użytkownikowi. -->
+      <div class="tr-notice hidden" id="trNotice" role="status">
+        <div class="tr-notice-text" id="trNoticeText"></div>
+        <div class="tr-notice-actions">
+          <button class="btn btn-xs" id="trNoticeResetBtn" type="button">Zacznij od nowa</button>
+          <button class="btn btn-xs ghost" id="trNoticeKeepBtn" type="button">Zostaw</button>
+        </div>
+      </div>
 
       <div class="tr-meta">
         <span class="tr-counter" id="trCounter">0 / 0</span>
@@ -1398,8 +1409,28 @@
         <div class="tr-fields-actions">
           <button class="btn btn-sm ghost" id="trFieldsAllBtn" type="button">Wszystkie</button>
           <button class="btn btn-sm ghost" id="trFieldsNoneBtn" type="button">Wyczyść</button>
+        </div>
+      </div>
+
+      <!-- Panel „Postęp": co apka o tym spisywaniu pamięta, skąd to wie i jak to skasować. -->
+      <div class="tr-fields-panel tr-progress-panel hidden" id="trProgressPanel" role="group" aria-labelledby="trProgressTitle">
+        <div class="tr-fields-head">
+          <div>
+            <div class="tr-fields-title" id="trProgressTitle">Postęp spisywania</div>
+            <div class="tr-fields-sub" id="trProgressSub">Zapisywane na tym urządzeniu, osobno dla każdego pliku i arkusza</div>
+          </div>
+          <button class="btn btn-sm" id="trProgressDoneBtn" type="button">Gotowe</button>
+        </div>
+        <div class="tr-stats" id="trStats"></div>
+        <div class="tr-scope-note" id="trScopeNote"></div>
+        <div class="tr-fields-actions">
           <button class="btn btn-sm ghost tr-reset" id="trResetBtn" type="button">Wyczyść ✓</button>
         </div>
+        <div class="tr-store-head">
+          <span id="trStoreTitle">Zapamiętane spisywania</span>
+          <button class="btn btn-xs ghost tr-reset" id="trStoreClearAllBtn" type="button">Wyczyść wszystkie</button>
+        </div>
+        <div class="tr-store-list" id="trStoreList"></div>
       </div>
 
       <div class="tr-live" id="trLive" role="status" aria-live="polite"></div>
@@ -1418,23 +1449,23 @@
          Dogrywa je leniwie ensureXlsxLibs() (app/workbook.js) przy pierwszym wczytaniu/zapisie
          pliku — apka bootuje bez ~512K JS. SW i tak je precache'uje (offline OK). -->
     <!-- defer: skrypty pobierają się równolegle i wykonują po sparsowaniu HTML, z zachowaniem kolejności -->
-    <script defer src="app/core.js?v=20260907-02"></script>
-    <script defer src="app/language.js?v=20260907-02"></script>
-    <script defer src="app/analysis.js?v=20260907-02"></script>
-    <script defer src="app/workbook.js?v=20260907-02"></script>
-    <script defer src="app/xlsx-patch.js?v=20260907-02"></script>
-    <script defer src="app/table.js?v=20260907-02"></script>
-    <script defer src="app/conditional-formatting.js?v=20260907-02"></script>
-    <script defer src="app/data-validation.js?v=20260907-02"></script>
-    <script defer src="app/derived-columns.js?v=20260907-02"></script>
-    <script defer src="app/formulas.js?v=20260907-02"></script>
-    <script defer src="app/edit-tools.js?v=20260907-02"></script>
-    <script defer src="app/ui-controls.js?v=20260907-02"></script>
-    <script defer src="app/transcribe.js?v=20260907-02"></script>
+    <script defer src="app/core.js?v=20260907-03"></script>
+    <script defer src="app/language.js?v=20260907-03"></script>
+    <script defer src="app/analysis.js?v=20260907-03"></script>
+    <script defer src="app/workbook.js?v=20260907-03"></script>
+    <script defer src="app/xlsx-patch.js?v=20260907-03"></script>
+    <script defer src="app/table.js?v=20260907-03"></script>
+    <script defer src="app/conditional-formatting.js?v=20260907-03"></script>
+    <script defer src="app/data-validation.js?v=20260907-03"></script>
+    <script defer src="app/derived-columns.js?v=20260907-03"></script>
+    <script defer src="app/formulas.js?v=20260907-03"></script>
+    <script defer src="app/edit-tools.js?v=20260907-03"></script>
+    <script defer src="app/ui-controls.js?v=20260907-03"></script>
+    <script defer src="app/transcribe.js?v=20260907-03"></script>
     <!-- Diagnostyka przewijania: NIE ładowana na starcie (czysty narzut ~29KB dla kodu,
          który i tak nic nie robi bez `?scrolltest`). Dogrywamy ją leniwie TYLKO gdy
          flaga jest włączona — loader w osobnym pliku, żeby CSP mogło zostać script-src 'self'. -->
-    <script defer src="app/debug-loaders.js?v=20260907-02"></script>
-    <script defer src="app/bootstrap.js?v=20260907-02"></script>
+    <script defer src="app/debug-loaders.js?v=20260907-03"></script>
+    <script defer src="app/bootstrap.js?v=20260907-03"></script>
   </body>
 </html>

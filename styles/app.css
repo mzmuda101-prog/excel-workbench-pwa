@@ -5016,6 +5016,121 @@ body.tr-active { overflow: hidden; }
 }
 .tr-undo { margin-left: auto; }
 .tr-undo:not(.hidden) + .tr-hide-done { margin-left: 0; }
+
+/* Baner „ten arkusz wygląda inaczej”. Bursztyn, nie czerwień: to ostrzeżenie do
+   przeczytania, a nie błąd — i świadomie nic samo nie kasuje. */
+.tr-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 14px 0;
+  padding: 9px 12px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid color-mix(in srgb, var(--warning, #b8860b) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning, #b8860b) 12%, transparent);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.tr-notice.hidden { display: none; }
+.tr-notice-text { flex: 1; min-width: 220px; }
+.tr-notice-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* Panel „Postęp” dzieli układ z panelem „Pola” — te same marginesy i ta sama
+   pozycja od dołu, żeby przełączanie między nimi nie skakało. */
+.tr-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.tr-stat {
+  padding: 9px 10px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  text-align: center;
+}
+.tr-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.tr-stat.is-done .tr-stat-value { color: var(--success); }
+.tr-stat-label {
+  margin-top: 2px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  font-weight: 700;
+  color: var(--muted-strong);
+}
+.tr-scope-note {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted-strong);
+  margin-bottom: 10px;
+}
+
+.tr-store-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  font-weight: 700;
+  color: var(--muted-strong);
+}
+/* Lista zapisów jest jedynym elementem panelu, który może urosnąć — to ona przejmuje
+   przewijanie, żeby statystyki i przyciski kasowania nigdy nie uciekły poza ekran. */
+.tr-store-list {
+  flex: 1;
+  min-height: 60px;
+  max-height: 34vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tr-store-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tr-store-item:last-child { border-bottom: none; }
+.tr-store-item.is-current .tr-store-name::before {
+  content: "▸ ";
+  color: var(--accent);
+}
+.tr-store-main { min-width: 0; flex: 1; }
+.tr-store-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-store-meta {
+  font-size: 11px;
+  color: var(--muted-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-store-del { flex-shrink: 0; }
+.tr-store-empty { font-size: 12px; color: var(--muted); padding: 6px 0; }
 .tr-undo.hidden { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .tr-main.is-turbo { animation: none; }

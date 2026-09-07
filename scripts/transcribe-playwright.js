@@ -260,8 +260,8 @@ async function run() {
   if (!restored.auto) failures.push("po przeładowaniu tryb auto powinien zostać włączony");
   if (restoredFirstLabel !== labelMoved) failures.push(`po przeładowaniu kolejność pól przepadła: "${restoredFirstLabel}" ≠ "${labelMoved}"`);
 
-  // ── 8. Wyczyszczenie ✓ (dwustopniowe) ────────────────────────────────────
-  await page.click("#trFieldsBtn");
+  // ── 8. Wyczyszczenie ✓ (dwustopniowe) — mieszka w panelu „Postęp" ─────────
+  await page.click("#trProgressBtn");
   await sleep(150);
   await page.click("#trResetBtn");
   await sleep(80);

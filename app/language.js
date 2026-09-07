@@ -149,6 +149,30 @@ const I18N = {
     trLiveRow: "Wiersz {pos} z {total}",
     recalcNote: "↻ Przeliczone na dziś ({today}) — w pliku było: {was}",
     recalcNoteSaved: "↻ Przeliczone na dziś ({today}) — w pliku (zapis {saved}) było: {was}",
+    trProgress: "Postęp",
+    trProgressTitle: "Postęp spisywania",
+    trProgressSub: "Zapisywane na tym urządzeniu, osobno dla każdego pliku i arkusza",
+    trProgressDone: "Gotowe",
+    trStatDone: "spisane",
+    trStatLeft: "zostało",
+    trStatPercent: "postęp",
+    trScopeRows: "Ten arkusz: {rows} wierszy, {cols} kolumn",
+    trScopeLastSession: "Ostatnie spisywanie: {when}",
+    trScopeFileResaved: "Plik był w międzyczasie zapisany ponownie, ale dane wyglądają tak samo — odhaczenia zostają.",
+    trScopeChangedRemapped: "Arkusz się zmienił — odhaczenia dopasowane po treści wierszy: przeniesione {moved} z {all}, nieodnalezione {lost}.",
+    trScopeChangedUnknown: "Arkusz się zmienił, a zapis pochodzi ze starszej wersji aplikacji — nie da się sprawdzić, czy ✓ stoją na właściwych wierszach.",
+    trWhenToday: "dziś {time}",
+    trStoreTitle: "Zapamiętane spisywania",
+    trStoreClearAll: "Wyczyść wszystkie",
+    trStoreEmpty: "Nic jeszcze nie zapamiętano.",
+    trStoreDone: "{done} z {all} ✓",
+    trStoreDelete: "Usuń zapis",
+    trStoreDeleted: "Zapis usunięty",
+    trStoreClearedAll: "Wyczyszczono wszystkie zapamiętane spisywania",
+    trNoticeRemapped: "Ten arkusz wygląda inaczej niż przy ostatnim spisywaniu ({when}): było {savedRows} wierszy, jest {rows}. Odhaczenia dopasowałem po treści — przeniesione {moved} z {all}, nieodnalezione {lost}.",
+    trNoticeUnknown: "Ten arkusz wygląda inaczej niż przy ostatnim spisywaniu ({when}). Zapamiętane ✓ ({all}) pochodzą ze starszej wersji zapisu i mogą stać na niewłaściwych wierszach.",
+    trNoticeReset: "Zacznij od nowa",
+    trNoticeKeep: "Zostaw",
     trScrollMore: "jeszcze {n} ↓",
     trScrollMoreMore: "przewiń niżej ↓",
     trUndoBurst: "↶ Cofnij {n}",
@@ -731,6 +755,30 @@ const I18N = {
     trLiveRow: "Row {pos} of {total}",
     recalcNote: "↻ Recalculated for today ({today}) — the file had: {was}",
     recalcNoteSaved: "↻ Recalculated for today ({today}) — the file (saved {saved}) had: {was}",
+    trProgress: "Progress",
+    trProgressTitle: "Transcription progress",
+    trProgressSub: "Stored on this device, separately for each file and sheet",
+    trProgressDone: "Done",
+    trStatDone: "done",
+    trStatLeft: "left",
+    trStatPercent: "progress",
+    trScopeRows: "This sheet: {rows} rows, {cols} columns",
+    trScopeLastSession: "Last session: {when}",
+    trScopeFileResaved: "The file was saved again in the meantime, but the data looks the same — tick-offs kept.",
+    trScopeChangedRemapped: "The sheet changed — tick-offs matched by row content: {moved} of {all} moved, {lost} not found.",
+    trScopeChangedUnknown: "The sheet changed and the record comes from an older app version — there is no way to check whether the ✓ sit on the right rows.",
+    trWhenToday: "today {time}",
+    trStoreTitle: "Remembered transcriptions",
+    trStoreClearAll: "Clear all",
+    trStoreEmpty: "Nothing remembered yet.",
+    trStoreDone: "{done} of {all} ✓",
+    trStoreDelete: "Delete record",
+    trStoreDeleted: "Record deleted",
+    trStoreClearedAll: "All remembered transcriptions cleared",
+    trNoticeRemapped: "This sheet looks different from the last session ({when}): there were {savedRows} rows, now {rows}. I matched the tick-offs by content — {moved} of {all} moved, {lost} not found.",
+    trNoticeUnknown: "This sheet looks different from the last session ({when}). The stored ✓ ({all}) come from an older record format and may sit on the wrong rows.",
+    trNoticeReset: "Start over",
+    trNoticeKeep: "Keep",
     trScrollMore: "{n} more ↓",
     trScrollMoreMore: "scroll down ↓",
     trUndoBurst: "↶ Undo {n}",
@@ -2156,6 +2204,14 @@ function applyStaticTranslations() {
   setText("#trFieldsAllBtn", t("trFieldsAll"));
   setText("#trFieldsNoneBtn", t("trFieldsNone"));
   setText("#trResetBtn", t("trReset"));
+  setText("#trProgressBtn", t("trProgress"));
+  setText("#trProgressTitle", t("trProgressTitle"));
+  setText("#trProgressSub", t("trProgressSub"));
+  setText("#trProgressDoneBtn", t("trProgressDone"));
+  setText("#trStoreTitle", t("trStoreTitle"));
+  setText("#trStoreClearAllBtn", t("trStoreClearAll"));
+  setText("#trNoticeResetBtn", t("trNoticeReset"));
+  setText("#trNoticeKeepBtn", t("trNoticeKeep"));
   setText("#trLockBtn", t("trLock"));
   setAttr("#trFontBtn", "aria-label", t("trFontAria"));
   setAttr("#trPrevBtn", "aria-label", t("trPrevAria"));

@@ -53,6 +53,17 @@ const trScrollThumbEl = document.getElementById("trScrollThumb");
 const trScrollMoreEl = document.getElementById("trScrollMore");
 const trScrollMoreTextEl = document.getElementById("trScrollMoreText");
 const trUndoBtn = document.getElementById("trUndoBtn");
+const trProgressBtn = document.getElementById("trProgressBtn");
+const trProgressPanelEl = document.getElementById("trProgressPanel");
+const trProgressDoneBtn = document.getElementById("trProgressDoneBtn");
+const trStatsEl = document.getElementById("trStats");
+const trScopeNoteEl = document.getElementById("trScopeNote");
+const trStoreListEl = document.getElementById("trStoreList");
+const trStoreClearAllBtn = document.getElementById("trStoreClearAllBtn");
+const trNoticeEl = document.getElementById("trNotice");
+const trNoticeTextEl = document.getElementById("trNoticeText");
+const trNoticeResetBtn = document.getElementById("trNoticeResetBtn");
+const trNoticeKeepBtn = document.getElementById("trNoticeKeepBtn");
 const trLiveEl = document.getElementById("trLive");
 
 let trIsOpen = false;
@@ -77,9 +88,12 @@ let trLocked = false;
 let trScope = "";
 let trWakeLock = null;
 let trReturnFocusEl = null;
-let trResetArmed = false;
-let trResetTimer = 0;
 let trBulkMode = false;       // seria szybkiego odhaczania — wstrzymuje zapis do localStorage
+let trVolatileCols = new Set(); // kolumny liczone „na dziś" (TODAY) — poza odciskiem wiersza
+let trDoneSigs = new Map();     // klucz wiersza -> odcisk treści (przeżywa przesunięcie wierszy)
+let trSigCache = new Map();     // rowIndex0 -> odcisk (liczony leniwie)
+let trFingerprint = null;       // odcisk arkusza z TEJ sesji
+let trChangeInfo = null;        // { level, savedRows, rows, moved, lost, savedAt } albo null
 let trScrollRaf = 0;
 let trHoldTimer = 0;          // odliczanie do startu turbo (przytrzymanie)
 let trHoldProgressTimer = 0;  // animacja paska „ładowania" przytrzymania
@@ -125,14 +139,23 @@ function trPersist() {
   const store = trLoadStore();
   store.font = trFont;
   store.hideDone = trHideDone;
+  const doneList = Array.from(trDone).slice(0, TR_MAX_DONE);
+  const prev = store.scopes?.[trScope] || null;
   store.scopes[trScope] = {
     order: trFieldOrder.slice(),
     sel: Array.from(trSelected),
     auto: trAutoFields,
     inherit: trInheritOn,
     inheritCols: Array.from(trInheritCols),
-    done: Array.from(trDone).slice(0, TR_MAX_DONE),
+    done: doneList,
+    // Odciski TREŚCI odhaczonych wierszy — równolegle do `done`. To one pozwalają odnaleźć
+    // te same wiersze, gdy plik urośnie albo ktoś przestawi kolejność.
+    doneSig: doneList.map((key) => trDoneSigs.get(key) || ""),
+    sig: trFingerprint,
+    volCols: Array.from(trVolatileCols),
+    rowsTotal: trRows.length,
     cursor: trCurrentKey(),
+    started: prev?.started || Date.now(),
     ts: Date.now(),
   };
   trSaveStore(store);
@@ -142,6 +165,125 @@ function trScopeKey(model) {
   const file = currentFileName || "?";
   const sheet = (typeof sheetSelect !== "undefined" && sheetSelect?.value) || "?";
   return `${file}::${sheet}::${model.mode || "wide"}`;
+}
+
+// ── Odciski: „czy to nadal ten sam arkusz?" ─────────────────────────────────
+//
+// Klucz wiersza to `wide:<numer wiersza>` — czyli POZYCJA. Wystarczy, że ktoś wstawi
+// w Excelu jeden wiersz na górze, a wszystkie ✓ przesuwają się o jeden i cicho lądują
+// na cudzych wierszach. Przy przepisywaniu na papier to najgorszy możliwy błąd: wiersz,
+// którego nikt nie przepisał, wygląda na zrobiony.
+//
+// Dlatego obok kluczy zapisujemy ODCISK TREŚCI każdego odhaczonego wiersza. Gdy plik się
+// zmieni, ✓ przenosimy po treści, a nie po pozycji — i mówimy wprost, ile się udało.
+//
+// Z odcisku wiersza WYPADAJĄ kolumny liczone „na dziś" (formuły z TODAY() — patrz znacznik
+// przeliczenia w tabeli). Inaczej ten sam wiersz miałby jutro inny odcisk i mechanizm
+// psułby się sam z siebie, raz na dobę.
+
+function trHash(text) {
+  let h = 0x811c9dc5;
+  const s = String(text);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+// Kolumny zmienne: te, w których przeliczenie na dziś dało inny wynik niż plik.
+// Zapamiętujemy je w zakresie, bo przy ODZNACZONYM „Przeliczaj formuły z datą"
+// nie da się ich wykryć — a odcisk musi wychodzić tak samo w obie strony.
+function trCollectVolatileCols(savedCols) {
+  const out = new Set(Array.isArray(savedCols) ? savedCols.filter((n) => Number.isInteger(n)) : []);
+  const src = Array.isArray(baseRows) ? baseRows : [];
+  for (const row of src) {
+    if (!row?.recalcCells) continue;
+    Object.keys(row.recalcCells).forEach((k) => {
+      const n = parseInt(k, 10);
+      if (Number.isInteger(n)) out.add(n);
+    });
+  }
+  return out;
+}
+
+function trRowSig(row) {
+  if (!row) return "";
+  const cacheKey = row.rowIndex0;
+  if (cacheKey !== undefined && trSigCache.has(cacheKey)) return trSigCache.get(cacheKey);
+  const parts = [];
+  const len = Array.isArray(row.values) ? row.values.length : 0;
+  for (let i = 0; i < len; i++) {
+    if (trVolatileCols.has(i)) continue;
+    parts.push(String(getDisplayValue(row, i) ?? ""));
+  }
+  const sig = trHash(parts.join("\u0001"));
+  if (cacheKey !== undefined) trSigCache.set(cacheKey, sig);
+  return sig;
+}
+
+// Odcisk ARKUSZA liczymy z `baseRows` (pełne, nieprzefiltrowane) — inaczej otwarcie trybu
+// przy włączonym filtrze wyglądałoby jak „plik się zmienił”. Próbkujemy do 40 wierszy:
+// tanio, a łapie realne edycje. Data zapisu pliku dokłada sygnał „to inna wersja pliku”.
+function trSheetFingerprint() {
+  const src = Array.isArray(baseRows) ? baseRows : [];
+  const step = Math.max(1, Math.floor(src.length / 40) || 1);
+  let sample = "";
+  for (let i = 0; i < src.length; i += step) sample += trRowSig(src[i]) + ",";
+  let mtime = "";
+  try {
+    const raw = workbook?.Props?.ModifiedDate;
+    if (raw) mtime = String(raw instanceof Date ? raw.toISOString() : raw);
+  } catch { /* brak właściwości dokumentu — zostaje reszta odcisku */ }
+  return {
+    rows: src.length,
+    cols: trHeaders.length,
+    h: trHash((Array.isArray(currentHeaders) ? currentHeaders : trHeaders).join("\u0001")),
+    sample: trHash(sample),
+    mtime,
+  };
+}
+
+// Trzy poziomy, bo trzy różne wnioski dla użytkownika:
+//   "same"  — nic się nie zmieniło,
+//   "soft"  — plik był zapisywany ponownie, ale dane wyglądają tak samo (info, bez alarmu),
+//   "hard"  — inna liczba wierszy / inne nagłówki / inna próbka treści (✓ mogą być nie na swoim).
+function trCompareFingerprint(saved, now) {
+  if (!saved || typeof saved !== "object") return "same"; // zapis sprzed tej wersji — nie strasz
+  if (saved.rows !== now.rows || saved.h !== now.h || saved.sample !== now.sample) return "hard";
+  if (saved.mtime && now.mtime && saved.mtime !== now.mtime) return "soft";
+  return "same";
+}
+
+// Przeniesienie ✓ po TREŚCI. Duplikaty (kilka wierszy identycznych co do znaku) obsługujemy
+// licznikowo: ile odcisków tego rodzaju było odhaczonych, tyle wierszy odhaczamy teraz —
+// w kolejności arkusza. To przewidywalne i nie wymaga zgadywania.
+function trRemapDone(savedDone, savedSigs) {
+  const keys = new Set();
+  const wanted = new Map(); // odcisk -> ile ✓ do rozdania
+  const sigByKey = new Map();
+  savedDone.forEach((key, i) => {
+    const sig = savedSigs[i];
+    if (!sig) return;
+    sigByKey.set(key, sig);
+    wanted.set(sig, (wanted.get(sig) || 0) + 1);
+  });
+  if (!wanted.size) return { keys: new Set(savedDone), moved: 0, lost: 0, remapped: false };
+
+  const source = Array.isArray(baseRows) && baseRows.length ? baseRows : trRows;
+  let moved = 0;
+  for (const row of source) {
+    const sig = trRowSig(row);
+    const left = wanted.get(sig);
+    if (!left) continue;
+    keys.add(trKeyOf(row));
+    trDoneSigs.set(trKeyOf(row), sig);
+    wanted.set(sig, left - 1);
+    moved += 1;
+  }
+  let lost = 0;
+  wanted.forEach((left) => { if (left > 0) lost += left; });
+  return { keys, moved, lost, remapped: true, hadSigs: sigByKey.size };
 }
 
 // ── Model / wiersze ─────────────────────────────────────────────────────────
@@ -510,6 +652,7 @@ function trRenderCard() {
   if (trLiveEl && row) trLiveEl.textContent = t("trLiveRow", { pos, total });
   // Pomiar po wstawieniu pól do DOM — inaczej scrollHeight jest jeszcze sprzed renderu.
   trScheduleScrollUi();
+  if (trStatsEl && trProgressPanelEl && !trProgressPanelEl.classList.contains("hidden")) trRenderProgressPanel();
   trPersist();
 }
 
@@ -536,7 +679,7 @@ function trToggleDone() {
   if (!row) return;
   const key = trKeyOf(row);
   if (trDone.has(key)) trDone.delete(key);
-  else trDone.add(key);
+  else { trDone.add(key); trDoneSigs.set(key, trRowSig(row)); }
   if (trHideDone) {
     const keep = trPos;
     trRebuildOrder(null);
@@ -555,6 +698,7 @@ function trMarkAndNext(options = {}) {
   const key = trKeyOf(row);
   const wasDone = trDone.has(key);
   trDone.add(key);
+  trDoneSigs.set(key, trRowSig(row));
   const before = trPos;
   if (trHideDone) {
     const keep = trPos;
@@ -711,32 +855,56 @@ function trSetHideDone(on) {
 
 function trResetProgress() {
   trDone.clear();
+  trDoneSigs.clear();
+  trChangeInfo = null;   // czyścimy też powód ostrzeżenia — nie ma już czego ratować
+  trHideChangeNotice();
   trRebuildOrder(null);
   trPos = 0;
   trRenderCard();
+  if (trProgressPanelEl && !trProgressPanelEl.classList.contains("hidden")) trRenderProgressPanel();
   toast(t("trResetDone"), "success");
 }
 
 // Kasowanie ✓ to operacja nieodwracalna — dwustopniowy przycisk zamiast confirm(),
 // żeby nie wyrywać użytkownika z pełnoekranowego trybu systemowym oknem.
-function trArmReset() {
-  if (!trResetBtn) return;
-  if (trResetArmed) {
-    clearTimeout(trResetTimer);
-    trResetArmed = false;
-    trResetBtn.classList.remove("is-armed");
-    trResetBtn.textContent = t("trReset");
-    trResetProgress();
+// Uogólnione na dowolny przycisk, bo kasowań jest teraz kilka (✓ tego arkusza,
+// pojedynczy zapis, wszystkie zapisy) i każde ma być tak samo trudne do przypadkowego kliknięcia.
+const trArmedButtons = new Map(); // przycisk -> { timer, label }
+
+function trArmDanger(btn, label, action) {
+  if (!btn) return;
+  const armed = trArmedButtons.get(btn);
+  if (armed) {
+    clearTimeout(armed.timer);
+    trArmedButtons.delete(btn);
+    btn.classList.remove("is-armed");
+    btn.textContent = armed.label;
+    action();
     return;
   }
-  trResetArmed = true;
-  trResetBtn.classList.add("is-armed");
-  trResetBtn.textContent = t("trResetConfirm");
-  trResetTimer = setTimeout(() => {
-    trResetArmed = false;
-    trResetBtn.classList.remove("is-armed");
-    trResetBtn.textContent = t("trReset");
+  const timer = setTimeout(() => {
+    const cur = trArmedButtons.get(btn);
+    if (!cur) return;
+    trArmedButtons.delete(btn);
+    btn.classList.remove("is-armed");
+    btn.textContent = cur.label;
   }, 3500);
+  trArmedButtons.set(btn, { timer, label });
+  btn.classList.add("is-armed");
+  btn.textContent = t("trResetConfirm");
+}
+
+function trDisarmAll() {
+  trArmedButtons.forEach((state, btn) => {
+    clearTimeout(state.timer);
+    btn.classList.remove("is-armed");
+    btn.textContent = state.label;
+  });
+  trArmedButtons.clear();
+}
+
+function trArmReset() {
+  trArmDanger(trResetBtn, t("trReset"), trResetProgress);
 }
 
 function trUpdateInheritNote() {
@@ -810,6 +978,7 @@ function trSetLocked(on) {
     trLockBtn.textContent = trLocked ? t("trUnlock") : t("trLock");
   }
   if (trLocked && trFieldsPanelEl) trCloseFields();
+  if (trLocked && trProgressPanelEl && !trProgressPanelEl.classList.contains("hidden")) trCloseProgress();
 }
 
 async function trRequestWakeLock() {
@@ -832,6 +1001,226 @@ function trReleaseWakeLock() {
 document.addEventListener("visibilitychange", () => {
   if (trIsOpen && document.visibilityState === "visible" && !trWakeLock) trRequestWakeLock();
 });
+
+// ── Baner „ten arkusz wygląda inaczej” ──────────────────────────────────────
+// Pokazujemy TYLKO przy twardej zmianie i TYLKO z konkretnymi liczbami. „Coś się zmieniło”
+// bez liczb nie pomaga podjąć decyzji, a decyzja należy do użytkownika — nic nie kasujemy sami.
+
+function trFormatWhen(ts) {
+  if (!ts) return "";
+  try {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return "";
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    const time = d.toLocaleTimeString(I18N[currentLang]?.locale || "pl-PL", { hour: "2-digit", minute: "2-digit" });
+    if (sameDay) return t("trWhenToday", { time });
+    const date = typeof formatLocalizedDateDisplay === "function"
+      ? formatLocalizedDateDisplay(d, { month: "short", year: "numeric" })
+      : d.toLocaleDateString();
+    return `${date}, ${time}`;
+  } catch {
+    return "";
+  }
+}
+
+function trShowChangeNotice() {
+  if (!trNoticeEl) return;
+  const info = trChangeInfo;
+  if (!info || info.level !== "hard") {
+    trNoticeEl.classList.add("hidden");
+    return;
+  }
+  if (trNoticeTextEl) {
+    const when = trFormatWhen(info.savedAt);
+    trNoticeTextEl.textContent = info.remapped
+      ? t("trNoticeRemapped", {
+        savedRows: info.savedRows ?? "?",
+        rows: info.rows,
+        moved: info.moved,
+        all: info.savedDone,
+        lost: info.lost,
+        when,
+      })
+      : t("trNoticeUnknown", { all: info.savedDone, when });
+  }
+  trNoticeEl.classList.remove("hidden");
+}
+
+function trHideChangeNotice() {
+  if (trNoticeEl) trNoticeEl.classList.add("hidden");
+}
+
+// ── Panel „Postęp” ──────────────────────────────────────────────────────────
+// Odpowiada na trzy pytania naraz: ile zrobione, skąd apka to wie i jak to skasować.
+
+function trStatTile(label, value, tone = "") {
+  const box = document.createElement("div");
+  box.className = `tr-stat${tone ? ` ${tone}` : ""}`;
+  const v = document.createElement("div");
+  v.className = "tr-stat-value";
+  v.textContent = String(value);
+  const l = document.createElement("div");
+  l.className = "tr-stat-label";
+  l.textContent = label;
+  box.append(v, l);
+  return box;
+}
+
+function trRenderProgressPanel() {
+  if (!trStatsEl) return;
+  const all = trRows.length;
+  const done = Math.min(trDone.size, all);
+  const left = Math.max(0, all - done);
+  const pct = all ? Math.round((done / all) * 100) : 0;
+  trStatsEl.replaceChildren(
+    trStatTile(t("trStatDone"), done, "is-done"),
+    trStatTile(t("trStatLeft"), left),
+    trStatTile(t("trStatPercent"), `${pct}%`),
+  );
+
+  if (trScopeNoteEl) {
+    const lines = [];
+    lines.push(t("trScopeRows", { rows: all, cols: trHeaders.length }));
+    const store = trLoadStore();
+    const saved = store.scopes?.[trScope];
+    const when = trFormatWhen(saved?.ts);
+    if (when) lines.push(t("trScopeLastSession", { when }));
+    if (trChangeInfo?.level === "soft") lines.push(t("trScopeFileResaved"));
+    if (trChangeInfo?.level === "hard") {
+      lines.push(trChangeInfo.remapped
+        ? t("trScopeChangedRemapped", { moved: trChangeInfo.moved, all: trChangeInfo.savedDone, lost: trChangeInfo.lost })
+        : t("trScopeChangedUnknown"));
+    }
+    trScopeNoteEl.replaceChildren();
+    lines.forEach((text) => {
+      const div = document.createElement("div");
+      div.textContent = text;
+      trScopeNoteEl.appendChild(div);
+    });
+  }
+
+  trRenderStoreList();
+}
+
+// Lista WSZYSTKICH zapamiętanych spisywań — także z innych plików. Bez niej „wyczyść"
+// dotyczyłoby tylko tego, co akurat otwarte, a pamięć rosłaby w tle niewidzialnie.
+function trRenderStoreList() {
+  if (!trStoreListEl) return;
+  const store = trLoadStore();
+  const scopes = store.scopes || {};
+  const entries = Object.entries(scopes)
+    .map(([key, rec]) => ({ key, rec }))
+    .sort((a, b) => (b.rec?.ts || 0) - (a.rec?.ts || 0));
+  trStoreListEl.replaceChildren();
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "tr-store-empty";
+    empty.textContent = t("trStoreEmpty");
+    trStoreListEl.appendChild(empty);
+    return;
+  }
+  entries.forEach(({ key, rec }) => {
+    const item = document.createElement("div");
+    item.className = "tr-store-item";
+    if (key === trScope) item.classList.add("is-current");
+
+    const main = document.createElement("div");
+    main.className = "tr-store-main";
+    const nameEl = document.createElement("div");
+    nameEl.className = "tr-store-name";
+    // klucz = plik::arkusz::tryb — rozbijamy, żeby dało się to przeczytać
+    const parts = key.split("::");
+    nameEl.textContent = parts[0] || key;
+    const metaEl = document.createElement("div");
+    metaEl.className = "tr-store-meta";
+    const doneN = Array.isArray(rec?.done) ? rec.done.length : 0;
+    const total = Number(rec?.rowsTotal) || 0;
+    const bits = [parts[1] || "", t("trStoreDone", { done: doneN, all: total || "?" })];
+    const when = trFormatWhen(rec?.ts);
+    if (when) bits.push(when);
+    metaEl.textContent = bits.filter(Boolean).join(" · ");
+    main.append(nameEl, metaEl);
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn btn-xs ghost tr-store-del";
+    del.textContent = "✕";
+    del.setAttribute("aria-label", `${t("trStoreDelete")}: ${parts[0] || key}`);
+    del.addEventListener("click", () => trDeleteScope(key));
+
+    item.append(main, del);
+    trStoreListEl.appendChild(item);
+  });
+}
+
+// Kasowanie + odświeżenie karty MUSI iść bez zapisu: trRenderCard woła trPersist,
+// więc „wyczyść wszystko" natychmiast odtwarzałoby przed chwilą skasowany wpis.
+// Po wyczyszczeniu pamięć ma zostać pusta aż do pierwszej realnej akcji użytkownika.
+function trWithoutPersist(fn) {
+  const before = trBulkMode;
+  trBulkMode = true;
+  try { fn(); } finally { trBulkMode = before; }
+}
+
+function trDeleteScope(key) {
+  const store = trLoadStore();
+  if (store.scopes) delete store.scopes[key];
+  trSaveStore(store);
+  if (key === trScope) {
+    // Skasowaliśmy zapis otwartego arkusza — stan w pamięci musi za tym pójść,
+    // inaczej najbliższy zapis wskrzesiłby go z powrotem.
+    trWithoutPersist(() => {
+      trDone.clear();
+      trDoneSigs.clear();
+      trChangeInfo = null;
+      trHideChangeNotice();
+      trRebuildOrder(null);
+      trPos = 0;
+      trRenderCard();
+    });
+  }
+  trRenderStoreList();
+  if (trStatsEl) trRenderProgressPanel();
+  toast(t("trStoreDeleted"), "success");
+}
+
+function trClearAllScopes() {
+  try {
+    localStorage.removeItem(TR_STORE_KEY);
+  } catch { /* prywatne okno — i tak nie było czego kasować */ }
+  trWithoutPersist(() => {
+    trDone.clear();
+    trDoneSigs.clear();
+    trChangeInfo = null;
+    trHideChangeNotice();
+    trRebuildOrder(null);
+    trPos = 0;
+    trRenderCard();
+  });
+  trRenderProgressPanel();
+  toast(t("trStoreClearedAll"), "success");
+}
+
+function trOpenProgress() {
+  if (!trProgressPanelEl) return;
+  if (trFieldsPanelEl && !trFieldsPanelEl.classList.contains("hidden")) trCloseFields();
+  trRenderProgressPanel();
+  trProgressPanelEl.classList.remove("hidden");
+  if (trProgressBtn) trProgressBtn.setAttribute("aria-expanded", "true");
+  const first = trProgressPanelEl.querySelector("button");
+  if (first) first.focus();
+}
+
+function trCloseProgress() {
+  if (!trProgressPanelEl) return;
+  trDisarmAll();
+  trProgressPanelEl.classList.add("hidden");
+  if (trProgressBtn) {
+    trProgressBtn.setAttribute("aria-expanded", "false");
+    trProgressBtn.focus();
+  }
+}
 
 // ── Panel „Pola” ────────────────────────────────────────────────────────────
 
@@ -908,6 +1297,7 @@ function trMoveField(pos, delta) {
 
 function trOpenFields() {
   if (!trFieldsPanelEl) return;
+  if (trProgressPanelEl && !trProgressPanelEl.classList.contains("hidden")) trCloseProgress();
   trRenderFields();
   trFieldsPanelEl.classList.remove("hidden");
   if (trFieldsBtn) trFieldsBtn.setAttribute("aria-expanded", "true");
@@ -963,7 +1353,54 @@ function openTranscribe() {
     trFieldOrder = trHeaders.map((_, i) => i);
     trSelected = trDefaultSelection();
   }
-  trDone = new Set(Array.isArray(saved?.done) ? saved.done : []);
+  // ── Czy to nadal ten sam arkusz? ───────────────────────────────────────────
+  // Kolejność jest istotna: najpierw kolumny zmienne (bo wchodzą w odcisk), potem odcisk
+  // arkusza, dopiero na końcu decyzja, co zrobić z zapamiętanymi ✓.
+  trSigCache.clear();
+  trDoneSigs.clear();
+  trVolatileCols = trCollectVolatileCols(saved?.volCols);
+  trFingerprint = trSheetFingerprint();
+
+  const savedDone = Array.isArray(saved?.done) ? saved.done : [];
+  const savedSigs = Array.isArray(saved?.doneSig) ? saved.doneSig : [];
+  const level = savedDone.length ? trCompareFingerprint(saved?.sig, trFingerprint) : "same";
+  trChangeInfo = null;
+
+  if (level === "hard" && savedSigs.some(Boolean)) {
+    // Plik inny, ale mamy odciski treści → przenosimy ✓ tam, gdzie ich miejsce.
+    const remap = trRemapDone(savedDone, savedSigs);
+    trDone = remap.keys;
+    trChangeInfo = {
+      level: "hard",
+      savedRows: saved?.sig?.rows ?? saved?.rowsTotal ?? null,
+      rows: trFingerprint.rows,
+      savedDone: savedDone.length,
+      moved: remap.moved,
+      lost: remap.lost,
+      savedAt: saved?.ts || 0,
+      remapped: true,
+    };
+  } else if (level === "hard") {
+    // Zapis sprzed wersji z odciskami — kluczy nie ma jak zweryfikować. Zostawiamy je
+    // (nic nie kasujemy bez pytania), ale mówimy wprost, że mogą być nie na swoim miejscu.
+    trDone = new Set(savedDone);
+    trChangeInfo = {
+      level: "hard",
+      savedRows: saved?.sig?.rows ?? saved?.rowsTotal ?? null,
+      rows: trFingerprint.rows,
+      savedDone: savedDone.length,
+      moved: 0,
+      lost: 0,
+      savedAt: saved?.ts || 0,
+      remapped: false,
+    };
+  } else {
+    trDone = new Set(savedDone);
+    savedDone.forEach((key, i) => { if (savedSigs[i]) trDoneSigs.set(key, savedSigs[i]); });
+    if (level === "soft") {
+      trChangeInfo = { level: "soft", rows: trFingerprint.rows, savedDone: savedDone.length, savedAt: saved?.ts || 0 };
+    }
+  }
   trAutoFields = !!saved?.auto;
   trLongMode = model.mode === "long";
   trMergeRanges = trDetectMergeRanges();
@@ -989,6 +1426,7 @@ function openTranscribe() {
   trApplyFont();
   trSetLocked(false);
   if (trFieldsPanelEl) trFieldsPanelEl.classList.add("hidden");
+  if (trProgressPanelEl) trProgressPanelEl.classList.add("hidden");
 
   trReturnFocusEl = document.activeElement;
   trOverlayEl.classList.remove("hidden");
@@ -997,16 +1435,22 @@ function openTranscribe() {
   trIsOpen = true;
   trHideUndo();
   trResetScroll();
+  trShowChangeNotice();
   trRenderCard();
   trRequestWakeLock();
   if (trMarkBtn) trMarkBtn.focus();
-  if (trDone.size) toast(t("trResumed", { done: trDone.size }), "info");
+  // Przy twardej zmianie pliku mówi baner — i to on ma przyciski decyzji. Toast tylko
+  // zasłaniałby te przyciski przez pierwsze sekundy, czyli dokładnie wtedy, gdy są potrzebne.
+  if (trChangeInfo?.level !== "hard" && trDone.size) {
+    toast(t("trResumed", { done: trDone.size }), "info");
+  }
 }
 
 function closeTranscribe() {
   if (!trOverlayEl || !trIsOpen) return;
   trHoldCancel();
   trBulkMode = false;
+  trDisarmAll();
   trHideUndo();
   trPersist();
   trIsOpen = false;
@@ -1057,6 +1501,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     e.preventDefault();
     if (trFieldsPanelEl && !trFieldsPanelEl.classList.contains("hidden")) trCloseFields();
+    else if (trProgressPanelEl && !trProgressPanelEl.classList.contains("hidden")) trCloseProgress();
     else if (trLocked) trSetLocked(false);
     else closeTranscribe();
     return;
@@ -1066,6 +1511,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (trFieldsPanelEl && trFieldsPanelEl.contains(e.target)) return;
+  if (trProgressPanelEl && trProgressPanelEl.contains(e.target)) return;
 
   const tag = String(e.target?.tagName || "").toLowerCase();
   if (tag === "input" || tag === "select" || tag === "textarea") return;
@@ -1161,6 +1607,21 @@ if (trFieldsBtn) {
   });
 }
 if (trFieldsDoneBtn) trFieldsDoneBtn.addEventListener("click", trCloseFields);
+if (trProgressBtn) {
+  trProgressBtn.addEventListener("click", () => {
+    if (trProgressPanelEl && trProgressPanelEl.classList.contains("hidden")) trOpenProgress();
+    else trCloseProgress();
+  });
+}
+if (trProgressDoneBtn) trProgressDoneBtn.addEventListener("click", trCloseProgress);
+if (trStoreClearAllBtn) trStoreClearAllBtn.addEventListener("click", () => trArmDanger(trStoreClearAllBtn, t("trStoreClearAll"), trClearAllScopes));
+if (trNoticeKeepBtn) trNoticeKeepBtn.addEventListener("click", trHideChangeNotice);
+if (trNoticeResetBtn) {
+  trNoticeResetBtn.addEventListener("click", () => {
+    trResetProgress();
+    trHideChangeNotice();
+  });
+}
 if (trFieldsAllBtn) {
   trFieldsAllBtn.addEventListener("click", () => {
     trFieldOrder.forEach((i) => trSelected.add(i));
@@ -1217,6 +1678,8 @@ window.__transcribe = {
     overflowUi: !!trStageWrapEl?.classList.contains("has-overflow"),
     atBottom: !!trStageWrapEl?.classList.contains("at-bottom"),
     turbo: !!trTurboTimer,
+    volatileCols: Array.from(trVolatileCols),
+    changed: trChangeInfo ? { ...trChangeInfo } : null,
     undoVisible: !!(trUndoBtn && !trUndoBtn.classList.contains("hidden")),
     burst: trBurstKeys.length,
     values: (() => {
@@ -1225,6 +1688,10 @@ window.__transcribe = {
     })(),
   }),
   mark: trMarkAndNext,
+  isDone: (key) => trDone.has(key),
+  openProgress: trOpenProgress,
+  closeProgress: trCloseProgress,
+  clearAllScopes: trClearAllScopes,
   holdStart: (source = "key") => trHoldStart(source),
   holdCancel: () => trHoldCancel(),
   undoBurst: trUndoBurst,
