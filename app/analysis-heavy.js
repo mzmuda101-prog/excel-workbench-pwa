@@ -1,6 +1,53 @@
 // Ciężkie analizy (duration + aggregation) — leniwie przy pierwszym użyciu panelu.
 // Zakłada globals z analysis.js (deferAnalysis, normalizeAnalysisKey, createEmptyInsight…).
 
+// ── Szukajka wyników agregacji: operatory ───────────────────────────────────
+//
+// Wcześniej było tu gołe `label.includes(query)`. Teraz — po włączeniu „Operatorów
+// wyszukiwania" — pole korzysta z DOKŁADNIE tego samego silnika, co filtry tabeli
+// (parseQueryTerms + rowMatchesParsedTerm z workbook.js), więc działa &&, ||, !, {}
+// oraz porównania >> / << . Zero własnej gramatyki = zero rozjazdu ze ściągą.
+//
+// Sztuczka: silnik jest wierszowy, więc każdy wynik agregacji podajemy mu jako
+// pseudo-wiersz o dwóch „kolumnach":
+//   [0] etykieta grupy  — WIDOCZNY tekst, tylko tu szuka się słów,
+//   [1] wartość miary   — surowa liczba/data BEZ tekstu wyświetlanego, więc trafiają
+//                          w nią wyłącznie porównania (>>100), a nigdy szukanie tekstem.
+// Dzięki temu włączenie operatorów nie zmienia wyniku dla zwykłych zapytań tekstowych.
+function aggregationSearchPseudoRow(entry, primaryKind) {
+  const label = String(entry?.label ?? "");
+  const raw = Number.isFinite(entry?.primary)
+    ? (primaryKind === "date" ? new Date(entry.primary) : entry.primary)
+    : null;
+  return { values: [label, raw], display: [label, ""], rowIndex0: 0 };
+}
+
+function buildAggregationSearchMatcher(query, operatorsEnabled, primaryKind) {
+  const raw = String(query || "").trim();
+  if (!raw) return null;
+  const plain = (entry) => String(entry?.label ?? "").toLowerCase().includes(raw.toLowerCase());
+  if (!operatorsEnabled) return plain;
+  if (typeof parseQueryTerms !== "function" || typeof rowMatchesParsedTerm !== "function") return plain;
+
+  let parsed;
+  try {
+    parsed = parseQueryTerms(raw, true);
+  } catch {
+    return plain; // niedomknięty nawias itp. — lepiej szukać po staremu niż nic nie pokazać
+  }
+  if (!parsed || !parsed.groups || !parsed.groups.length) return plain;
+
+  const criterion = { query: raw, mode: "contains", indexes: [0, 1], operatorsEnabled: true, negated: false, emptyMode: "all" };
+  return (entry) => {
+    const row = aggregationSearchPseudoRow(entry, primaryKind);
+    try {
+      return parsed.groups.some((group) => group.every((term) => rowMatchesParsedTerm(row, term, criterion)));
+    } catch {
+      return plain(entry);
+    }
+  };
+}
+
 function collectDurationBlockStats(group) {
   const firstBlock = group && Array.isArray(group.blocks) ? group.blocks[0] : null;
   if (!firstBlock || !Array.isArray(firstBlock.headers) || !firstBlock.headers.length) return [];
@@ -932,9 +979,9 @@ function renderAggregationWorkbench() {
   aggregationWorkbenchSummaryEl.appendChild(measureNote);
 
   const currentSearch = aggregationWorkbenchState.resultSearch || "";
-  const filteredEntries = currentSearch
-    ? result.entries.filter((e) => e.label.toLowerCase().includes(currentSearch.toLowerCase()))
-    : result.entries;
+  const searchOps = !!aggregationWorkbenchState.resultSearchOperators;
+  const searchMatcher = buildAggregationSearchMatcher(currentSearch, searchOps, primaryKind);
+  const filteredEntries = searchMatcher ? result.entries.filter(searchMatcher) : result.entries;
   const searchWrap = document.createElement("div");
   searchWrap.className = "aggregation-result-search-wrap";
 
@@ -947,7 +994,7 @@ function renderAggregationWorkbench() {
   const resultSearchInput = document.createElement("input");
   resultSearchInput.type = "text";
   resultSearchInput.className = "aggregation-result-search";
-  resultSearchInput.placeholder = t("aggregationSearchPlaceholder");
+  resultSearchInput.placeholder = searchOps ? t("aggregationSearchPlaceholderOps") : t("aggregationSearchPlaceholder");
   resultSearchInput.title = t("aggregationSearch");
   resultSearchInput.style.flex = "1";
   resultSearchInput.style.minWidth = "100px";
@@ -957,6 +1004,23 @@ function renderAggregationWorkbench() {
   resultSearchInput.style.fontSize = "13px";
   resultSearchInput.value = currentSearch;
   searchWrap.appendChild(resultSearchInput);
+
+  const opsLabel = document.createElement("label");
+  opsLabel.className = "qs-operators-toggle aggregation-search-ops";
+  opsLabel.dataset.hint = "";
+  opsLabel.dataset.hintPl = "Włącza w tej szukajce te same operatory, co w filtrach: && (i), || (lub), ! (bez), {} (grupowanie) oraz porównania wartości >> i << (np. >>100 = miara większa niż 100).";
+  opsLabel.dataset.hintEn = "Enables the same operators as in the filters: && (and), || (or), ! (not), {} (grouping) plus value comparisons >> and << (e.g. >>100 = metric greater than 100).";
+  opsLabel.dataset.hintDelay = "1.1";
+  opsLabel.dataset.hintTouch = "on";
+  const opsInput = document.createElement("input");
+  opsInput.type = "checkbox";
+  opsInput.dataset.aggregationControl = "result-search-ops";
+  opsInput.checked = searchOps;
+  const opsText = document.createElement("span");
+  opsText.className = "qs-operators-toggle-text";
+  opsText.textContent = t("searchOperatorsToggle");
+  opsLabel.append(opsInput, opsText);
+  searchWrap.appendChild(opsLabel);
 
   const searchCount = document.createElement("span");
   searchCount.style.fontSize = "12px";

@@ -226,6 +226,14 @@ if (aggregationWorkbenchSummaryEl) {
 }
 if (aggregationWorkbenchListEl) {
   aggregationWorkbenchListEl.addEventListener("change", (e) => {
+    const opsToggle = e.target.closest("[data-aggregation-control='result-search-ops']");
+    if (opsToggle) {
+      aggregationWorkbenchState.resultSearchOperators = !!opsToggle.checked;
+      // Zapytanie zostaje — zmienia się tylko sposób jego czytania, więc od razu
+      // widać różnicę na tej samej frazie.
+      renderAggregationWorkbench();
+      return;
+    }
     const control = e.target.closest("[data-aggregation-control='match']");
     if (!control) return;
     aggregationWorkbenchState.matchMode = control.value || "contains";

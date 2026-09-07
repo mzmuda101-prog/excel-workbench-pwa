@@ -573,8 +573,9 @@ let aggregationWorkbenchState = {
   measureFilterMode: "all",
   measureFilterValue: "",
   resultSearch: "",
+  resultSearchOperators: false, // operatory (&&, ||, !, {}, >>, <<) w szukajce wyników
 };
-const APP_BUILD_VERSION = "20260905-03";
+const APP_BUILD_VERSION = "20260907-01";
 
 // Coalesced view refresh — jedna klatka zamiast kaskady render*() w handlerze.
 let _viewRefreshRaf = 0;

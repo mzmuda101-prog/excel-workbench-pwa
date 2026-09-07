@@ -16,7 +16,7 @@
     <link rel="apple-touch-icon" href="assets/images/apple-touch-icon.png?v=20260429-01" />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin-ext.woff2" crossorigin />
-    <link rel="stylesheet" href="styles/app.css?v=20260905-03" />
+    <link rel="stylesheet" href="styles/app.css?v=20260907-01" />
   </head>
   <body>
     <!-- Intro splash -->
@@ -1066,6 +1066,7 @@
               <div class="shortcut-row"><kbd>{&nbsp;}</kbd> <em class="shortcut-example" data-shortcut-text="searchOperatorBracket">nawiasy {} wymuszają kolejność, np. „{Kowalski || Nowak} && Faktura"</em></div>
               <div class="shortcut-row"><kbd>&gt;&gt;</kbd> <kbd>&lt;&lt;</kbd> <span><strong data-shortcut-text="searchCmpStrong">Porównania liczb i dat</strong> <span data-shortcut-text="searchCmpRest">— „&gt;&gt;" większe, „&lt;&lt;" mniejsze; dodaj „=" dla ≥/≤ (&gt;&gt;=, =&lt;&lt;)</span><br><em class="shortcut-example" data-shortcut-text="searchCmpExample">np. „&gt;&gt;1000", „=&lt;&lt;50", „&gt;&gt;2026-01-01" · zakres: „&gt;&gt;5 &amp;&amp; &lt;&lt;10"</em></span></div>
               <div class="shortcut-row"><kbd>info:</kbd><span data-shortcut-text="searchOperatorCombined">możesz łączyć operatory, np. „Kowalski && !Anulowana || Nowak"</span></div>
+              <div class="shortcut-row"><kbd>gdzie:</kbd><span data-shortcut-text="searchOperatorWhere">działają w: filtrach, szybkim szukaniu oraz w szukajce wyników w Agregacjach (tam &gt;&gt; / &lt;&lt; porównuje WARTOŚĆ miary, np. „&gt;&gt;100") — wszędzie po włączeniu „Operatory wyszukiwania"</span></div>
             </div>
             <div class="shortcut-hint">
               <div class="shortcut-section-title" data-shortcut-text="aggGroupLegendTitle">Scalanie grup (agregacje)</div>
@@ -1350,21 +1351,28 @@
         <span class="tr-counter" id="trCounter">0 / 0</span>
         <button class="tr-chip" id="trMarkChip" type="button" aria-pressed="false">Do spisania</button>
         <span class="tr-done-count" id="trDoneCount"></span>
+        <button class="tr-chip tr-undo hidden" id="trUndoBtn" type="button">↶ Cofnij</button>
         <label class="tr-hide-done">
           <input type="checkbox" id="trHideDone" />
           <span id="trHideDoneText">Ukryj spisane</span>
         </label>
       </div>
 
-      <div class="tr-stage" id="trStage">
-        <div class="tr-card" id="trCard"></div>
-        <div class="tr-empty hidden" id="trEmpty"></div>
+      <div class="tr-stage-wrap" id="trStageWrap">
+        <div class="tr-stage" id="trStage">
+          <div class="tr-card" id="trCard"></div>
+          <div class="tr-empty hidden" id="trEmpty"></div>
+        </div>
+        <!-- Belka przewijania: własna, bo natywny pasek na iPadzie pojawia się dopiero
+             W TRAKCIE przewijania — czyli mówi o tym, czego użytkownik jeszcze nie wie. -->
+        <div class="tr-scroll-rail" id="trScrollRail" aria-hidden="true"><div class="tr-scroll-thumb" id="trScrollThumb"></div></div>
+        <button class="tr-scroll-more" id="trScrollMore" type="button" tabindex="-1">▾ <span id="trScrollMoreText">więcej</span></button>
         <div class="tr-touchshield hidden" id="trTouchShield" aria-hidden="true"></div>
       </div>
 
       <div class="tr-bar">
         <button class="btn ghost tr-nav" id="trPrevBtn" type="button" aria-label="Poprzedni wiersz">◀</button>
-        <button class="btn tr-main" id="trMarkBtn" type="button">✓ Spisane i dalej</button>
+        <button class="btn tr-main" id="trMarkBtn" type="button" data-hint data-hint-pl="Kliknięcie = jeden wiersz. PRZYTRZYMANIE (palcem albo spacją) = szybkie przewijanie odhaczaniem — do miejsca, w którym skończyłeś." data-hint-en="Tap = one row. HOLD (finger or space) = fast-forward marking — back to where you left off." data-hint-delay="1.1" data-hint-touch="on">✓ Spisane i dalej</button>
         <button class="btn ghost tr-nav" id="trNextBtn" type="button" aria-label="Następny wiersz">▶</button>
       </div>
 
@@ -1410,23 +1418,23 @@
          Dogrywa je leniwie ensureXlsxLibs() (app/workbook.js) przy pierwszym wczytaniu/zapisie
          pliku — apka bootuje bez ~512K JS. SW i tak je precache'uje (offline OK). -->
     <!-- defer: skrypty pobierają się równolegle i wykonują po sparsowaniu HTML, z zachowaniem kolejności -->
-    <script defer src="app/core.js?v=20260905-03"></script>
-    <script defer src="app/language.js?v=20260905-03"></script>
-    <script defer src="app/analysis.js?v=20260905-03"></script>
-    <script defer src="app/workbook.js?v=20260905-03"></script>
-    <script defer src="app/xlsx-patch.js?v=20260905-03"></script>
-    <script defer src="app/table.js?v=20260905-03"></script>
-    <script defer src="app/conditional-formatting.js?v=20260905-03"></script>
-    <script defer src="app/data-validation.js?v=20260905-03"></script>
-    <script defer src="app/derived-columns.js?v=20260905-03"></script>
-    <script defer src="app/formulas.js?v=20260905-03"></script>
-    <script defer src="app/edit-tools.js?v=20260905-03"></script>
-    <script defer src="app/ui-controls.js?v=20260905-03"></script>
-    <script defer src="app/transcribe.js?v=20260905-03"></script>
+    <script defer src="app/core.js?v=20260907-01"></script>
+    <script defer src="app/language.js?v=20260907-01"></script>
+    <script defer src="app/analysis.js?v=20260907-01"></script>
+    <script defer src="app/workbook.js?v=20260907-01"></script>
+    <script defer src="app/xlsx-patch.js?v=20260907-01"></script>
+    <script defer src="app/table.js?v=20260907-01"></script>
+    <script defer src="app/conditional-formatting.js?v=20260907-01"></script>
+    <script defer src="app/data-validation.js?v=20260907-01"></script>
+    <script defer src="app/derived-columns.js?v=20260907-01"></script>
+    <script defer src="app/formulas.js?v=20260907-01"></script>
+    <script defer src="app/edit-tools.js?v=20260907-01"></script>
+    <script defer src="app/ui-controls.js?v=20260907-01"></script>
+    <script defer src="app/transcribe.js?v=20260907-01"></script>
     <!-- Diagnostyka przewijania: NIE ładowana na starcie (czysty narzut ~29KB dla kodu,
          który i tak nic nie robi bez `?scrolltest`). Dogrywamy ją leniwie TYLKO gdy
          flaga jest włączona — loader w osobnym pliku, żeby CSP mogło zostać script-src 'self'. -->
-    <script defer src="app/debug-loaders.js?v=20260905-03"></script>
-    <script defer src="app/bootstrap.js?v=20260905-03"></script>
+    <script defer src="app/debug-loaders.js?v=20260907-01"></script>
+    <script defer src="app/bootstrap.js?v=20260907-01"></script>
   </body>
 </html>

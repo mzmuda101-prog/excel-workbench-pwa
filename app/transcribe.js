@@ -46,6 +46,13 @@ const trAutoNoteEl = document.getElementById("trAutoNote");
 const trInheritEl = document.getElementById("trInherit");
 const trInheritNoteEl = document.getElementById("trInheritNote");
 const trTouchShieldEl = document.getElementById("trTouchShield");
+const trStageEl = document.getElementById("trStage");
+const trStageWrapEl = document.getElementById("trStageWrap");
+const trScrollRailEl = document.getElementById("trScrollRail");
+const trScrollThumbEl = document.getElementById("trScrollThumb");
+const trScrollMoreEl = document.getElementById("trScrollMore");
+const trScrollMoreTextEl = document.getElementById("trScrollMoreText");
+const trUndoBtn = document.getElementById("trUndoBtn");
 const trLiveEl = document.getElementById("trLive");
 
 let trIsOpen = false;
@@ -72,6 +79,15 @@ let trWakeLock = null;
 let trReturnFocusEl = null;
 let trResetArmed = false;
 let trResetTimer = 0;
+let trBulkMode = false;       // seria szybkiego odhaczania — wstrzymuje zapis do localStorage
+let trScrollRaf = 0;
+let trHoldTimer = 0;          // odliczanie do startu turbo (przytrzymanie)
+let trHoldProgressTimer = 0;  // animacja paska „ładowania" przytrzymania
+let trTurboTimer = 0;         // pętla szybkiego odhaczania
+let trTurboCount = 0;
+let trTurboSource = "";       // "key" albo "pointer" — kto trzyma, ten puszcza
+let trBurstKeys = [];         // klucze odhaczone w ostatniej serii (do cofnięcia)
+let trUndoTimer = 0;
 
 // ── Trwałość ────────────────────────────────────────────────────────────────
 // Jeden klucz, w środku mapa „zakresów” (plik + arkusz + tryb widoku). Dzięki temu
@@ -105,7 +121,7 @@ function trSaveStore(store) {
 }
 
 function trPersist() {
-  if (!trScope) return;
+  if (!trScope || trBulkMode) return; // w trakcie serii zapisujemy RAZ, na końcu
   const store = trLoadStore();
   store.font = trFont;
   store.hideDone = trHideDone;
@@ -311,6 +327,80 @@ function trRebuildOrder(preserveKey) {
   trPos = Math.max(0, Math.min(trPos, Math.max(0, trOrder.length - 1)));
 }
 
+// ── Belka przewijania / „jest tego więcej" ──────────────────────────────────
+//
+// Problem z tabletu: karta z kilkunastoma polami nie mieści się na ekranie, a jedyną
+// informacją o tym jest natywny pasek, który na iPadOS pojawia się DOPIERO w trakcie
+// przewijania. Przy przepisywaniu na papier to realna pomyłka — pole 12 zostaje
+// nieprzepisane, bo nikt nie wiedział, że istnieje.
+//
+// Stąd trzy sygnały naraz: własna belka z boku (jest tu w ogóle co przewijać?),
+// cienie-krawędzie (treść jest ucięta w tę stronę) i pigułka z LICZBĄ pól poniżej
+// (ile dokładnie zostało) — pigułka jest jednocześnie przyciskiem „przewiń o ekran".
+
+function trFieldsBelowFold() {
+  if (!trStageEl) return 0;
+  const foldY = trStageEl.getBoundingClientRect().bottom;
+  let n = 0;
+  trCardEl?.querySelectorAll(".tr-field").forEach((el) => {
+    // liczymy pole jako „poniżej”, gdy jego etykieta i wartość nie są w całości widoczne
+    if (el.getBoundingClientRect().bottom > foldY + 2) n += 1;
+  });
+  return n;
+}
+
+function trUpdateScrollUi() {
+  if (!trStageEl || !trStageWrapEl) return;
+  const max = trStageEl.scrollHeight - trStageEl.clientHeight;
+  const overflow = max > 4;
+  const top = trStageEl.scrollTop;
+  trStageWrapEl.classList.toggle("has-overflow", overflow);
+  trStageWrapEl.classList.toggle("at-top", top <= 2);
+  trStageWrapEl.classList.toggle("at-bottom", !overflow || top >= max - 2);
+
+  if (trScrollThumbEl && trScrollRailEl) {
+    const railH = trScrollRailEl.clientHeight;
+    const ratio = trStageEl.scrollHeight ? trStageEl.clientHeight / trStageEl.scrollHeight : 1;
+    const thumbH = Math.max(22, Math.round(railH * Math.min(1, ratio)));
+    const travel = Math.max(0, railH - thumbH);
+    const progress = max > 0 ? Math.min(1, Math.max(0, top / max)) : 0;
+    trScrollThumbEl.style.height = `${thumbH}px`;
+    trScrollThumbEl.style.transform = `translateY(${Math.round(travel * progress)}px)`;
+  }
+
+  if (trScrollMoreTextEl) {
+    const below = overflow ? trFieldsBelowFold() : 0;
+    // Gdy pole jest jedno, ale bardzo wysokie, licznik pokazałby „0” — wtedy sam napis.
+    trScrollMoreTextEl.textContent = below > 0 ? t("trScrollMore", { n: below }) : t("trScrollMoreMore");
+  }
+}
+
+function trScheduleScrollUi() {
+  if (trScrollRaf) return;
+  trScrollRaf = requestAnimationFrame(() => {
+    trScrollRaf = 0;
+    trUpdateScrollUi();
+  });
+}
+
+// Nowy wiersz = nowa kartka: zawsze zaczynamy od GÓRY. Bez tego po przewinięciu
+// długiego wiersza następny otwierał się w połowie i pierwsze pola uciekały nad ekran.
+function trResetScroll() {
+  if (!trStageEl) return;
+  trStageEl.scrollTop = 0;
+  trScheduleScrollUi();
+}
+
+if (trStageEl) trStageEl.addEventListener("scroll", trScheduleScrollUi, { passive: true });
+if (trScrollMoreEl) {
+  trScrollMoreEl.addEventListener("click", () => {
+    if (!trStageEl) return;
+    const step = Math.max(120, Math.round(trStageEl.clientHeight * 0.82));
+    trStageEl.scrollBy({ top: step, behavior: "smooth" });
+  });
+}
+window.addEventListener("resize", () => { if (trIsOpen) trScheduleScrollUi(); });
+
 // ── Render ──────────────────────────────────────────────────────────────────
 
 function trRenderCard() {
@@ -418,6 +508,8 @@ function trRenderCard() {
   if (trMarkBtn) trMarkBtn.disabled = !row;
 
   if (trLiveEl && row) trLiveEl.textContent = t("trLiveRow", { pos, total });
+  // Pomiar po wstawieniu pól do DOM — inaczej scrollHeight jest jeszcze sprzed renderu.
+  trScheduleScrollUi();
   trPersist();
 }
 
@@ -428,12 +520,14 @@ function trGo(delta) {
   const next = trPos + delta;
   if (next < 0 || next >= trOrder.length) return;
   trPos = next;
+  trResetScroll();
   trRenderCard();
 }
 
 function trGoEdge(which) {
   if (!trOrder.length) return;
   trPos = which < 0 ? 0 : trOrder.length - 1;
+  trResetScroll();
   trRenderCard();
 }
 
@@ -453,10 +547,15 @@ function trToggleDone() {
 
 // Główna akcja: odhacz i przejdź dalej. Przy „ukryj spisane” bieżący wiersz znika,
 // więc pozycja ZOSTAJE na miejscu i sama pokazuje następny — bez przeskoku o dwa.
-function trMarkAndNext() {
+// Zwraca klucz odhaczonego wiersza (albo "" gdy nie było czego odhaczyć) — potrzebne
+// szybkiemu odhaczaniu, żeby dało się całą serię cofnąć jednym ruchem.
+function trMarkAndNext(options = {}) {
   const row = trCurrentRow();
-  if (!row) return;
-  trDone.add(trKeyOf(row));
+  if (!row) return "";
+  const key = trKeyOf(row);
+  const wasDone = trDone.has(key);
+  trDone.add(key);
+  const before = trPos;
   if (trHideDone) {
     const keep = trPos;
     trRebuildOrder(null);
@@ -464,8 +563,143 @@ function trMarkAndNext() {
   } else if (trPos < trOrder.length - 1) {
     trPos += 1;
   }
+  const moved = trHideDone ? true : trPos !== before;
+  trResetScroll();
   trRenderCard();
-  if (trDone.size >= trRows.length && trRows.length) toast(t("trAllDone"), "success");
+  if (!options.quiet && trDone.size >= trRows.length && trRows.length) toast(t("trAllDone"), "success");
+  return { key, wasDone, moved };
+}
+
+// ── Szybkie odhaczanie (przytrzymanie) ──────────────────────────────────────
+//
+// Po co: apka w tle na tablecie potrafi zostać ubita, a po powrocie trzeba dojść do
+// miejsca sprzed przerwy. Klikanie „Spisane i dalej” 200 razy to nie jest plan.
+// PRZYTRZYMANIE (palcem na przycisku albo spacją, gdy przycisk ma fokus) rozpędza
+// odhaczanie: po ~0,55 s startuje pętla, która przyspiesza z 200 ms do 60 ms na wiersz.
+//
+// Trzy bezpieczniki, bo to operacja masowa:
+//  1. próg czasu — zwykły tap NIGDY nie wejdzie w tryb szybki,
+//  2. pasek na przycisku pokazuje, ile zostało do startu (nic nie dzieje się „nagle”),
+//  3. cała seria cofa się jednym przyciskiem w pasku meta (i wraca na wiersz startowy).
+const TR_HOLD_MS = 550;        // ile trzymać, zanim ruszy tryb szybki
+const TR_TURBO_START_MS = 200; // pierwszy krok
+const TR_TURBO_MIN_MS = 45;    // najszybszy krok
+const TR_TURBO_ACCEL = 0.86;   // mnożnik między krokami
+
+let trBurstStartKey = "";
+let trSuppressNextClick = false;
+
+// Licznik „+N" na przycisku żyje w custom property, bo tekst przycisku podmienia i18n.
+function trSetTurboLabel(text) {
+  if (!trMarkBtn) return;
+  if (text) trMarkBtn.style.setProperty("--tr-turbo-label", JSON.stringify(text));
+  else trMarkBtn.style.removeProperty("--tr-turbo-label");
+}
+
+function trSetHoldProgress(pct) {
+  if (trMarkBtn) trMarkBtn.style.setProperty("--tr-hold", `${Math.round(pct)}%`);
+}
+
+function trHoldStart(source) {
+  if (!trIsOpen || trTurboTimer || trHoldTimer) return;
+  if (!trCurrentRow()) return;
+  trTurboSource = source;
+  const began = Date.now();
+  trHoldProgressTimer = setInterval(() => {
+    trSetHoldProgress(Math.min(100, ((Date.now() - began) / TR_HOLD_MS) * 100));
+  }, 60);
+  trHoldTimer = setTimeout(() => {
+    trHoldTimer = 0;
+    trTurboStart();
+  }, TR_HOLD_MS);
+}
+
+// Zatrzymanie odliczania. `fired` = czy zdążył wystartować tryb szybki — od tego zależy,
+// czy puszczenie klawisza/palca ma jeszcze odhaczyć pojedynczy wiersz.
+function trHoldCancel() {
+  const fired = !!trTurboTimer;
+  if (trHoldTimer) { clearTimeout(trHoldTimer); trHoldTimer = 0; }
+  if (trHoldProgressTimer) { clearInterval(trHoldProgressTimer); trHoldProgressTimer = 0; }
+  trSetHoldProgress(0);
+  if (fired) trTurboStop();
+  trTurboSource = "";
+  return fired;
+}
+
+function trTurboStart() {
+  if (trHoldProgressTimer) { clearInterval(trHoldProgressTimer); trHoldProgressTimer = 0; }
+  trSetHoldProgress(100);
+  trTurboCount = 0;
+  trBurstKeys = [];
+  trBurstStartKey = trCurrentKey();
+  // Zapis stanu to serializacja całego zbioru ✓ (do 20 tys. kluczy). Przy 20 wierszach
+  // na sekundę robiłoby to z tabletu podkładkę pod kawę — zapisujemy raz, po serii.
+  trBulkMode = true;
+  if (trMarkBtn) trMarkBtn.classList.add("is-turbo");
+  if (typeof navigator !== "undefined" && navigator.vibrate) { try { navigator.vibrate(12); } catch { /* brak wsparcia */ } }
+  toast(t("trTurboStarted"), "info");
+
+  let delay = TR_TURBO_START_MS;
+  const step = () => {
+    const res = trMarkAndNext({ quiet: true });
+    if (!res || !res.key) { trTurboStop(); return; }
+    if (!res.wasDone) trBurstKeys.push(res.key);
+    trTurboCount += 1;
+    trSetTurboLabel(`+${trTurboCount}`);
+    if (!res.moved) { // koniec listy — dalej nie ma dokąd
+      toast(t("trTurboEnd"), "info");
+      trTurboStop();
+      return;
+    }
+    delay = Math.max(TR_TURBO_MIN_MS, Math.round(delay * TR_TURBO_ACCEL));
+    trTurboTimer = setTimeout(step, delay);
+  };
+  trTurboTimer = setTimeout(step, 0);
+}
+
+function trTurboStop() {
+  if (trTurboTimer) { clearTimeout(trTurboTimer); trTurboTimer = 0; }
+  const wasBulk = trBulkMode;
+  trBulkMode = false;
+  if (wasBulk) trPersist();
+  if (trMarkBtn) trMarkBtn.classList.remove("is-turbo");
+  trSetTurboLabel("");
+  trSetHoldProgress(0);
+  if (trTurboCount > 0) {
+    toast(t("trTurboDone", { n: trTurboCount }), "success");
+    trShowUndo(trBurstKeys.length);
+  }
+  trTurboCount = 0;
+}
+
+// Cofnięcie serii: zdejmujemy ✓ tylko z wierszy odhaczonych W TEJ serii (te, które
+// były odhaczone wcześniej, zostają) i wracamy kursorem na wiersz startowy.
+function trShowUndo(n) {
+  if (!trUndoBtn) return;
+  if (!n) { trHideUndo(); return; }
+  trUndoBtn.textContent = t("trUndoBurst", { n });
+  trUndoBtn.classList.remove("hidden");
+  if (trUndoTimer) clearTimeout(trUndoTimer);
+  trUndoTimer = setTimeout(trHideUndo, 12000);
+}
+
+function trHideUndo() {
+  if (trUndoTimer) { clearTimeout(trUndoTimer); trUndoTimer = 0; }
+  if (trUndoBtn) trUndoBtn.classList.add("hidden");
+  trBurstKeys = [];
+  trBurstStartKey = "";
+}
+
+function trUndoBurst() {
+  if (!trBurstKeys.length) { trHideUndo(); return; }
+  const n = trBurstKeys.length;
+  const back = trBurstStartKey;
+  trBurstKeys.forEach((key) => trDone.delete(key));
+  trHideUndo();
+  trRebuildOrder(back || null);
+  trResetScroll();
+  trRenderCard();
+  toast(t("trTurboUndone", { n }), "success");
 }
 
 function trSetHideDone(on) {
@@ -560,12 +794,14 @@ function trCycleFont() {
   const at = TR_FONT_STEPS.indexOf(trFont);
   trFont = TR_FONT_STEPS[(at + 1) % TR_FONT_STEPS.length];
   trApplyFont();
+  trScheduleScrollUi(); // większa czcionka = karta może przestać się mieścić
   trPersist();
 }
 
 // Blokada dotyku: tarcza przykrywa kartę (dłoń oparta o tablet nie przewinie ani nie
 // zaznaczy), natomiast dolny pasek i sam przycisk blokady zostają nad nią klikalne.
 function trSetLocked(on) {
+  if (on && trTurboSource) trHoldCancel(); // blokada dotyku w trakcie serii = stop
   trLocked = !!on;
   if (trOverlayEl) trOverlayEl.classList.toggle("is-locked", trLocked);
   if (trTouchShieldEl) trTouchShieldEl.classList.toggle("hidden", !trLocked);
@@ -759,6 +995,8 @@ function openTranscribe() {
   document.body.classList.add("tr-active");
   trBackgroundInert(true);
   trIsOpen = true;
+  trHideUndo();
+  trResetScroll();
   trRenderCard();
   trRequestWakeLock();
   if (trMarkBtn) trMarkBtn.focus();
@@ -767,6 +1005,9 @@ function openTranscribe() {
 
 function closeTranscribe() {
   if (!trOverlayEl || !trIsOpen) return;
+  trHoldCancel();
+  trBulkMode = false;
+  trHideUndo();
   trPersist();
   trIsOpen = false;
   trSetLocked(false);
@@ -790,6 +1031,7 @@ function trFocusables() {
   const sel = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
   return Array.from(trOverlayEl.querySelectorAll(sel)).filter((el) => {
     if (el.closest(".hidden")) return false;
+    if (el.getAttribute("tabindex") === "-1") return false; // np. pigułka „więcej ↓" — klikalna, ale poza Tabem
     return el.offsetParent !== null || el === document.activeElement;
   });
 }
@@ -848,21 +1090,61 @@ document.addEventListener("keydown", (e) => {
       trGoEdge(1);
       break;
     case " ":
-    case "Enter":
-      if (tag === "button") return; // niech ofokusowany przycisk zadziała sam
+    case "Enter": {
+      // Na „Spisane i dalej" spacja jest PRZYTRZYMYWALNA (szybkie odhaczanie), więc
+      // blokujemy natywną aktywację przycisku i sami decydujemy przy puszczeniu klawisza.
+      const onMark = e.target === trMarkBtn;
+      if (tag === "button" && !onMark) return; // inny przycisk niech zadziała sam
       e.preventDefault();
-      trMarkAndNext();
+      if (!e.repeat) trHoldStart("key");
       break;
+    }
     default:
       break;
   }
 }, true);
 
+// Puszczenie klawisza: albo kończy tryb szybki, albo — gdy nie zdążył wystartować —
+// wykonuje zwykłe „Spisane i dalej". Capture, bo keydown wyżej też jest w capture.
+document.addEventListener("keyup", (e) => {
+  if (!trIsOpen || trTurboSource !== "key") return;
+  if (e.key !== " " && e.key !== "Enter") return;
+  e.stopPropagation();
+  e.preventDefault();
+  const fired = trHoldCancel();
+  if (!fired) trMarkAndNext();
+}, true);
+
+// Utrata fokusu / przejście w tło w trakcie trzymania — nie zostawiamy pętli w biegu.
+window.addEventListener("blur", () => { if (trTurboSource) trHoldCancel(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" && trTurboSource) trHoldCancel();
+});
+
 // ── Podpięcie ───────────────────────────────────────────────────────────────
 
 if (trBtn) trBtn.addEventListener("click", openTranscribe);
 if (trCloseBtn) trCloseBtn.addEventListener("click", closeTranscribe);
-if (trMarkBtn) trMarkBtn.addEventListener("click", trMarkAndNext);
+if (trMarkBtn) {
+  trMarkBtn.addEventListener("click", () => {
+    // Klik doleci też po zakończeniu przytrzymania — wtedy go połykamy, żeby seria
+    // nie dostała jednego wiersza w bonusie.
+    if (trSuppressNextClick) { trSuppressNextClick = false; return; }
+    trMarkAndNext();
+  });
+  trMarkBtn.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button > 0) return; // tylko lewy / dotyk / pióro
+    trHoldStart("pointer");
+  });
+  const endPointerHold = () => {
+    if (trTurboSource !== "pointer") return;
+    if (trHoldCancel()) trSuppressNextClick = true;
+  };
+  ["pointerup", "pointercancel", "pointerleave"].forEach((evt) => trMarkBtn.addEventListener(evt, endPointerHold));
+  // Palec puszczony poza przyciskiem (albo mysz zwolniona gdzie indziej) też kończy serię.
+  window.addEventListener("pointerup", endPointerHold);
+}
+if (trUndoBtn) trUndoBtn.addEventListener("click", trUndoBurst);
 if (trMarkChipEl) trMarkChipEl.addEventListener("click", trToggleDone);
 if (trPrevBtn) trPrevBtn.addEventListener("click", () => trGo(-1));
 if (trNextBtn) trNextBtn.addEventListener("click", () => trGo(1));
@@ -930,12 +1212,23 @@ window.__transcribe = {
     locked: trLocked,
     font: trFont,
     hideDone: trHideDone,
+    scrollTop: trStageEl ? trStageEl.scrollTop : 0,
+    canScroll: !!(trStageEl && trStageEl.scrollHeight - trStageEl.clientHeight > 4),
+    overflowUi: !!trStageWrapEl?.classList.contains("has-overflow"),
+    atBottom: !!trStageWrapEl?.classList.contains("at-bottom"),
+    turbo: !!trTurboTimer,
+    undoVisible: !!(trUndoBtn && !trUndoBtn.classList.contains("hidden")),
+    burst: trBurstKeys.length,
     values: (() => {
       const row = trCurrentRow();
       return row ? trVisibleCols(row).map((ci) => String(getDisplayValue(row, ci) ?? "")) : [];
     })(),
   }),
   mark: trMarkAndNext,
+  holdStart: (source = "key") => trHoldStart(source),
+  holdCancel: () => trHoldCancel(),
+  undoBurst: trUndoBurst,
+  scrollBy: (px) => { if (trStageEl) { trStageEl.scrollTop += px; trUpdateScrollUi(); } },
   go: trGo,
   setHideDone: trSetHideDone,
   setAutoFields: trSetAutoFields,
