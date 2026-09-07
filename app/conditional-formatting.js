@@ -378,12 +378,13 @@ async function buildConditionalFormatting(bytes, wb) {
   currentTables = {};
   if (typeof JSZip === "undefined" || !bytes || !wb) return;
   try {
-    const zip = await JSZip.loadAsync(bytes);
+    const zip = await getSharedWorkbookZip(bytes);
+    if (!zip) return;
     currentTables = await parseTables(zip);
-    const stylesXml = await zip.file("xl/styles.xml")?.async("string");
+    const stylesXml = await readSharedZipText(zip, "xl/styles.xml");
     if (stylesXml) currentDxfs = parseDxfs(stylesXml);
-    const wbXml = await zip.file("xl/workbook.xml")?.async("string");
-    const relsXml = await zip.file("xl/_rels/workbook.xml.rels")?.async("string");
+    const wbXml = await readSharedZipText(zip, "xl/workbook.xml");
+    const relsXml = await readSharedZipText(zip, "xl/_rels/workbook.xml.rels");
     if (!wbXml || !relsXml) return;
     const ridToPath = cfSheetPathsFromRels(relsXml);
     const rules = new Map();
@@ -392,9 +393,8 @@ async function buildConditionalFormatting(bytes, wb) {
     while ((sm = sheetRe.exec(wbXml))) {
       const name = decodeXmlEntities(sm[1]);
       const path = ridToPath.get(sm[2]);
-      const file = path ? zip.file(path) : null;
-      if (!file) continue;
-      const xml = await file.async("string");
+      const xml = path ? await readSharedZipText(zip, path) : undefined;
+      if (xml == null) continue;
       if (xml.indexOf("conditionalFormatting") === -1) continue;
       const blocks = parseSheetCF(xml);
       if (blocks.length) rules.set(name, blocks);
@@ -583,8 +583,8 @@ function evalSheetCF(sheetName) {
 // sheetName potrzebny m.in. do DV list ze structured ref (Tabela[Kolumna]).
 async function parseTables(zip) {
   const tables = {};
-  const wbXml = await zip.file("xl/workbook.xml")?.async("string");
-  const relsXml = await zip.file("xl/_rels/workbook.xml.rels")?.async("string");
+  const wbXml = await readSharedZipText(zip, "xl/workbook.xml");
+  const relsXml = await readSharedZipText(zip, "xl/_rels/workbook.xml.rels");
   const pathToSheetName = {};
   if (wbXml && relsXml) {
     const ridToPath = cfSheetPathsFromRels(relsXml);

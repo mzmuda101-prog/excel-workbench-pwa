@@ -141,4 +141,10 @@ Istniejące narzędzia: `scripts/save-stress-playwright.js`, `scripts/gen-stress
 
 ---
 
+> **2026-09-07:** osobne przejście pomiarowe na słabych/mobilnych urządzeniach —
+> patrz `NOTES-performance-2026-09.md`. Największe wąskie gardło okazało się być poza
+> Fazami 1–4: autodetekcja agregacji powtarzała pełne `buildRows()` dla ~8 kandydatów
+> przy każdym renderze panelu (filtr przy otwartych panelach 4287 ms → 923 ms).
+> Fazy 3–4 nadal nie zrobione, ale mają teraz twarde pomiary uzasadniające trigger.
+
 *Ostatnia aktualizacja planu: 2026-06-29 (decyzje backlogu: Fazy 3–4 + i18n nie priorytet).*

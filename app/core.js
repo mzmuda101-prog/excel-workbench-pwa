@@ -395,6 +395,55 @@ function flipRows(mutate) {
 }
 
 let workbook = null;
+// Znacznik pokolenia danych arkusza. Rośnie przy wczytaniu pliku i przy każdej
+// edycji komórki — cache'e zbudowane na zawartości arkusza (np. wyniki buildRows
+// dla autodetekcji agregacji) porównują go i unieważniają się same.
+let sheetDataStamp = 0;
+// Przy wczytaniu pliku ten sam ZIP był rozpakowywany trzy razy niezależnie
+// (mapa stylów, formatowanie warunkowe, data validation), a każda z nich czytała
+// jeszcze te same wpisy xl/workbook.xml i xl/_rels/workbook.xml.rels.
+// Tu trzymamy jedną instancję na plik + cache rozpakowanych wpisów tekstowych.
+let _sharedZipBytes = null;
+let _sharedZipPromise = null;
+// Cache odczytów wiązany z KONKRETNĄ instancją zip — ta sama funkcja bywa wołana
+// także z innym obiektem zip (np. przy ponownym otwarciu pliku), więc klucz musi
+// obejmować instancję, nie samą ścieżkę.
+const _sharedZipTextCache = new WeakMap();
+
+function getSharedWorkbookZip(bytes) {
+  if (typeof JSZip === "undefined" || !bytes) return Promise.resolve(null);
+  if (_sharedZipBytes === bytes && _sharedZipPromise) return _sharedZipPromise;
+  _sharedZipBytes = bytes;
+  _sharedZipPromise = JSZip.loadAsync(bytes).catch((err) => {
+    // nieudane rozpakowanie nie może zostać zapamiętane jako wynik
+    _sharedZipBytes = null;
+    _sharedZipPromise = null;
+    throw err;
+  });
+  return _sharedZipPromise;
+}
+
+// Rozpakowany XML arkuszy potrafi ważyć wielokrotnie więcej niż sam plik, a jest
+// potrzebny tylko na czas wczytywania — po nim zwalniamy pamięć.
+function releaseSharedZipTextCache() {
+  if (_sharedZipPromise) _sharedZipPromise.then((zip) => { if (zip) _sharedZipTextCache.delete(zip); }).catch(() => {});
+}
+
+// Odczyt wpisu ZIP jako tekst, z pamięcią w obrębie jednego pliku.
+async function readSharedZipText(zip, entryPath) {
+  if (!zip || !entryPath) return undefined;
+  let perZip = _sharedZipTextCache.get(zip);
+  if (!perZip) {
+    perZip = new Map();
+    _sharedZipTextCache.set(zip, perZip);
+  }
+  if (perZip.has(entryPath)) return perZip.get(entryPath);
+  const file = zip.file(entryPath);
+  const text = file ? await file.async("string") : undefined;
+  perZip.set(entryPath, text);
+  return text;
+}
+function bumpSheetDataStamp() { sheetDataStamp += 1; }
 let currentHeaders = [];
 let baseRows = [];
 let viewRows = [];

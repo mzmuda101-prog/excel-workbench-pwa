@@ -202,9 +202,10 @@ async function buildDataValidations(bytes, wb) {
     if (Array.isArray(names)) {
       names.forEach((n) => { if (n && n.Name && n.Ref && !dvNameRefs.has(n.Name)) dvNameRefs.set(n.Name, n.Ref); });
     }
-    const zip = await JSZip.loadAsync(bytes);
-    const wbXml = await zip.file("xl/workbook.xml")?.async("string");
-    const relsXml = await zip.file("xl/_rels/workbook.xml.rels")?.async("string");
+    const zip = await getSharedWorkbookZip(bytes);
+    if (!zip) return;
+    const wbXml = await readSharedZipText(zip, "xl/workbook.xml");
+    const relsXml = await readSharedZipText(zip, "xl/_rels/workbook.xml.rels");
     if (!wbXml || !relsXml) return;
     const ridToPath = cfSheetPathsFromRels(relsXml);
     const map = new Map();
@@ -213,9 +214,8 @@ async function buildDataValidations(bytes, wb) {
     while ((sm = sheetRe.exec(wbXml))) {
       const name = decodeXmlEntities(sm[1]);
       const path = ridToPath.get(sm[2]);
-      const file = path ? zip.file(path) : null;
-      if (!file) continue;
-      const xml = await file.async("string");
+      const xml = path ? await readSharedZipText(zip, path) : undefined;
+      if (xml == null) continue;
       if (xml.indexOf("dataValidation") === -1) continue;
       const rules = parseSheetDataValidations(xml);
       if (rules.length) map.set(name, rules);

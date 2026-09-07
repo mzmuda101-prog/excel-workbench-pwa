@@ -623,6 +623,34 @@ function getAggregationHeaderCandidateRows() {
     .sort((a, b) => a - b);
 }
 
+// Autodetekcja wiersza nagłówka sprawdza ~8 kandydatów, a dla każdego robiła pełny
+// buildRows() + detectRepeatingBlocks() na całym arkuszu — i powtarzała to przy KAŻDYM
+// renderze panelu agregacji, czyli także po każdym filtrze i sortowaniu.
+// Wynik zależy wyłącznie od (arkusz, wiersz nagłówka, język wyświetlania dat) i pokolenia
+// danych, więc trzymamy go w cache. Filtrowanie zakresu (scopeMode) zostaje poza cache.
+let _headerScanCache = new Map();
+let _headerScanCacheStamp = -1;
+let _headerScanCacheLang = null;
+
+function getCachedHeaderRowScan(sheet, headerRow) {
+  const lang = typeof currentLang === "string" ? currentLang : "";
+  const stamp = typeof sheetDataStamp === "number" ? sheetDataStamp : 0;
+  if (_headerScanCacheStamp !== stamp || _headerScanCacheLang !== lang) {
+    _headerScanCache = new Map();
+    _headerScanCacheStamp = stamp;
+    _headerScanCacheLang = lang;
+  }
+  const key = `${currentSheetName}\u001f${headerRow}`;
+  const hit = _headerScanCache.get(key);
+  if (hit) return hit;
+
+  const data = buildRows(sheet, headerRow, workbook);
+  const groups = detectRepeatingBlocks(sheet, headerRow, data);
+  const entry = { data, group: Array.isArray(groups) && groups.length ? groups[0] : null };
+  _headerScanCache.set(key, entry);
+  return entry;
+}
+
 function getAggregationHeaderSourceData(headerRow = currentHeaderRow, scopeMode = aggregationWorkbenchState.scopeMode) {
   if (!workbook || !currentSheetName || headerRow === currentHeaderRow) {
     return {
@@ -650,7 +678,7 @@ function getAggregationHeaderSourceData(headerRow = currentHeaderRow, scopeMode 
   }
 
   try {
-    const data = buildRows(sheet, headerRow, workbook);
+    const { data, group } = getCachedHeaderRowScan(sheet, headerRow);
     const rows = markSubheaderRows(data.rows.slice());
     const visibleRowIndexes = scopeMode === "filtered"
       ? new Set(viewRows.map((row) => row.rowIndex0))
@@ -658,8 +686,6 @@ function getAggregationHeaderSourceData(headerRow = currentHeaderRow, scopeMode 
     const scopedRows = visibleRowIndexes
       ? rows.filter((row) => visibleRowIndexes.has(row.rowIndex0))
       : rows;
-    const groups = detectRepeatingBlocks(sheet, headerRow, data);
-    const group = Array.isArray(groups) && groups.length ? groups[0] : null;
     return {
       headerRow,
       rows: scopedRows,
@@ -1066,9 +1092,10 @@ function parseCellStyleIndices(sheetXml) {
 async function buildStyleIndexMap(bytes, wb) {
   if (typeof JSZip === "undefined" || !bytes || !wb) return null;
   try {
-    const zip = await JSZip.loadAsync(bytes);
-    const wbXml = await zip.file("xl/workbook.xml")?.async("string");
-    const relsXml = await zip.file("xl/_rels/workbook.xml.rels")?.async("string");
+    const zip = await getSharedWorkbookZip(bytes);
+    if (!zip) return null;
+    const wbXml = await readSharedZipText(zip, "xl/workbook.xml");
+    const relsXml = await readSharedZipText(zip, "xl/_rels/workbook.xml.rels");
     if (!wbXml || !relsXml) return null;
 
     const ridToPath = new Map();
@@ -1089,9 +1116,8 @@ async function buildStyleIndexMap(bytes, wb) {
     while ((sm = sheetRe.exec(wbXml))) {
       const name = decodeXmlEntities(sm[1]);
       const path = ridToPath.get(sm[2]);
-      const file = path ? zip.file(path) : null;
-      if (!file) continue;
-      const xml = await file.async("string");
+      const xml = path ? await readSharedZipText(zip, path) : undefined;
+      if (xml == null) continue;
       result.set(name, parseCellStyleIndices(xml));
     }
     return result.size ? result : null;

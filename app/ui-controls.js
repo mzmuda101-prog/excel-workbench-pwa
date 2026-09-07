@@ -696,12 +696,14 @@ async function handleFile(file, fileHandle = null) {
       workbook = XLSX.read(data, { cellDates: true });
     }
     // Odzyskaj mapę indeksów stylów z surowego pliku (font/kolor/rozmiar jak w Excelu).
+    bumpSheetDataStamp(); // nowy skoroszyt -> cache'e liczone na starych danych do kosza
     currentStyleIndexMap = await buildStyleIndexMap(originalFileBytes, workbook);
     // Wczytaj reguły formatowania warunkowego + dxf (ewaluowane leniwie przy renderze).
     await buildConditionalFormatting(originalFileBytes, workbook);
     // Wczytaj reguły Data Validation (listy/słowniki jak w Excelu) — type="list".
     // Konsumowane przez openCellEditor: dropdown + tryb (blokuj/ostrzegaj/podpowiadaj).
     if (typeof buildDataValidations === "function") await buildDataValidations(originalFileBytes, workbook);
+    releaseSharedZipTextCache(); // rozpakowany XML nie jest już potrzebny
     sheetSelect.replaceChildren();
     workbook.SheetNames.forEach((s) => {
       const opt = document.createElement("option");

@@ -505,13 +505,25 @@ function parseRepeatedHeader(header) {
   return { base: raw, order: 1 };
 }
 
+// Czysta funkcja string->string wołana setki tysięcy razy na jedno przeliczenie
+// analiz (klucze unikatów, klasyfikacja nagłówków). Memoizacja z twardym limitem,
+// żeby cache nie rósł w nieskończoność przy dużych arkuszach.
+const _analysisKeyCache = new Map();
+const ANALYSIS_KEY_CACHE_LIMIT = 20000;
+
 function normalizeAnalysisKey(value) {
-  return String(value ?? "")
+  const raw = String(value ?? "");
+  const hit = _analysisKeyCache.get(raw);
+  if (hit !== undefined) return hit;
+  const out = raw
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+  if (_analysisKeyCache.size >= ANALYSIS_KEY_CACHE_LIMIT) _analysisKeyCache.clear();
+  _analysisKeyCache.set(raw, out);
+  return out;
 }
 
 
@@ -660,6 +672,10 @@ function collectAggregationProfiles(model) {
       uniqueValues: new Set(),
     };
 
+    // Rodzaj nagłówka zależy tylko od kolumny — liczony raz, nie raz na wiersz.
+    // (Wcześniej: klasyfikacja × liczba wierszy = setki tysięcy wywołań na panel.)
+    const headerKind = classifyAggregationHeader(header);
+
     model.rows.forEach((row) => {
       const raw = row.values?.[idx];
       const display = getDisplayValue(row, idx);
@@ -668,9 +684,19 @@ function collectAggregationProfiles(model) {
       profile.nonEmptyCount += 1;
       profile.uniqueValues.add(normalizeAnalysisKey(text));
 
-      const headerKind = classifyAggregationHeader(header);
-      const asDate = parseDateFlexible(raw ?? display);
-      if (asDate instanceof Date && (raw instanceof Date || typeof raw === "string" || headerKind === "time")) {
+      // Data liczona leniwie: dla zwykłych liczb w kolumnie nie-czasowej wynik i tak
+      // był odrzucany, a parseDateFlexible odpalało się raz na KAŻDĄ komórkę arkusza.
+      let _asDate;
+      let _asDateDone = false;
+      const getAsDate = () => {
+        if (!_asDateDone) {
+          _asDate = parseDateFlexible(raw ?? display);
+          _asDateDone = true;
+        }
+        return _asDate;
+      };
+
+      if ((raw instanceof Date || typeof raw === "string" || headerKind === "time") && getAsDate() instanceof Date) {
         profile.dateCount += 1;
         return;
       }
@@ -686,7 +712,7 @@ function collectAggregationProfiles(model) {
         return;
       }
 
-      if (asDate instanceof Date) {
+      if (getAsDate() instanceof Date) {
         profile.dateCount += 1;
         return;
       }
@@ -699,7 +725,22 @@ function collectAggregationProfiles(model) {
   });
 }
 
+// Klasyfikacja zależy wyłącznie od tekstu nagłówka — memoizujemy, bo wołają ją
+// też inne ścieżki (scoring profili, autodetekcja) wielokrotnie dla tych samych kolumn.
+const _aggHeaderKindCache = new Map();
+const AGG_HEADER_KIND_CACHE_LIMIT = 5000;
+
 function classifyAggregationHeader(header) {
+  const cacheKey = String(header ?? "");
+  const cached = _aggHeaderKindCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const kind = computeAggregationHeaderKind(header);
+  if (_aggHeaderKindCache.size >= AGG_HEADER_KIND_CACHE_LIMIT) _aggHeaderKindCache.clear();
+  _aggHeaderKindCache.set(cacheKey, kind);
+  return kind;
+}
+
+function computeAggregationHeaderKind(header) {
   const baseHeader = parseRepeatedHeader(header)?.base || cleanSectionLabel(header) || header;
   const norm = normalizeAnalysisKey(baseHeader);
   if (/\b(id|uuid|guid|nr|lp|numer|number|no|kod|code|pesel|nip|regon|phone|telefon|email|mail)\b/.test(norm)) return "id";

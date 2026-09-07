@@ -372,6 +372,44 @@ function getDisplayValue(row, index) {
   return "";
 }
 
+// Mapa nazw miesięcy (PL+EN) — stała modułu. Wcześniej ten ~50-kluczowy obiekt
+// powstawał od nowa przy KAŻDYM wywołaniu parseDateFlexible, czyli setki tysięcy
+// razy na jedno przeliczenie analiz.
+const DATE_MONTH_MAP = {
+  // PL
+  "sty": 1, "stycz": 1, "stycznia": 1,
+  "lut": 2, "lutego": 2,
+  "mar": 3, "marca": 3,
+  "kwi": 4, "kwie": 4, "kwietnia": 4,
+  "maj": 5, "maja": 5,
+  "cze": 6, "czer": 6, "czerwca": 6,
+  "lip": 7, "lipca": 7,
+  "sie": 8, "sier": 8, "sierpnia": 8,
+  "wrz": 9, "wrzes": 9, "wrzesnia": 9,
+  "paź": 10, "paz": 10, "paźdz": 10, "pazdz": 10, "października": 10, "pazdziernika": 10,
+  "lis": 11, "list": 11, "listopada": 11,
+  "gru": 12, "grud": 12, "grudnia": 12,
+  // EN
+  "jan": 1, "january": 1,
+  "feb": 2, "february": 2,
+  "mar": 3, "march": 3,
+  "apr": 4, "april": 4,
+  "may": 5,
+  "jun": 6, "june": 6,
+  "jul": 7, "july": 7,
+  "aug": 8, "august": 8,
+  "sep": 9, "sept": 9, "september": 9,
+  "oct": 10, "october": 10,
+  "nov": 11, "november": 11,
+  "dec": 12, "december": 12,
+};
+
+// Parsowanie dat jest czyste (ten sam tekst -> ta sama data), a w całej aplikacji
+// nic nie mutuje zwróconego obiektu Date, więc cache'ujemy znacznik czasu i
+// odtwarzamy z niego świeży Date — bez współdzielenia instancji między wywołaniami.
+const _dateParseCache = new Map();
+const DATE_PARSE_CACHE_LIMIT = 20000;
+
 function parseDateFlexible(value) {
   if (value instanceof Date) return value;
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -382,6 +420,12 @@ function parseDateFlexible(value) {
   if (typeof value !== "string") return null;
   let v = value.trim();
   if (!v) return null;
+
+  // Klucz cache bierzemy PRZED normalizacją `v` (niżej obcinane są godziny/sufiks T),
+  // żeby zapis i odczyt trafiały w to samo miejsce.
+  const cacheKey = v;
+  const cached = _dateParseCache.get(cacheKey);
+  if (cached !== undefined) return cached === null ? null : new Date(cached);
 
   if (/^\d+(\.\d+)?$/.test(v)) {
     const numeric = Number(v);
@@ -396,44 +440,22 @@ function parseDateFlexible(value) {
   v = v.replace(/\s+\d{1,2}:\d{2}(:\d{2})?.*$/, "");
   const normalized = v.replace(/[.\/]/g, "-");
 
-  const monthMap = {
-    // PL
-    "sty": 1, "stycz": 1, "stycznia": 1,
-    "lut": 2, "lutego": 2,
-    "mar": 3, "marca": 3,
-    "kwi": 4, "kwie": 4, "kwietnia": 4,
-    "maj": 5, "maja": 5,
-    "cze": 6, "czer": 6, "czerwca": 6,
-    "lip": 7, "lipca": 7,
-    "sie": 8, "sier": 8, "sierpnia": 8,
-    "wrz": 9, "wrzes": 9, "wrzesnia": 9,
-    "paź": 10, "paz": 10, "paźdz": 10, "pazdz": 10, "października": 10, "pazdziernika": 10,
-    "lis": 11, "list": 11, "listopada": 11,
-    "gru": 12, "grud": 12, "grudnia": 12,
-    // EN
-    "jan": 1, "january": 1,
-    "feb": 2, "february": 2,
-    "mar": 3, "march": 3,
-    "apr": 4, "april": 4,
-    "may": 5,
-    "jun": 6, "june": 6,
-    "jul": 7, "july": 7,
-    "aug": 8, "august": 8,
-    "sep": 9, "sept": 9, "september": 9,
-    "oct": 10, "october": 10,
-    "nov": 11, "november": 11,
-    "dec": 12, "december": 12,
+
+  const memo = (d) => {
+    if (_dateParseCache.size >= DATE_PARSE_CACHE_LIMIT) _dateParseCache.clear();
+    _dateParseCache.set(cacheKey, d ? d.getTime() : null);
+    return d;
   };
 
   let m = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{2}|\d{4})$/);
   if (m) {
     const y = m[3].length === 2 ? Number(`20${m[3]}`) : Number(m[3]);
-    return new Date(y, Number(m[2]) - 1, Number(m[1]));
+    return memo(new Date(y, Number(m[2]) - 1, Number(m[1])));
   }
 
   m = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m) {
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return memo(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   }
 
   const words = v.toLowerCase()
@@ -444,17 +466,17 @@ function parseDateFlexible(value) {
   if (wm) {
     const day = Number(wm[1]);
     const monthKey = wm[2].replace(/\.$/, "");
-    const month = monthMap[monthKey];
+    const month = DATE_MONTH_MAP[monthKey];
     const year = wm[3].length === 2 ? Number(`20${wm[3]}`) : Number(wm[3]);
-    if (month) return new Date(year, month - 1, day);
+    if (month) return memo(new Date(year, month - 1, day));
   }
   wm = words.match(/^([a-ząćęłńóśźż\.]+)\s+(\d{1,2})\s+(\d{4}|\d{2})$/i);
   if (wm) {
     const monthKey = wm[1].replace(/\.$/, "");
-    const month = monthMap[monthKey];
+    const month = DATE_MONTH_MAP[monthKey];
     const day = Number(wm[2]);
     const year = wm[3].length === 2 ? Number(`20${wm[3]}`) : Number(wm[3]);
-    if (month) return new Date(year, month - 1, day);
+    if (month) return memo(new Date(year, month - 1, day));
   }
 
   // Fallback: natywny Date.parse jest skrajnie pobłażliwy — z adresu "Mariańska 27, 29"
@@ -464,13 +486,13 @@ function parseDateFlexible(value) {
   const alphaTokens = v.toLowerCase().match(/[a-ząćęłńóśźż]+/g) || [];
   const onlyMonthWords = alphaTokens.every(tok => {
     const key = tok.replace(/\.$/, "");
-    return monthMap[key] != null;
+    return DATE_MONTH_MAP[key] != null;
   });
   if (onlyMonthWords) {
     const parsed = Date.parse(value);
-    if (!Number.isNaN(parsed)) return new Date(parsed);
+    if (!Number.isNaN(parsed)) return memo(new Date(parsed));
   }
-  return null;
+  return memo(null);
 }
 
 function parseInputValue(raw) {
@@ -491,6 +513,7 @@ function updateSheetCell(rowIndex0, colIndex0, parsed) {
   const cellRef = XLSX.utils.encode_cell({ r: rowIndex0, c: absoluteCol });
   if (!parsed || parsed.value === null) {
     delete sheet[cellRef];
+    bumpSheetDataStamp(); // zawartość arkusza się zmieniła -> unieważnij cache'e
     recordPendingEdit(currentSheetName, cellRef, null); // null = usunięcie przy zapisie
     return;
   }
@@ -515,6 +538,7 @@ function updateSheetCell(rowIndex0, colIndex0, parsed) {
     cell.t = "s";
   }
   sheet[cellRef] = cell;
+  bumpSheetDataStamp(); // zawartość arkusza się zmieniła -> unieważnij cache'e
   // Zarejestruj edycję do naniesienia metodą ZIP-patch przy zapisie (zachowuje plik).
   recordPendingEdit(currentSheetName, cellRef, { v: cell.v, t: cell.t });
 }
