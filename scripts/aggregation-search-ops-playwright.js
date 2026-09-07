@@ -36,7 +36,9 @@ async function run() {
 
   // Panel agregacji: grupujemy po „Osoba", miara = liczba wierszy.
   await page.evaluate(() => { document.getElementById("panel-aggregation-workbench").open = true; });
-  await page.evaluate(() => (typeof ensureAnalysisHeavy === "function" ? ensureAnalysisHeavy() : null));
+  // Fire-and-forget: NIE zwracamy promisy do Playwrighta — dogrywanie modułu potrafi
+  // przeżyć re-render strony, a wtedy await na zniszczonym kontekście wywala test.
+  await page.evaluate(() => { if (typeof ensureAnalysisHeavy === "function") ensureAnalysisHeavy(); });
   await page.waitForFunction(() => typeof buildAggregationSearchMatcher === "function", null, { timeout: 15000 });
 
   const setup = await page.evaluate(() => {

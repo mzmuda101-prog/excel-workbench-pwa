@@ -243,12 +243,55 @@ function positionCellTooltip(cell) {
   cellTooltipEl.style.top = `${top}px`;
 }
 
+// Data ostatniego zapisu skoroszytu — z docProps/core.xml (SheetJS `Props.ModifiedDate`).
+// To ona tłumaczy różnicę: Excel zapisał wynik formuły z TODAY() w TAMTYM dniu.
+function workbookSavedDateLabel() {
+  try {
+    const raw = workbook?.Props?.ModifiedDate || workbook?.Props?.CreatedDate;
+    if (!raw) return "";
+    const d = raw instanceof Date ? raw : new Date(raw);
+    if (Number.isNaN(d.getTime())) return "";
+    return formatLocalizedDateDisplay(d, { month: "short", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+// Treść notki dla komórki oznaczonej jako przeliczona. Musi podawać OBIE liczby —
+// samo „przeliczono" nie odpowiada na pytanie „to czemu w Excelu widzę co innego".
+function recalcNoteForCell(cell) {
+  if (!cell || !cell.classList || !cell.classList.contains("cell-recalced")) return "";
+  const was = String(cell.dataset.recalcWas ?? "").trim() || "—";
+  const today = formatLocalizedDateDisplay(new Date(), { month: "short", year: "numeric" });
+  const saved = workbookSavedDateLabel();
+  return saved
+    ? t("recalcNoteSaved", { today, was, saved })
+    : t("recalcNote", { today, was });
+}
+
 function showCellTooltip(cell, persistent = false) {
-  if (!cellTooltipEl || !isCellTextTruncated(cell)) return;
-  const text = getTooltipText(cell);
-  if (!text) return;
+  if (!cellTooltipEl || !cell) return;
+  const note = recalcNoteForCell(cell);
+  const truncated = isCellTextTruncated(cell);
+  // Komórka przeliczona pokazuje notkę ZAWSZE, także gdy tekst się mieści —
+  // inaczej znacznik w rogu byłby zagadką bez odpowiedzi.
+  if (!note && !truncated) return;
+  const text = truncated ? getTooltipText(cell) : "";
+  if (!text && !note) return;
   hideCellTooltip();
-  cellTooltipEl.textContent = text;
+  const parts = [];
+  if (text) {
+    const main = document.createElement("div");
+    main.textContent = text;
+    parts.push(main);
+  }
+  if (note) {
+    const noteEl = document.createElement("div");
+    noteEl.className = "cell-tooltip-note";
+    noteEl.textContent = note;
+    parts.push(noteEl);
+  }
+  cellTooltipEl.replaceChildren(...parts);
   cellTooltipEl.classList.remove("hidden");
   positionCellTooltip(cell);
   if (!persistent) return;

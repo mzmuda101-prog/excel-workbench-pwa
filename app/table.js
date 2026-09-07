@@ -1644,6 +1644,16 @@ function renderTable(modelOrHeaders, maybeRows) {
         td.classList.add("cell-selected");
       }
       if (matchedCols && matchedCols.has(i)) td.classList.add("cell-filter-match");
+      // Znacznik przeliczenia na dziś: róg komórki + treść dla podpowiedzi (hover/tap).
+      // Powstaje wyłącznie w buildRows przy włączonym „Przeliczaj formuły z datą",
+      // więc odznaczenie opcji (= przebudowa danych) sprząta go automatycznie.
+      if (row.recalcCells) {
+        const fromFile = row.recalcCells[i];
+        if (fromFile !== undefined) {
+          td.classList.add("cell-recalced");
+          td.dataset.recalcWas = String(fromFile);
+        }
+      }
 
       if (mergeLayout) {
         const anchor = mergeLayout.anchors.get(mergeKey);
@@ -1715,6 +1725,9 @@ function buildRows(sheet, headerRow, wb) {
     const values = [];
     const display = [];
     const cellStyles = [];
+    // Mapa „ta komórka pokazuje wynik PRZELICZONY na dziś, a w pliku było co innego".
+    // Alokowana leniwie — na typowym arkuszu takich komórek nie ma wcale.
+    let recalcCells = null;
     let any = false;
     for (let c = range.s.c; c <= range.e.c; c++) {
       const ref = XLSX.utils.encode_cell({ r, c });
@@ -1733,11 +1746,18 @@ function buildRows(sheet, headerRow, wb) {
           && /\b(?:TODAY|NOW)\s*\(/i.test(cell.f) && typeof cfRecomputeCellFormula === "function") {
         const rv = cfRecomputeCellFormula(sheet, cell.f, r);
         if (rv !== null) {
+          const fromFile = shown; // co pokazywał Excel (wartość z dnia zapisu pliku)
           if (typeof rv === "string") { v = rv; shown = rv; }
           else if (typeof rv === "boolean") { v = rv; shown = rv ? "TRUE" : "FALSE"; }
           else if (typeof rv === "number") {
             const fmt = reuseNumberFormat(cell.w, rv);
             if (fmt !== null) { v = rv; shown = fmt; }
+          }
+          // Znaczymy TYLKO realną różnicę. Formuła z TODAY(), która i tak daje to samo,
+          // nie ma o czym informować — znacznik ma być rzadki, żeby coś znaczył.
+          if (shown !== fromFile) {
+            if (!recalcCells) recalcCells = {};
+            recalcCells[c - range.s.c] = fromFile;
           }
         }
       }
@@ -1753,7 +1773,7 @@ function buildRows(sheet, headerRow, wb) {
       if (v !== null && v !== "") any = true;
     }
     if (!any) continue;
-    rows.push({ values, display, rawValues: values, rowIndex0: r, cellStyles });
+    rows.push({ values, display, rawValues: values, rowIndex0: r, cellStyles, recalcCells });
   }
   // Wymiary z Excela: szerokości kolumn (z !cols, wyrównane do wyświetlanego zakresu od range.s.c)
   // i wysokości wierszy (z !rows, mapa po 0-based indeksie wiersza = rowIndex0). Konsumuje je

@@ -3257,6 +3257,44 @@ tbody td.cell-has-fill {
   padding-left: calc(12px * var(--table-zoom));
 }
 
+/* Komórka pokazująca wynik PRZELICZONY na dziś, inny niż zapisany w pliku.
+   Trójkącik w rogu (idiom Excela dla „tu jest adnotacja") zamiast koloru tła —
+   tło jest już zajęte przez style z pliku, filtr i formatowanie warunkowe.
+   Znacznik pojawia się TYLKO przy włączonym „Przeliczaj formuły z datą";
+   odznaczenie przebudowuje dane, więc znika sam. Treść → podpowiedź komórki. */
+tbody td.cell-recalced {
+  position: relative;
+}
+tbody td.cell-recalced::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 7px 7px 0;
+  border-color: transparent color-mix(in srgb, var(--accent) 58%, transparent) transparent transparent;
+  pointer-events: none;
+}
+[data-theme="dark"] tbody td.cell-recalced::after {
+  border-right-color: color-mix(in srgb, var(--accent) 78%, transparent);
+}
+
+/* Notka w podpowiedzi komórki — drugi plan wobec samej wartości. */
+.cell-tooltip-note {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11.5px;
+  color: var(--muted-strong);
+}
+.cell-tooltip-note:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
 tbody td.cell-merged {
   vertical-align: middle;
   box-shadow: inset 0 0 0 1px rgba(47,111,92,.12);
