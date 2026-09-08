@@ -86,4 +86,64 @@ każde wywołanie dostaje świeży obiekt. Klucz cache brany jest przed normaliz
 
 ---
 
-*Utworzone: 2026-09-07.*
+## Przejście 2 (2026-09-09) — koszt PO malowaniu
+
+Pytanie: co jeszcze da się przyspieszyć bez zmiany zachowania i odczucia z obsługi.
+
+### Nowa metryka: „czas do wyciszenia wątku"
+
+Sam czas do pierwszego malowania (paint) nie oddaje odczucia na słabym/obciążonym sprzęcie.
+Część pracy leci **po** malowaniu (prewarm analiz w `requestIdleCallback`) i to ona sprawia,
+że apka jeszcze przez chwilę „walczy" z użytkownikiem: scroll, pisanie i tapnięcia zaraz po
+akcji są ospałe. Dlatego mierzymy też czas od kliknięcia do ostatniego `longtask`.
+
+### Znalezione i naprawione
+
+`collectSheetInsights()` przeliczało przy **każdym** „Filtruj" rzeczy, które od filtra
+nie zależą: `JSON.stringify` każdego wiersza (wykrywanie duplikatów) oraz skan wszystkich
+komórek z `parseDateFlexible` (kolumny liczbowe/datowe/rzadkie/długi tekst). Od filtra
+zależy tam wyłącznie `viewRows.length`.
+
+Wynik wydzielony do `getSheetInsightsBaseStats()` z cache. Klucz: tożsamość tablicy
+`baseRows` (jest wyłącznie podmieniana, nigdy modyfikowana w miejscu — sprawdzone),
+`sheetDataStamp` (edycja komórki), podpis nagłówków i tryb wide/long.
+Etykiety `t()` budowane są dalej na świeżo, więc przełączenie języka działa jak wcześniej.
+
+| „Filtruj" (desktop @4× CPU, 200 wierszy w widoku, 2000 w pliku) | Przed | Po |
+|---|---|---|
+| paint | 434 ms | 427 ms (bez zmian — to nie ta faza) |
+| **czas do wyciszenia wątku** | **856 ms** | **361 ms** (−58%) |
+| CPU w longtaskach | 424 ms | 334 ms (−21%) |
+| `collectSheetInsights` | 123 ms | 0 ms |
+
+Weryfikacja: `npm test` 180 asercji, exit 0; porównanie odcisku palca 3 pliki × 6 stanów
+(w tym „po wyczyszczeniu filtrów", „po EN", „po edycji komórki") × 32 pola, z bezpośrednim
+zrzutem wyjścia `collectSheetInsights()` i `collectColumnProfiles()` — **0 różnic**.
+
+### Sprawdzone i ODRZUCONE (żeby nie sprawdzać drugi raz)
+
+- **Pomijanie zapisu zmiennych CSS, gdy wartość się nie zmienia.** Pomiar potwierdził,
+  że przy sorcie/filtrze/toggle wszystkie 5 zapisów (`--table-zoom` ×2, `--row-head-w`,
+  `--frozen-guide-height`, `--table-panel-height`) zapisuje wartość **identyczną**.
+  Ale strażnik nie dał **żadnej mierzalnej różnicy** (1000–1550 ms → to samo, przy 2000 wierszy),
+  bo zapisy lecą w rAF już po przebudowie DOM, która i tak unieważniła layout. Cofnięte.
+- **`content-visibility: auto` na wierszach** — już jest w `app.css` (linia ~3714). Nie pomaga
+  na koszt przełączników, bo ten koszt to **tworzenie** 40 000 elementów, a nie layout tych
+  poza ekranem. Uwaga: `html.low-power` **wyłącza** tę optymalizację, a heurystyka
+  `IS_LOW_POWER` nie odpala się w headless (deviceMemory 32, 10 rdzeni) — na realnym
+  słabym urządzeniu zachowanie będzie inne niż w tych pomiarach.
+- **Boot** — przy 6× dławieniu CPU to tylko **196 ms aktywnego JS**. Nie ma tu czego ciąć;
+  potwierdza wcześniejszą decyzję, że split `language.js` nie jest priorytetem.
+
+### Co dalej zostaje wolne (bez zmian względem przejścia 1)
+
+- `renderTable` ~224 ms i `collectColumnProfiles` ~160 ms na „Filtruj" — pierwsze to DOM,
+  drugie **legalnie** zależy od `viewRows` (zasila pasek totali) i musi się przeliczyć po filtrze.
+  `collectColumnProfiles` liczy pełne profile (mapa unikatów + `topValues`) także wtedy, gdy
+  otwarty jest tylko pasek totali; rozdzielenie na „lekkie totale" i „pełny profil" to jedyny
+  pomysł na zysk, ale grozi rozjechaniem się dwóch ścieżek liczenia — świadomie nie zrobione.
+- Przełączniki widoku przy 2000 wierszy: 1000–1550 ms @4× — wyłącznie DOM-reuse to ruszy.
+
+---
+
+*Utworzone: 2026-09-07. Przejście 2: 2026-09-09.*

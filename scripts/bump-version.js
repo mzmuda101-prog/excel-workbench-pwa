@@ -4,7 +4,7 @@
  * Aktualizuje wersję cache/buildu we wszystkich plikach projektu jedną komendą.
  *
  * Użycie:
- *   cd excel-workbench-pwa
+ *   cd sheet-workbench-pwa
  *   npm run release            → auto: jeśli dziś już wydano, podbija -NN (np. 20260530-02),
  *                                w innym wypadku dzisiejsza data jako "YYYYMMDD-01"
  *   npm run release 20260601-02  → użyje podanej wersji

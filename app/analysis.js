@@ -1767,26 +1767,25 @@ function collectWorkbookStats(wb, fileName) {
   };
 }
 
-function collectSheetInsights() {
-  const workbookItems = currentWorkbookStats ? [
-    { label: t("inspSheets"), value: String(currentWorkbookStats.sheets) },
-    { label: t("inspHiddenSheets"), value: String(currentWorkbookStats.hiddenSheets), tone: currentWorkbookStats.hiddenSheets ? "warning" : "" },
-    { label: t("inspVeryHidden"), value: String(currentWorkbookStats.veryHiddenSheets), tone: currentWorkbookStats.veryHiddenSheets ? "warning" : "" },
-    { label: t("inspDefinedNames"), value: String(currentWorkbookStats.definedNames), tone: currentWorkbookStats.definedNames ? "info" : "" },
-  ] : [];
+// Cache statystyk liczonych na całym arkuszu. Klucz: tożsamość tablicy baseRows
+// (jest wyłącznie podmieniana, nigdy modyfikowana w miejscu), znacznik zmian danych
+// (edycja komórki) oraz podpis nagłówków i tryb widoku wide/long.
+let _sheetInsightsStatsCache = null;
 
-  if (!currentHeaders.length || !baseRows.length) {
-    return {
-      workbookRows: workbookItems,
-      rows: [],
-      flags: currentWorkbookStats?.hasMacros ? [{ label: t("inspMacroFile"), tone: "warning" }] : [],
-    };
+function getSheetInsightsBaseStats() {
+  const headersKey = currentHeaders.join("\u001f");
+  const stamp = typeof sheetDataStamp === "number" ? sheetDataStamp : 0;
+  const mode = typeof tableViewMode !== "undefined" ? String(tableViewMode) : "";
+  const cached = _sheetInsightsStatsCache;
+  if (cached
+    && cached.rowsRef === baseRows
+    && cached.stamp === stamp
+    && cached.headersKey === headersKey
+    && cached.mode === mode) {
+    return cached.data;
   }
 
   const totalRows = baseRows.length;
-  const visibleRows = viewRows.length;
-  const totalCols = currentHeaders.length;
-  const duplicateHeaders = currentSheetStats?.duplicateHeaderCount || 0;
   const duplicateRows = (() => {
     const keys = baseRows.map((row) => JSON.stringify(row.values.map((value) => value instanceof Date ? value.toISOString() : value ?? "")));
     return keys.length - new Set(keys).size;
@@ -1815,6 +1814,37 @@ function collectSheetInsights() {
     if (maxLen > 150) longTextColumns += 1;
     if (totalRows && nonEmpty / totalRows <= 0.4) sparseColumns += 1;
   });
+
+  const data = { duplicateRows, numericColumns, dateColumns, longTextColumns, sparseColumns };
+  _sheetInsightsStatsCache = { rowsRef: baseRows, stamp, headersKey, mode, data };
+  return data;
+}
+
+function collectSheetInsights() {
+  const workbookItems = currentWorkbookStats ? [
+    { label: t("inspSheets"), value: String(currentWorkbookStats.sheets) },
+    { label: t("inspHiddenSheets"), value: String(currentWorkbookStats.hiddenSheets), tone: currentWorkbookStats.hiddenSheets ? "warning" : "" },
+    { label: t("inspVeryHidden"), value: String(currentWorkbookStats.veryHiddenSheets), tone: currentWorkbookStats.veryHiddenSheets ? "warning" : "" },
+    { label: t("inspDefinedNames"), value: String(currentWorkbookStats.definedNames), tone: currentWorkbookStats.definedNames ? "info" : "" },
+  ] : [];
+
+  if (!currentHeaders.length || !baseRows.length) {
+    return {
+      workbookRows: workbookItems,
+      rows: [],
+      flags: currentWorkbookStats?.hasMacros ? [{ label: t("inspMacroFile"), tone: "warning" }] : [],
+    };
+  }
+
+  const totalRows = baseRows.length;
+  const visibleRows = viewRows.length;
+  const totalCols = currentHeaders.length;
+  const duplicateHeaders = currentSheetStats?.duplicateHeaderCount || 0;
+  // Ciężka część liczona na baseRows i nagłówkach — NIE zależy od filtra ani sortowania,
+  // a wcześniej przeliczała się przy każdym „Filtruj" (skan wszystkich komórek
+  // + JSON.stringify każdego wiersza). Etykiety t() budowane są dalej na świeżo,
+  // więc przełączenie języka nadal działa.
+  const { duplicateRows, numericColumns, dateColumns, longTextColumns, sparseColumns } = getSheetInsightsBaseStats();
 
   const sheetItems = [
     { label: t("inspVisibleAllRows"), value: `${visibleRows} / ${totalRows}`, tone: visibleRows !== totalRows ? "info" : "" },
